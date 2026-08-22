@@ -85,3 +85,10 @@ docker compose down -v && ./gradlew bootRun
 feat/#12-turn-orchestrator
 fix/#31-turn-conflict-race
 ```
+
+---
+
+## 라이선스
+
+© 2026 너와다음. All rights reserved.
+이 저장소는 열람 목적으로 공개되어 있으며, 별도 라이선스를 부여하지 않습니다.
