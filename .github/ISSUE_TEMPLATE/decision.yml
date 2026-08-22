@@ -1,0 +1,80 @@
+name: 결정 필요 (Decision)
+description: CLAUDE.md §13의 `[결정 필요]` 항목 해소, 또는 ADR이 필요한 기술 선택
+title: "[DECISION] "
+labels: ["needs-decision"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        CLAUDE.md §13에 `[결정 필요]`로 남아 있는 항목을 닫거나,
+        §6 불변 규칙에 예외를 두거나, 스택을 바꿀 때 씁니다.
+
+        결정이 나면 **CLAUDE.md 해당 절을 갱신하고 `docs/adr/`에 ADR을 남긴 뒤** 이 이슈를 닫습니다.
+
+  - type: input
+    id: ref
+    attributes:
+      label: 대상
+      description: CLAUDE.md의 절 번호 또는 규칙 ID
+      placeholder: "§13-3 (disabled 판정) / §2.3 (동적 쿼리) / I-16 예외"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: blocking
+    attributes:
+      label: 차단 여부
+      options:
+        - "차단 — 이 결정 없이는 진행 불가"
+        - "비차단 — 기본 채택안으로 진행 가능"
+    validations:
+      required: true
+
+  - type: input
+    id: blocked-tasks
+    attributes:
+      label: 막고 있는 작업
+      placeholder: B-21, B-32
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 배경
+      description: 왜 지금 결정해야 하는가. 미루면 무엇이 비싸지는가.
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: 선택지
+      description: 각각의 장단점과 되돌리기 비용
+      placeholder: |
+        A) ... — 장점 / 단점 / 되돌리기 비용
+        B) ... — 장점 / 단점 / 되돌리기 비용
+    validations:
+      required: true
+
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: 권고안
+      description: 제안자의 의견과 근거
+    validations:
+      required: true
+
+  - type: input
+    id: deadline
+    attributes:
+      label: 결정 기한
+      placeholder: B-32 착수 전 / 2026-09-05
+
+  - type: checkboxes
+    id: followup
+    attributes:
+      label: 결정 후 할 일
+      options:
+        - label: CLAUDE.md 해당 절 갱신
+        - label: "`docs/adr/` 에 ADR 작성"
+        - label: 영향받는 작업 이슈의 완료 조건 수정
+        - label: 약관·개인정보처리방침 반영 필요 (법무 확인)

@@ -1,0 +1,106 @@
+name: 작업 (Task)
+description: CLAUDE.md §12의 B-xx 작업 또는 그 하위 작업
+title: "[B-  ] "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        CLAUDE.md §12의 작업 정의를 그대로 옮겨 적습니다.
+        정의에 없는 범위를 임의로 넓히지 않습니다 (§0.1).
+
+  - type: input
+    id: task-no
+    attributes:
+      label: 작업 번호
+      description: CLAUDE.md §12 기준. 하위 작업이면 B-32-1 처럼 표기
+      placeholder: B-32
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 우선순위
+      options: ["P0", "P1", "P2", "P3"]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영역
+      description: CLAUDE.md §5.2 패키지 기준
+      options:
+        - identity
+        - catalog
+        - authoring
+        - play
+        - ai
+        - safety
+        - admin
+        - batch
+        - common
+        - infra
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 목표
+      description: 무엇을 왜 하는가
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: 산출물
+      description: 만들어질 클래스·엔드포인트·마이그레이션·문서를 구체적으로
+      placeholder: |
+        - TurnOrchestrator (play/orchestrator)
+        - POST /api/v1/sessions/{id}/turns
+        - V3__create_turn.sql
+    validations:
+      required: true
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: 완료 조건 (DoD)
+      description: 무엇이 통과해야 닫을 수 있는가. 테스트로 표현할 수 있으면 테스트로.
+      placeholder: |
+        - [ ] §10.1의 1, 5, 6, 7번 테스트 통과
+        - [ ] 트랜잭션 내 외부 HTTP 호출 0건
+    validations:
+      required: true
+
+  - type: input
+    id: depends
+    attributes:
+      label: 의존 작업
+      description: 완료되지 않으면 시작하지 않는다
+      placeholder: B-21, B-26, B-28
+
+  - type: input
+    id: refs
+    attributes:
+      label: 관련 요구사항 ID
+      description: 커밋 Refs와 코드 주석에 그대로 쓴다
+      placeholder: R6.1, R6.2, P6, I-6
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: 착수 전 확인
+      options:
+        - label: CLAUDE.md §6 불변 규칙과 충돌하지 않는다
+        - label: §13의 `[결정 필요]` 항목에 걸리지 않는다 (걸리면 아래에 기재)
+        - label: 새 의존성 추가가 필요 없다 (필요하면 ADR 먼저)
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 비고
+      description: 미해결 결정, 참고 자료, 알려진 제약

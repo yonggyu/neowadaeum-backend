@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 구현 규칙 · 작업 목록 (CLAUDE.md)
+    url: https://github.com/yonggyu/neowadaeum-backend/blob/backend/CLAUDE.md
+    about: 작업 번호(B-xx), 불변 규칙, 보안·Git 규칙은 여기부터 확인하세요.
+  - name: 보안 취약점 신고
+    url: https://github.com/yonggyu/neowadaeum-backend/security/advisories/new
+    about: 인증 우회·개인정보 노출·자격 증명 유출은 공개 이슈가 아니라 여기로 보고합니다.
+  - name: 프론트엔드 이슈
+    url: https://github.com/yonggyu/neowadaeum-frontend/issues
+    about: 화면·디자인·클라이언트 동작은 프론트 레포에서 다룹니다.

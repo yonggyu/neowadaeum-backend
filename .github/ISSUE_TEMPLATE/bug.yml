@@ -1,0 +1,90 @@
+name: 버그 (Bug)
+description: 동작이 기대와 다름
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **세이프티 우회·개인정보 노출·인증 우회에 해당하면 이 템플릿을 쓰지 마세요.**
+        세이프티는 `세이프티` 템플릿으로, 보안 취약점은 이슈가 아니라 비공개 채널로 보고합니다.
+
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: 영향 범위
+      description: 해당하는 것을 모두 선택. 하나라도 체크되면 P0으로 취급합니다.
+      options:
+        - label: 세이프티 판정이 잘못됨
+        - label: 과금·토큰 비용에 영향 (중복 호출, 쿼터 누수)
+        - label: 데이터 무결성 (GameState 손상, 스냅샷·요약 불일치, 롤백 불가)
+        - label: 개인정보 (AI 페이로드 유출, 로그 노출, 권한 우회)
+        - label: 위 어느 것도 아님
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영역
+      options:
+        - identity
+        - catalog
+        - authoring
+        - play
+        - ai
+        - safety
+        - admin
+        - batch
+        - common
+        - infra
+        - 모르겠음
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      placeholder: |
+        1. 작품 X로 세션 생성
+        2. 턴 3에서 choiceId c_02 제출
+        3. 동일 요청을 2초 내 재전송
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작
+      description: 가능하면 CLAUDE.md의 요구사항 ID를 근거로
+      placeholder: R6.2에 따라 기존 결과를 대기해 반환하고 Provider 호출은 1회여야 함
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+    validations:
+      required: true
+
+  - type: input
+    id: ids
+    attributes:
+      label: 식별자
+      description: 세션 ID / 턴 번호 / 요청 ID. 재현에 가장 빠른 단서입니다.
+      placeholder: sessionId=..., turnNo=12, requestId=...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 · 응답
+      description: |
+        **프롬프트 원문·API 키·토큰·이메일을 붙여넣지 마세요 (S-3).**
+        필요하면 마스킹하거나 ai_call_log의 id만 적습니다.
+      render: text
+
+  - type: input
+    id: env
+    attributes:
+      label: 환경
+      placeholder: 브랜치 backend / 커밋 abc1234 / local(docker-compose) / Java 21
