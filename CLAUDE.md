@@ -87,7 +87,7 @@
 | 언어 / 런타임 | **Java 21 (LTS)** | Virtual Thread로 AI 호출 블로킹 비용 완화. Boot 4의 최소 요구는 17, 일급 지원은 25이지만 팀 JDK 표준을 21로 둔다 |
 | 프레임워크 | **Spring Boot 4.1.x** (Spring Framework 7) | 3.5는 EOL. `application.yml` 기반 설정 규칙(§7)이 전제 |
 | 빌드 | **Gradle (Kotlin DSL)** | 단일 모듈로 시작, 필요 시 멀티 모듈 분리 |
-| 모듈 경계 | **Spring Modulith** | §5.4 의존 규칙을 테스트로 강제한다. 문서로만 있는 경계는 반드시 깨진다 |
+| 모듈 경계 | **Spring Modulith** (`-core` + `-test`만) | §5.4 의존 규칙을 테스트로 강제한다. 문서로만 있는 경계는 반드시 깨진다. **`-jpa` 스타터는 쓰지 않는다 — §2.5** |
 | DB | **PostgreSQL 16** (Docker) | 요구사항이 `jsonb`·partial unique index를 전제(§13-9, R7.4). 로컬 설치 금지 — §2.5 |
 | 마이그레이션 | **Flyway** | 스토어별 **4세트** 분리 (§5.3) |
 | 캐시 / 락 | **Redis 7** (Docker) | Idempotency, Rate limit, 동시 생성 락, 쿨다운 카운터 |
@@ -109,6 +109,7 @@ Boot 3 기준 예제 코드를 그대로 붙이면 컴파일되지 않는 지점
 
 | 항목 | 주의 |
 |---|---|
+| **자동설정 패키지 이동** | 모듈화로 자동설정 클래스가 기능별 패키지로 옮겨졌다. 예: `org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration` → **`org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration`**. ★ **`spring.autoconfigure.exclude`에 존재하지 않는 FQCN을 써도 Spring은 오류를 내지 않고 조용히 무시한다.** 제외가 실제로 적용됐는지 반드시 동작으로 확인한다 |
 | **Jackson 3** | 패키지가 `com.fasterxml.jackson.*` → **`tools.jackson.*`**. AI 출력 파서(B-21)와 camelCase 설정(§9.1)에 직접 영향 |
 | **Hibernate 7** | 엔티티 매핑·쿼리 동작에 미세한 변경이 있다. 마이그레이션 후 통합 테스트로 확인 |
 | **JUnit 4 제거** | `@RunWith`, `junit:junit` 사용 금지 |
@@ -279,12 +280,26 @@ spring:
   autoconfigure:
     exclude:
       # TODO(B-05): DataSource Bean 4개 정의 후 이 블록을 통째로 삭제한다.
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
 ```
 
 - **B-01 완료 조건**은 "컨테이너 자동 기동 + 스키마 4개 생성"까지다. 앱이 초록으로 뜨는 것은 B-01의 조건이 아니다.
 - **B-02~B-04**는 이 제외 덕분에 `/actuator/health` 200을 볼 수 있다.
 - **B-05**에서 위 블록을 지우지 않으면 DataSource가 4개 정의돼 있어도 JPA가 붙지 않는다. B-05의 DoD에 "제외 블록 삭제 확인"이 들어가는 이유다.
+
+#### 제외만으로 부족한 경우 — `EntityManager`를 무조건 요구하는 자동설정
+
+Flyway·Hibernate 자동설정은 DataSource 빈이 없으면 조건이 걸려 조용히 물러난다. **전부 그런 것은 아니다.** DataSource 유무와 무관하게 `EntityManager`를 요구하는 자동설정이 클래스패스에 있으면 컨텍스트가 뜨지 않는다.
+
+**확인된 사례**: `spring-modulith-starter-jpa`가 끌어오는 `JpaEventPublicationAutoConfiguration`.
+
+이 프로젝트는 **모듈 경계 검증 목적으로만** Spring Modulith를 쓴다(§2.1). 모듈 간 통신은 이벤트가 아니라 Facade다(§5.4). 이벤트 발행 레지스트리는 쓰지 않으므로 **`spring-modulith-starter-jpa`를 의존성에서 제거한다.** `spring-modulith-starter-core`와 `spring-modulith-starter-test`만 남기면 `ApplicationModules.verify()`는 그대로 동작한다.
+
+> Initializr에서 *Spring Modulith*와 *Spring Data JPA*를 함께 고르면 `-jpa` 스타터가 자동으로 딸려 온다. 우리가 요청한 적 없는 기능이므로 **한시적 제거가 아니라 영구 제거다.** B-05에서 되돌리지 않는다.
+>
+> 나중에 Modulith 이벤트 발행을 도입하려면(예: 요약 압축 B-34, `ending_stat` 갱신 B-39의 비동기 경로) ADR(§9.5)을 거친다.
+
+같은 유형의 문제가 또 나오면 **제외를 하나 더 추가하기 전에 그 의존성이 정말 필요한지 먼저 묻는다.** 제외 목록이 길어지는 것은 의존성 구성이 잘못됐다는 신호다.
 
 ---
 
@@ -1240,7 +1255,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | # | 작업 | 산출물 | 완료 조건 | 의존 |
 |---|---|---|---|---|
 | **B-01** | 레포 초기화 & 보안 규칙 적용 | `.gitignore`(§7.2), `.env.example`, `application.yml.template`, `docker-compose.yml` + `docker/postgres/init/01-init-schemas.sh`(§2.5), `README.md`. Initializr 잔재(`compose.yaml`, `application.properties`, `HELP.md`) 제거 | ① `git status`의 `*.yml`이 `docker-compose.yml` + `.github/**` 뿐 ② `git check-ignore -v gradle/wrapper/gradle-wrapper.properties`가 무시되지 않음 ③ `./gradlew bootRun`으로 **Postgres·Redis 컨테이너 기동 + 스키마 4개 생성** 확인. **앱이 끝까지 뜨는 것은 조건이 아니다(§2.5)** | — |
-| **B-02** | Gradle 스켈레톤 & 패키지 구조 | §5.2 패키지 트리, Spring Boot 4.1 부팅, actuator health, **Spring Modulith 경계 검증 테스트** | `./gradlew bootRun`으로 기동, `/actuator/health` 200, `ApplicationModules.verify()` 통과 | B-01 |
+| **B-02** | Gradle 스켈레톤 & 패키지 구조 | §5.2 패키지 트리, Spring Boot 4.1 부팅, actuator health, **Spring Modulith 경계 검증 테스트** | `./gradlew bootRun`으로 기동, `/actuator/health` 200, `ApplicationModules.verify()` 통과, **`spring-modulith-starter-jpa` 미포함 확인(§2.5)** | B-01 |
 | **B-03** | 공통 웹 계층 | `ErrorCode` enum(§11 전체), `GlobalExceptionHandler`, 공통 응답, 요청 ID MDC, 구조화 로깅 | §11 모든 코드가 enum에 존재하고 핸들러 테스트 통과 | B-02 |
 | **B-04** | Git/CI 파이프라인 | `.github/workflows/ci.yml`(빌드·테스트·gitleaks), `.gitmessage.txt`, `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/` 4종 + `config.yml`, 라벨 생성, 브랜치 보호 문서 | PR 생성 시 CI 3잡 통과. 시크릿 심어 스캔 실패 확인. 이슈 생성 시 4종 폼만 보이고 빈 이슈가 막힘 | B-01 |
 | **B-05** | 4-스토어 DataSource 분리 + Flyway | §5.3의 DataSource 4개, Flyway 4세트, 스키마별 계정 | 통합 테스트에서 4개 스키마 마이그레이션 성공. 크로스 스키마 FK 0건. **`spring.autoconfigure.exclude`의 `DataSourceAutoConfiguration` 블록 삭제 확인(§2.5)** | B-02 |
