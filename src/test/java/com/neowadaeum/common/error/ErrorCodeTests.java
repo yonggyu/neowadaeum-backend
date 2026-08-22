@@ -15,7 +15,7 @@ import org.springframework.http.HttpStatus;
  */
 class ErrorCodeTests {
 
-	/** CLAUDE.md §11 표 전체 + B-03 에서 신설한 폴백 1건. */
+	/** CLAUDE.md §11 표 전체. */
 	private static Map<String, HttpStatus> catalog() {
 		Map<String, HttpStatus> catalog = new LinkedHashMap<>();
 		catalog.put("CONSENT_REQUIRED", HttpStatus.BAD_REQUEST);
@@ -36,7 +36,6 @@ class ErrorCodeTests {
 		catalog.put("CONTEXT_BUDGET_EXCEEDED", HttpStatus.INTERNAL_SERVER_ERROR);
 		catalog.put("PROVIDER_ERROR", HttpStatus.BAD_GATEWAY);
 		catalog.put("GENERATION_TIMEOUT", HttpStatus.GATEWAY_TIMEOUT);
-		// [B-03 신설] 처리되지 않은 예외의 폴백. 없으면 Spring 기본 에러 본문이 그대로 나가 S-6 을 위반한다.
 		catalog.put("INTERNAL_ERROR", HttpStatus.INTERNAL_SERVER_ERROR);
 		return catalog;
 	}

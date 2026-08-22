@@ -68,10 +68,12 @@ public enum ErrorCode {
 	 */
 	CONTEXT_BUDGET_EXCEEDED(HttpStatus.INTERNAL_SERVER_ERROR, "일시적인 문제가 발생했어요."),
 	/**
-	 * [B-03 신설] 예상하지 못한 예외의 폴백.
+	 * 예상하지 못한 예외의 폴백 (B-03 신설, §11).
 	 *
-	 * <p>§11 카탈로그에는 없는 코드다. 폴백이 없으면 처리되지 않은 예외가 Spring 기본 에러 본문(예외 메시지·경로 포함)
-	 * 으로 나가 S-6 을 위반한다. 카탈로그 확정 시 CLAUDE.md §11 에 반영한다.
+	 * <p>폴백이 없으면 처리되지 않은 예외가 Spring 기본 에러 본문(예외 메시지·경로 포함)으로 나가 S-6 을 위반한다.
+	 * {@link #CONTEXT_BUDGET_EXCEEDED} 는 원인이 특정된 내부 결함이므로 폴백으로 재사용하지 않는다.
+	 *
+	 * <p><b>의도적으로 던지지 않는다.</b> 이 코드가 나가는 순간 서버 결함이며, {@code ERROR} 로그와 알람으로 추적한다.
 	 */
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "일시적인 문제가 발생했어요."),
 	/** [R3.3, R5.8] Provider 실패 또는 파싱 2회 실패 (§4.3-6). */
