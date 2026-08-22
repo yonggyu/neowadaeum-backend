@@ -1263,7 +1263,10 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | **B-02** | Gradle 스켈레톤 & 패키지 구조 | §5.2 패키지 트리, Spring Boot 4.1 부팅, actuator health, **Spring Modulith 경계 검증 테스트** | `./gradlew bootRun`으로 기동, `/actuator/health` 200, `ApplicationModules.verify()` 통과, **`spring-modulith-starter-jpa` 미포함 확인(§2.5)** | B-01 |
 | **B-03** | 공통 웹 계층 | `ErrorCode` enum(§11 전체), `GlobalExceptionHandler`, 공통 응답, 요청 ID MDC, 구조화 로깅 | §11 모든 코드가 enum에 존재하고 핸들러 테스트 통과 | B-02 |
 | **B-04** | Git/CI 파이프라인 | `.github/workflows/ci.yml`(빌드·테스트·gitleaks), `.gitmessage.txt`, `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/` 4종 + `config.yml`, 라벨 생성, 브랜치 보호 문서 | PR 생성 시 CI 3잡 통과. 시크릿 심어 스캔 실패 확인. 이슈 생성 시 4종 폼만 보이고 빈 이슈가 막힘 | B-01 |
+| **B-04-1** | 연결 이슈 자동 종료 워크플로 | `.github/workflows/close-linked-issues.yml` | `backend` 대상 PR 머지 시 닫기 키워드로 연결된 이슈가 코멘트와 함께 닫힘. 머지 없이 닫은 PR은 무동작, 이미 닫힌 이슈는 코멘트 중복 없음, 없는 번호는 잡 성공. 액션이 커밋 SHA로 고정 | B-04 |
 | **B-05** | 4-스토어 DataSource 분리 + Flyway | §5.3의 DataSource 4개, Flyway 4세트, 스키마별 계정 | 통합 테스트에서 4개 스키마 마이그레이션 성공. 크로스 스키마 FK 0건. **`spring.autoconfigure.exclude`의 `DataSourceAutoConfiguration` 블록 삭제 확인(§2.5)** | B-02 |
+
+> **B-04-1이 왜 필요한가.** 기본 브랜치는 `main`인데 작업 머지는 `backend`로 간다(§8.2). GitHub는 **기본 브랜치로 머지된** PR의 닫기 키워드만 처리하므로 `feat/* → backend` 머지에서는 이슈가 열린 채 남는다. 사람이 매번 기억해야 하는 절차는 반드시 빠지므로 워크플로로 대신한다.
 
 ### 단계 1 — API 계약 & 데이터 모델 (개발 순서 ②③)
 
