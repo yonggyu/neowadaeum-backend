@@ -1,0 +1,104 @@
+# ─────────────────────────────────────────────────────────────
+# application.yml.template  (§7.3)
+#
+#   cp src/main/resources/application.yml.template \
+#      src/main/resources/application.yml
+#
+# ※ application.yml 은 .gitignore 의 `*.yml` 에 걸려 추적되지 않는다 (§7.2).
+# ※ 플레이스홀더만 둔다. `${VAR:실제값}` 기본값 패턴은 금지다 (§7.1-3, §7.3).
+#    값이 없으면 부팅이 실패해야 한다. 조용히 잘못된 값으로 뜨는 것보다 낫다.
+# ─────────────────────────────────────────────────────────────
+spring:
+  application:
+    name: neowadaeum-backend
+
+  # ── B-05 이전 한시적 제외 (§2.5) ───────────────────────────
+  # DataSource Bean 4개(B-05) 이전에는 spring.datasource.url 이 없어 기동이 실패한다.
+  # 더미 접속 정보를 채우지 않고 자동설정만 제외한다.
+  autoconfigure:
+    exclude:
+      # TODO(B-05): DataSource Bean 4개 정의 후 이 블록을 통째로 삭제한다.
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+
+  # ── 로컬 인프라 자동 기동 (§2.5) ───────────────────────────
+  # 커넥션 정보는 자동 주입되지 않는다. 컨테이너 수명 관리 용도로만 쓴다.
+  docker:
+    compose:
+      enabled: true
+      file: docker-compose.yml
+      lifecycle-management: start-only   # 앱을 꺼도 DB는 살려 둔다
+      skip:
+        in-tests: true                   # 테스트는 Testcontainers를 쓴다 (§10)
+
+  data:
+    redis:
+      url: ${REDIS_URL}
+
+  jackson:
+    property-naming-strategy: LOWER_CAMEL_CASE   # API JSON은 camelCase (§9.1)
+
+# ── 4-스토어 DataSource (§5.3, §2.5) ─────────────────────────
+# DataSource Bean 4개는 B-05에서 이 프로퍼티를 읽어 직접 정의한다.
+# 스키마 간 FK / JOIN 금지. 각 계정은 자기 스키마에만 권한을 갖는다.
+app:
+  datasource:
+    identity:
+      url: ${IDENTITY_DB_URL}       # jdbc:postgresql://localhost:5432/neowadaeum?currentSchema=identity
+      username: ${IDENTITY_DB_USER}
+      password: ${IDENTITY_DB_PASSWORD}
+    catalog:
+      url: ${CATALOG_DB_URL}
+      username: ${CATALOG_DB_USER}
+      password: ${CATALOG_DB_PASSWORD}
+    play:
+      url: ${PLAY_DB_URL}
+      username: ${PLAY_DB_USER}
+      password: ${PLAY_DB_PASSWORD}
+    promptlog:
+      url: ${PROMPTLOG_DB_URL}
+      username: ${PROMPTLOG_DB_USER}
+      password: ${PROMPTLOG_DB_PASSWORD}
+
+# ── 인증 (§12 B-12) ──────────────────────────────────────────
+auth:
+  jwt:
+    secret: ${JWT_SECRET}
+
+security:
+  oauth2:
+    google:
+      client-id: ${GOOGLE_OAUTH_CLIENT_ID}
+      client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
+
+# ── AI Provider (§12 B-18, B-24) ─────────────────────────────
+# Provider 활성/비활성은 설정으로 전환한다 (R3.1). 키는 절대 기본값을 두지 않는다.
+ai:
+  providers:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
+    openai:
+      api-key: ${OPENAI_API_KEY}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL}
+
+# ── 관리자 (§7.5 S-4) ────────────────────────────────────────
+admin:
+  allowed-cidr: ${ADMIN_ALLOWED_CIDR}
+
+# ── 관측성 (§12 B-48) ────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# ── 로깅 (§2.1, §9.4) ────────────────────────────────────────
+# 별도 JSON 인코더 의존성을 추가하지 않는다. 프롬프트·응답 원문 금지 (S-3).
+logging:
+  structured:
+    format:
+      console: ecs
