@@ -46,8 +46,23 @@ jobs:
             const pr = context.payload.pull_request;
             const { owner, repo } = context.repo;
 
+            // ── 아래 구간은 .github/scripts/test-closing-keywords.mjs 가 그대로 잘라내 검증한다.
+            //    표식(testable:start / testable:end)을 지우거나 옮기면 테스트가 대상을 찾지 못하고 실패한다.
+            // testable:start
+
             // 정규식 메타문자를 포함한 레포 이름(예: `my.repo`)이 패턴을 깨뜨리지 않게 한다.
             const escapeForRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            // GitHub 는 코드 스팬·펜스 블록 안의 `#N` 을 참조로 처리하지 않는다. B-04-1 은
+            // "기본 브랜치에서 GitHub 가 해 주는 일을 backend 에서 대신한다"가 목적이므로
+            // 인식 범위도 GitHub 와 같아야 한다.
+            //
+            // 이 처리가 없어 #9(결정 이슈)가 PR #8 본문의 코드 스팬 예시 때문에 잘못 닫혔다 (#11).
+            // 이 워크플로를 설명하는 문서가 곧 이 워크플로의 입력이 되므로, 같은 사고가 반복되기 쉽다.
+            const stripMarkdownCode = (text) => text
+              .replace(/<!--[\s\S]*?-->/g, ' ')
+              .replace(/^[ \t]*(`{3,}|~{3,})[\s\S]*?^[ \t]*\1[ \t]*$/gm, ' ')
+              .replace(/(`+)[\s\S]*?\1/g, ' ');
 
             // GitHub 공식 키워드 집합과 동일하게 맞춘다.
             // close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved
@@ -60,6 +75,18 @@ jobs:
             // 뒤에 단어 문자가 붙으면(`#5x`) 참조로 보지 않는다. 애매한 표기로 엉뚱한 이슈를 닫는 것보다
             // 인식하지 못하고 넘어가는 편이 낫다 — 못 닫은 이슈는 눈에 띄지만 잘못 닫은 이슈는 묻힌다.
             const LINK = new RegExp('\\b' + KEYWORDS + '\\b\\s*:?\\s*' + REFERENCE + '(?![\\w-])', 'gi');
+
+            const findLinkedIssues = (text) => {
+              const found = new Set();
+              for (const match of stripMarkdownCode(text).matchAll(LINK)) {
+                const number = Number(match[1] ?? match[2] ?? match[3]);
+                if (Number.isInteger(number) && number > 0) {
+                  found.add(number);
+                }
+              }
+              return [...found].sort((a, b) => a - b);
+            };
+            // testable:end
 
             // §8.5 가 feat/* → backend 를 Squash merge 로 정해 두었다. 스쿼시 시 PR 본문이
             // 커밋 메시지에 남지 않을 수 있으므로 제목·본문·커밋 메시지를 모두 훑는다.
@@ -74,15 +101,9 @@ jobs:
               .filter(Boolean)
               .join('\n');
 
-            const issueNumbers = new Set();
-            for (const match of haystack.matchAll(LINK)) {
-              const number = Number(match[1] ?? match[2] ?? match[3]);
-              if (Number.isInteger(number) && number > 0) {
-                issueNumbers.add(number);
-              }
-            }
+            const issueNumbers = findLinkedIssues(haystack);
 
-            if (issueNumbers.size === 0) {
+            if (issueNumbers.length === 0) {
               core.info('닫기 키워드로 연결된 이슈가 없다.');
               return;
             }
@@ -100,7 +121,7 @@ jobs:
               '이 종료는 `.github/workflows/close-linked-issues.yml`(B-04-1) 이 대신 수행한 것이다.',
             ].join('\n');
 
-            for (const issueNumber of [...issueNumbers].sort((a, b) => a - b)) {
+            for (const issueNumber of issueNumbers) {
               // 한 이슈의 실패가 나머지 이슈와 잡 전체를 끌고 내려가지 않게 한다.
               // 존재하지 않는 번호를 참조한 것은 오타이지 빌드 실패 사유가 아니다.
               try {
