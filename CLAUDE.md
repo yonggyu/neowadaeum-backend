@@ -1237,10 +1237,15 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | 429 | `RATE_LIMITED` | 분당 호출 초과 | 잠시 후 재시도 |
 | 429 | `QUOTA_EXCEEDED` | 일일 토큰/생성 한도 초과 | 한도 안내 |
 | 500 | `CONTEXT_BUDGET_EXCEEDED` | 토큰 예산 초과 (내부 결함) | 일반 오류 |
+| 500 | `INTERNAL_ERROR` | 처리되지 않은 예외 (내부 결함) | 일반 오류 |
 | 502 | `PROVIDER_ERROR` | Provider 실패/파싱 2회 실패 | Error 화면 |
 | 504 | `GENERATION_TIMEOUT` | 25초 초과 | Error 화면 (다시 시도/다른 선택/나중에) |
 
 `RETRY_COOLDOWN`·`RATE_LIMITED`·`QUOTA_EXCEEDED`는 모두 429다. **클라이언트는 `code`로 구분해야 하므로 셋을 하나로 합치지 않는다.**
+
+`INTERNAL_ERROR`는 **예상하지 못한 예외의 폴백**이다(B-03 신설). 이 코드가 없으면 처리되지 않은 예외가 프레임워크 기본 에러 본문(예외 메시지·요청 경로 포함)으로 나가 S-6을 위반한다. `CONTEXT_BUDGET_EXCEEDED`는 원인이 특정된 내부 결함이므로 폴백으로 재사용하지 않는다. **의도적으로 이 코드를 던지지 않는다** — 나가는 순간 서버 결함이며, 로그(`ERROR` + 스택트레이스)와 알람으로 추적한다.
+
+이 표는 `common/error/ErrorCode` enum과 **정확히 일치**해야 하며, `ErrorCodeTests`가 그것을 강제한다. 코드를 추가·삭제하면 표와 테스트를 함께 고친다.
 
 ---
 
