@@ -18,7 +18,7 @@ spring:
   autoconfigure:
     exclude:
       # TODO(B-05): DataSource Bean 4개 정의 후 이 블록을 통째로 삭제한다.
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
 
   # ── 로컬 인프라 자동 기동 (§2.5) ───────────────────────────
   # 커넥션 정보는 자동 주입되지 않는다. 컨테이너 수명 관리 용도로만 쓴다.
