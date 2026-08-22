@@ -1,0 +1,38 @@
+# ── 설정 / 시크릿 ─────────────────────────────
+*.yml
+*.yaml
+!docker-compose.yml
+!docker-compose.*.yml
+
+# .github 은 설정 전용이며 시크릿을 담지 않는다. CI·이슈 템플릿·PR 설정이 여기 있다.
+!.github/**/*.yml
+
+*.properties
+!gradle.properties
+# 없으면 clone 후 ./gradlew 가 동작하지 않는다. 시크릿이 아니라 빌드 메타데이터다.
+!gradle/wrapper/gradle-wrapper.properties
+
+.env
+.env.*
+!.env.example
+
+# ── 키 / 인증서 ──────────────────────────────
+*.pem
+*.p8
+*.p12
+*.jks
+*.keystore
+*-key.json
+secrets/
+
+# ── 빌드 산출물 ──────────────────────────────
+build/
+out/
+bin/
+.gradle/
+*.log
+
+# ── IDE ──────────────────────────────────────
+.idea/
+*.iml
+.vscode/
