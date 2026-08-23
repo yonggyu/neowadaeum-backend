@@ -2,6 +2,8 @@ package com.neowadaeum.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
@@ -71,18 +73,38 @@ class DataSourceConfigurationTests {
 	}
 
 	/**
-	 * §5.3 회귀 방지 — 접두어만 같은 스키마를 통과시키지 않는다.
+	 * §5.3 회귀 방지 — 접두어만 같은 스키마를 통과시키지 않는다. 그리고 S-11 — 실패에 URL 을 흘리지 않는다.
 	 *
 	 * <p>{@code contains("currentSchema=play")} 로 검사하면 {@code currentSchema=playground} 가 통과한다.
 	 * 이 검사의 목적이 조용한 오배치 차단이므로 부분 일치는 목적과 어긋난다.
+	 *
+	 * <p><b>단언이 두 겹인 이유.</b> {@code hasStackTraceContaining("currentSchema=play")} 하나만 두면,
+	 * 실패 URL 자체가 {@code currentSchema=playground} 를 담고 있으므로 <b>URL 이 통째로 스택트레이스에
+	 * 새어 나와도 이 테스트는 통과한다.</b> 이 레포는 공개이고 CI 로그도 공개된다(S-11, S-3). 그래서
+	 * "무엇이 있어야 하는가"와 "무엇이 없어야 하는가"를 함께 본다.
 	 */
 	@Test
-	void S5_3_url_with_prefix_matching_schema_fails_startup() {
-		this.runner.withPropertyValues(
-				withUrl(StoreSchema.PLAY, "jdbc:postgresql://localhost:5432/neowadaeum?currentSchema=playground"))
-				.run(context -> assertThat(context).hasFailed()
-						.getFailure()
-						.hasStackTraceContaining("currentSchema=play"));
+	void S5_3_url_with_prefix_matching_schema_fails_startup_without_leaking_the_url() {
+		String wrongUrl = "jdbc:postgresql://localhost:5432/neowadaeum?currentSchema=playground";
+
+		this.runner.withPropertyValues(withUrl(StoreSchema.PLAY, wrongUrl)).run(context -> {
+			assertThat(context).hasFailed();
+
+			assertThat(stackTraceOf(context.getStartupFailure()))
+					.as("어느 프로퍼티가 왜 틀렸는지는 말해야 한다")
+					.contains("app.datasource.play.url")
+					.contains("currentSchema=play")
+					.as("URL 은 접속 정보다. 예외에도 로그에도 남기지 않는다 (S-11, S-3)")
+					.doesNotContain(wrongUrl)
+					.doesNotContain("localhost:5432")
+					.doesNotContain("playground");
+		});
+	}
+
+	private static String stackTraceOf(Throwable failure) {
+		StringWriter buffer = new StringWriter();
+		failure.printStackTrace(new PrintWriter(buffer));
+		return buffer.toString();
 	}
 
 	/**
