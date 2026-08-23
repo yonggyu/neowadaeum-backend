@@ -1,25 +1,55 @@
 ---
 name: task
-description: Execute one neowadaeum B-xx task with minimal context and required verification.
-disable-model-invocation: true
-argument-hint: "[B-xx] [issue-number optional]"
+description: Execute one neowadaeum task (B-xx or S-x) end to end — issue, branch, implementation, verification, self-review, PR. Use whenever the user names a task number and asks to start it ("S-3 착수", "B-26 해줘", "/task B-26 41"), with or without an issue number.
+argument-hint: "[B-xx|S-x] [issue-number optional]"
 ---
 
 # /task $ARGUMENTS
 
 `$ARGUMENTS`의 첫 토큰이 작업 번호(`B-26`, `S-3` 등), 둘째가 있으면 이슈 번호다.
-작업 번호가 없으면 **묻고 멈춘다.** 추측해서 시작하지 않는다.
+슬래시 명령이 아니라 사용자 지시문("S-3 착수")에서 진입했다면 **그 지시문의 작업 번호를 그대로 쓴다.**
+작업 번호를 특정할 수 없으면 **묻고 멈춘다.** 추측해서 시작하지 않는다.
+
+**이슈 번호는 묻지 않는다 — 1단계에서 찾거나 만든다.** 그 외 `CLAUDE.md`의 안전 규칙과 순서는 그대로다.
 
 **전체를 읽지 말고 `rg`로 위치를 찾은 뒤 해당 범위만 읽는다.** 이미 읽은 파일을 이유 없이 다시 읽지 않는다.
 
-## 1. 상태 확인
+## 1. 상태 확인 · 이슈 확보
 
 ```bash
 git branch --show-current && git status --short
+gh issue list --state open --limit 50
 ```
 
-`backend` / `dev` / `main` 위라면 **작업 브랜치를 먼저 만든다** — `<타입>/#<이슈>-<슬러그>`.
-이슈 번호를 받지 못했다면 사용자에게 확인한다. **이슈 없이 코드를 쓰지 않는다.**
+**이슈 없이 코드를 쓰지 않는다.** 다음 순서로 번호를 확보한다.
+
+1. 인자로 이슈 번호를 받았으면 그것을 쓴다.
+2. 아니면 위 목록에서 **이 작업 번호의 이슈를 찾는다.** 제목·본문의 `B-xx` / `S-x` 로 대조한다.
+3. 그래도 없으면 **직접 만든다.** 지어내지 말고 **2~5단계를 먼저 수행해 정의를 읽은 뒤** 돌아와 채운다.
+
+```bash
+gh issue create \
+  --title "[S-3] FixedStoryProvider — 시나리오 파일 기반 결정론 Provider" \
+  --label task --label P0 --label "area:ai" \
+  --body-file <본문파일>
+```
+
+- 제목은 `[<작업번호>] <docs/tasks.md 의 작업명>`.
+- 본문은 `.github/ISSUE_TEMPLATE/task.yml`의 필수 항목에 대응시킨다 —
+  **작업 번호 · 우선순위 · 영역 · 목표 · 산출물 · 완료 조건(DoD) · 의존 작업 · 관련 요구사항 ID.**
+- 내용은 `docs/tasks.md`(+ 슬라이스 절)의 정의를 옮긴 것이다. **없는 DoD 를 창작하지 않는다.**
+- 라벨은 `docs/git-workflow.md` §8.6 의 값만 쓴다.
+- **S-11 — 이 레포는 공개다.** 세이프티 우회 방법·블록리스트 실제 항목·운영 도메인·미수정 취약점 재현 절차를 이슈에 적지 않는다.
+- 만든 뒤 번호를 확인하고, **그 번호를 사용자에게 알린다.**
+
+이슈 번호가 정해지면 브랜치를 판다. `backend` / `dev` / `main` 위에서는 **반드시** 먼저 분기한다.
+
+```bash
+git switch backend && git pull
+git switch -c feat/#<이슈>-<영문-소문자-슬러그>
+```
+
+타입은 `feat` `fix` `refactor` `chore` `docs` `test` `perf` 중 작업 성격에 맞는 것 (§8.3).
 
 ## 2. 작업 정의 — 해당 행만
 
@@ -117,12 +147,38 @@ git diff <파일>        # 그다음 파일별로
 
 diff가 크거나 독립 검토가 필요하면 **`reviewer` 서브에이전트**를 쓴다.
 
-## 13. 보고 — 네 줄
+## 13. PR
+
+셀프 리뷰까지 끝났으면 푸시하고 PR 을 연다. **base 는 언제나 `backend`** — `dev` / `main` 로 직접 열지 않는다.
+
+```bash
+git push -u origin HEAD
+gh pr create --base backend --draft \
+  --title "feat(play): S-3 <요약>" \
+  --body-file <본문파일>
+```
+
+- 본문은 `.github/pull_request_template.md` 의 **전 섹션**을 채운다. 해당 없으면 "해당 없음"에 체크하고 비워 두지 않는다.
+- 관련 이슈 칸에 `Closes #<이슈>` 와 작업 번호.
+- **Draft 로 연다.** 아래를 전부 만족할 때만 `gh pr ready` 로 전환한다 (§8.1).
+  - [ ] 이슈 DoD 전 항목 충족
+  - [ ] CI 초록 (빌드 · 테스트 · 시크릿 스캔)
+  - [ ] PR 템플릿 전 섹션 작성
+  - [ ] 최신 `backend` 반영, 충돌 없음
+  - [ ] diff 를 처음부터 끝까지 한 번 읽었다 (12단계)
+- `ai` · `safety` · `play/engine` 스코프는 **절반쯤 왔을 때 Draft 를 먼저 열어 둔다.**
+- diff 400줄을 넘으면 쪼갤 수 있는지 먼저 검토하고, 불가피하면 사유를 본문에 적는다.
+- `[결정 필요]` 항목에 손댔다면 기본 채택안을 따랐다는 사실을 본문에 남긴다.
+- **머지는 하지 않는다.** Ready 전환 이후는 사람의 판단이다.
+
+## 14. 보고 — 다섯 줄
 
 ```
+이슈:
 변경:
 테스트:
 preflight:
+PR:
 남은 문제:
 ```
 
