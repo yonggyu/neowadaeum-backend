@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.modulith.ApplicationModule;
 import org.springframework.modulith.core.ApplicationModules;
 import org.springframework.util.ClassUtils;
 
@@ -30,6 +31,39 @@ class ModuleStructureTests {
 	@Test
 	void S5_4_module_dependencies_are_within_allowed_boundaries() {
 		MODULES.verify();
+	}
+
+	/**
+	 * ADR-0005 — {@code play → ai} · {@code play → safety} 는 <b>단방향이다.</b>
+	 *
+	 * <p>{@code verify()} 는 <b>실제 참조</b>가 선언을 넘는지만 본다. 선언 자체가 조용히 넓어지는 것은
+	 * 잡지 못한다 — 그래서 선언을 여기에 박아 둔다. 특히 <b>역방향이 열리는 순간 순환이 되고</b>,
+	 * ADR-0005 가 "순환이 없다"를 근거로 든 전제가 무너진다.
+	 */
+	@Test
+	void ADR0005_orchestrator_dependencies_are_one_way() {
+		assertThat(allowedDependenciesOf("play"))
+				.as("ADR-0005 — play 는 ai · safety 를 부를 수 있다")
+				.containsExactlyInAnyOrder("common", "catalog", "ai", "safety");
+
+		assertThat(allowedDependenciesOf("ai"))
+				.as("ai ← (도메인 모듈 참조 X). play 가 여기 들어오면 순환이다")
+				.containsExactly("common");
+
+		assertThat(allowedDependenciesOf("safety"))
+				.as("safety ← (도메인 모듈 참조 X). 블록리스트는 common/spi 로 주입받는다 (ADR-0002)")
+				.containsExactly("common");
+	}
+
+	private static List<String> allowedDependenciesOf(String module) {
+		try {
+			ApplicationModule annotation = Class.forName("com.neowadaeum." + module + ".package-info")
+					.getPackage().getAnnotation(ApplicationModule.class);
+			return List.of(annotation.allowedDependencies());
+		}
+		catch (ClassNotFoundException ex) {
+			throw new IllegalStateException("%s 모듈의 package-info 를 찾지 못했다".formatted(module), ex);
+		}
 	}
 
 	/**

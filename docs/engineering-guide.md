@@ -575,7 +575,7 @@ com.neowadaeum
 ```
 identity  ← (참조 없음)
 catalog   ← identity(X)  // player_ref만 받는다
-play      ← catalog(파사드 O), identity(X)
+play      ← catalog(파사드 O), ai(O), safety(O), identity(X)   // ADR-0005
 authoring ← catalog(파사드 O), safety(O)
 ai        ← (도메인 모듈 참조 X). 순수 DTO만 입출력받는다
 safety    ← (도메인 모듈 참조 X). 블록리스트는 common/spi 로 주입받는다 (ADR-0002)
@@ -585,6 +585,7 @@ config    ← 전 모듈(O). 배선 지점이며 도메인 로직을 갖지 않�
 ```
 
 - `ai` 패키지는 **도메인 엔티티를 알지 못한다.** `TurnRequest` / `TurnResult` DTO만 주고받는다. 이것이 R12.1(회원 식별정보 미포함)을 구조적으로 보장한다.
+- **`play → ai` · `play → safety` 는 단방향이다** (ADR-0005). §4.3 파이프라인이 4단계에서 Provider 를, 7단계에서 L2 를 부르므로 §5.2 가 지정한 `play/orchestrator` 위치에서 그 호출이 성립해야 한다. **역방향(`ai → play`, `safety → play`)은 허용하지 않는다** — 두 모듈은 `play` 의 도메인 엔티티를 알지 못하며, 그래서 순환이 생기지 않는다. 나중에 분리가 필요해지면 `common/spi` 의 Port 로 전환한다.
 - 모듈 간 호출은 `XxxFacade` 인터페이스로만. 다른 모듈의 Repository·Entity를 직접 참조하면 리뷰에서 반려한다.
 - **`safety`와 `batch`는 파사드가 아니라 SPI를 쓴다.** 둘 다 자기가 필요한 데이터의 소유자가 아니면서 그 데이터를 참조할 수 없는 모듈이다. 인터페이스는 `common/spi`에 두고 **데이터를 소유한 모듈이 구현**하며, 호출자는 주입받는다. 방향이 반대라는 점이 요점이다 — `safety → authoring`이 아니라 `authoring → common/spi ← safety`다.
 - **SPI 미주입 시 동작**: 구현 빈이 없으면 **부팅 실패**, 런타임 조회 실패는 **차단(fail-closed)** + `ERROR` + 알람. 세이프티에서 fail-open은 장애가 곧 검수 우회다 (I-2, ADR-0002).
