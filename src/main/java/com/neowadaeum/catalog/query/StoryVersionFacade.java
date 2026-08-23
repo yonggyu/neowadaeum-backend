@@ -55,6 +55,22 @@ public class StoryVersionFacade {
 				endings(storyVersionId)));
 	}
 
+	/**
+	 * 세션 시작 시 고정할 작품 버전 (§4.2, I-4).
+	 *
+	 * <p>{@code story.current_version_id} 를 읽는다. 세션은 이 값을 <b>복사해 들고</b> 가므로,
+	 * 나중에 새 버전이 발행돼도 진행 중 세션은 영향받지 않는다 (R2.1, R8.8).
+	 *
+	 * @return 게시된 작품이 아니거나 버전이 없으면 비어 있다
+	 */
+	public Optional<UUID> findCurrentVersionId(UUID storyId) {
+		return this.jdbc.sql("SELECT current_version_id FROM story WHERE id = ?")
+				.param(storyId)
+				.query((rs, rowNum) -> rs.getObject("current_version_id", UUID.class))
+				.optional()
+				.filter(java.util.Objects::nonNull);
+	}
+
 	private List<StoryVersionView.ChapterView> chapters(UUID storyVersionId) {
 		return this.jdbc.sql("""
 						SELECT chapter_no, title, entry_condition, min_turns, max_turns
