@@ -1,0 +1,5 @@
+{
+  "storyVersionRef": "33333333-3333-4333-8333-333333333333",
+  "description": "적재 실패 경로 픽스처. 의도적으로 깨진 JSON 이다.",
+  "entries": [
+    { "turnNo": 0, "narrative": "절대 로그에 남으면 안 되는 본문"

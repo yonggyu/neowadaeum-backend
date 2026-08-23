@@ -19,7 +19,15 @@ import tools.jackson.core.JacksonException;
  */
 public class FixedStoryScenarioLoader {
 
-	static final String DEFAULT_LOCATION_PATTERN = "classpath*:fixed-story/*.json";
+	/**
+	 * 시나리오 위치는 {@code .claude/rules/testing.md} 가 정한 규약이다 —
+	 * E2E 는 {@code src/test/resources/scenarios/*.json} 을 읽는다.
+	 *
+	 * <p>{@code classpath*:} 이므로 개발 도구용 {@code src/main/resources/scenarios/} 와
+	 * 테스트 픽스처가 <b>같은 규약 아래 함께</b> 잡힌다. 위치를 둘로 나누면 "내 시나리오가 왜 안 읽히지"가
+	 * 반복된다.
+	 */
+	static final String DEFAULT_LOCATION_PATTERN = "classpath*:scenarios/*.json";
 
 	private final ObjectMapper objectMapper;
 	private final ResourcePatternResolver resourceResolver;
@@ -42,7 +50,7 @@ public class FixedStoryScenarioLoader {
 			resources = resourceResolver.getResources(locationPattern);
 		}
 		catch (IOException ex) {
-			throw new IllegalStateException("failed to scan fixed-story scenarios at " + locationPattern, ex);
+			throw new IllegalStateException("failed to scan scenarios at " + locationPattern, ex);
 		}
 
 		List<FixedStoryScenario> scenarios = new ArrayList<>();
@@ -51,7 +59,7 @@ public class FixedStoryScenarioLoader {
 		}
 
 		if (scenarios.isEmpty()) {
-			throw new IllegalStateException("no fixed-story scenario found at " + locationPattern);
+			throw new IllegalStateException("no scenario found at " + locationPattern);
 		}
 		return List.copyOf(scenarios);
 	}
@@ -62,7 +70,7 @@ public class FixedStoryScenarioLoader {
 		}
 		catch (IOException | JacksonException ex) {
 			// 파일명만 남긴다. 본문에는 작품 텍스트가 들어 있고, 예외 메시지는 로그로 흐른다 (S-3).
-			throw new IllegalStateException("invalid fixed-story scenario: " + resource.getFilename(), ex);
+			throw new IllegalStateException("invalid scenario file: " + resource.getFilename(), ex);
 		}
 	}
 }

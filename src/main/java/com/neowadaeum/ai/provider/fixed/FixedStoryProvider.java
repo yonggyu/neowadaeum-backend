@@ -48,7 +48,7 @@ public class FixedStoryProvider implements StoryProvider {
 
 		if (result == null) {
 			// 요청의 좌표만 남긴다. 본문·선택지 텍스트는 애플리케이션 로그로 흘려보내지 않는다 (S-3).
-			throw new UnsupportedOperationException("no fixed-story entry for " + key);
+			throw new UnsupportedOperationException("no scenario entry for " + key);
 		}
 		return result;
 	}
@@ -67,7 +67,7 @@ public class FixedStoryProvider implements StoryProvider {
 				TurnResult previous = indexed.put(key, entry.toResult());
 				if (previous != null) {
 					// 중복 키는 "어느 쪽이 이기는가"를 파일 순서에 맡기게 된다. 결정론이 무너지는 지점이다.
-					throw new IllegalArgumentException("duplicate fixed-story entry for " + key);
+					throw new IllegalArgumentException("duplicate scenario entry for " + key);
 				}
 			}
 		}
