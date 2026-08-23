@@ -206,7 +206,7 @@ public class TurnPipeline {
 			int newTurnNo, Instant now) {
 
 		boolean ended = endingDecision.reached();
-		UUID endingId = ended ? endingKey(context, endingDecision) : null;
+		UUID endingId = ended ? endingIdOf(context.version(), endingDecision) : null;
 
 		String choicesJson = ended
 				? "[]"
@@ -262,16 +262,19 @@ public class TurnPipeline {
 	}
 
 	/**
-	 * 엔딩 식별자.
+	 * 도달한 엔딩의 <b>실제 식별자</b>.
 	 *
-	 * <p>catalog 의 {@code ending_def.id} 를 파사드가 싣지 않으므로 <b>버전과 엔딩 번호로 지목한다.</b>
-	 * §13-1 상 엔딩은 버전에 묶여 있고, {@code ending_stat} 집계도 {@code (story_id, ending_no)} 기준이다.
-	 * 여기서 UUID 를 만들지 않고 실제 id 가 필요해지는 시점은 B-08 복귀 때다.
+	 * <p>{@code turn.ending_id} 와 {@code play_session.current_ending_id} 에 저장되는 값이므로
+	 * catalog 의 행을 가리켜야 한다 — 파생값을 만들어 넣으면 저장은 되지만 조회가 되지 않는다.
 	 */
-	private static UUID endingKey(PipelineContext context, EndingEngine.EndingDecision decision) {
-		return UUID.nameUUIDFromBytes(
-				("%s|%d".formatted(context.storyVersionId(), decision.ending().endingNo()))
-						.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+	private static UUID endingIdOf(StoryVersionView version, EndingEngine.EndingDecision decision) {
+		int endingNo = decision.ending().endingNo();
+		return version.endings().stream()
+				.filter(ending -> ending.endingNo() == endingNo)
+				.map(StoryVersionView.EndingView::id)
+				.findFirst()
+				.orElseThrow(() -> new IllegalStateException("ending %d is not in version %s"
+						.formatted(endingNo, version.storyVersionId())));
 	}
 
 	private static boolean lastChapterExhausted(List<ChapterDefinition> chapters, int chapterNo, int turnsInChapter) {

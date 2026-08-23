@@ -7,6 +7,7 @@ import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnRequest;
 import com.neowadaeum.ai.provider.TurnResult;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
+import com.neowadaeum.catalog.query.StoryVersionView;
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SessionStatus;
 import com.neowadaeum.play.engine.ChapterEngine;
@@ -103,6 +104,33 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 		assertThat(session.getStatus()).isEqualTo(SessionStatus.COMPLETED);
 		assertThat(session.getCompletedAt()).isNotNull();
 		assertThat(session.getCurrentEndingId()).isNotNull();
+	}
+
+	/**
+	 * 저장된 {@code ending_id} 가 <b>실제 {@code ending_def} 행을 가리킨다.</b>
+	 *
+	 * <p>초안은 파사드가 {@code id} 를 싣지 않아 {@code (버전, 엔딩 번호)} 로 값을 만들어 넣었다.
+	 * 저장은 되지만 <b>조회가 되지 않는 값</b>이었다 — 엔딩 화면·통계·History 가 전부 이 id 로
+	 * 되돌아간다. 형식이 맞다고 통과하는 것이 아니라 실제 행과 대조한다.
+	 */
+	@Test
+	void S9_1_stored_ending_id_resolves_to_a_real_ending_row() {
+		UUID sessionId = newSession();
+		TurnOutcome outcome = playUntilEnd(pipelineWith(this.provider), sessionId, 1);
+
+		UUID storedEndingId = this.sessions.findById(sessionId).orElseThrow().getCurrentEndingId();
+
+		assertThat(storedEndingId).isNotNull();
+		assertThat(this.storyVersions.findByVersionId(SEED_VERSION).orElseThrow().endings())
+				.extracting(StoryVersionView.EndingView::id)
+				.as("저장된 ending_id 가 이 버전의 엔딩 중 하나여야 한다")
+				.contains(storedEndingId);
+
+		assertThat(this.turns.findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(sessionId).orElseThrow()
+				.getEndingId())
+				.as("턴에 기록된 값도 같아야 한다")
+				.isEqualTo(storedEndingId);
+		assertThat(outcome.endingId()).isEqualTo(storedEndingId);
 	}
 
 	/** §10.1-11 — 조건을 채우지 않는 갈래도 무한히 진행되지 않고 기본 엔딩으로 끝난다. */

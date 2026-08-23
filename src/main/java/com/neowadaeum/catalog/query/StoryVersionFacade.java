@@ -72,11 +72,12 @@ public class StoryVersionFacade {
 
 	private List<StoryVersionView.EndingView> endings(UUID storyVersionId) {
 		return this.jdbc.sql("""
-						SELECT ending_no, label, condition, is_secret, is_default
+						SELECT id, ending_no, label, condition, is_secret, is_default
 						FROM ending_def WHERE story_version_id = ? ORDER BY ending_no
 						""")
 				.param(storyVersionId)
 				.query((rs, rowNum) -> new StoryVersionView.EndingView(
+						rs.getObject("id", UUID.class),
 						rs.getInt("ending_no"),
 						rs.getString("label"),
 						readJson(rs.getString("condition")),

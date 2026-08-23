@@ -35,7 +35,14 @@ public record StoryVersionView(
 	public record ChapterView(int chapterNo, String title, JsonNode entryCondition, int minTurns, int maxTurns) {
 	}
 
-	/** {@code ending_def} 중 판정에 쓰는 것만. */
-	public record EndingView(int endingNo, String label, JsonNode condition, boolean secret, boolean defaultEnding) {
+	/**
+	 * {@code ending_def} 중 판정에 쓰는 것과 <b>식별자</b>.
+	 *
+	 * <p>{@code id} 를 함께 싣는다. 없으면 호출자가 {@code (버전, 엔딩 번호)} 로 값을 만들어 내야
+	 * 하고, 그렇게 만든 값은 <b>실제 행을 가리키지 않는다</b> — {@code turn.ending_id} ·
+	 * {@code play_session.current_ending_id} 에 저장되는 값이므로 조회가 성립해야 한다.
+	 */
+	public record EndingView(UUID id, int endingNo, String label, JsonNode condition, boolean secret,
+			boolean defaultEnding) {
 	}
 }
