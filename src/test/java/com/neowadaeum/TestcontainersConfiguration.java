@@ -22,7 +22,7 @@ import org.testcontainers.utility.MountableFile;
  * 로컬과 동일한 파일을 그대로 마운트한다 — 스크립트가 테스트에서만 다르게 동작하면 검증할 이유가 없다.
  */
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
 
 	/** 로컬과 같은 초기화 스크립트. 사본을 두지 않는다 (§2.5). */
 	private static final Path INIT_SCRIPT = Path.of("docker/postgres/init/01-init-schemas.sh");
