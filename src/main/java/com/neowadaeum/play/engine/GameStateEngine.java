@@ -69,7 +69,15 @@ public class GameStateEngine {
 				return;
 			}
 			StateSchema.NumericSpec spec = schema.numeric(path);
+
+			// 상태에 아직 없는 키의 기준값은 min 이다.
+			// 원문은 초기값을 규정하지 않는다 — state_schema 에 기본값을 선언할 자리가 없고
+			// (min/max/maxDeltaPerTurn 뿐), engineering-guide §4.2 의 "state_schema 기본값"은
+			// 가리킬 대상이 없다. 0 을 쓰면 min 이 양수인 스키마에서 범위 밖 값이 되므로,
+			// 항상 범위 안인 min 을 쓴다. **세션 시작 시의 정식 초기화는 S-9 범위**이며
+			// 그때 [결정 필요] 로 올린다.
 			int base = merged.getOrDefault(path, spec.min());
+
 			merged.put(path, clamp(base, delta, spec));
 		});
 

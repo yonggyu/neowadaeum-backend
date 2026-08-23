@@ -148,6 +148,25 @@ class GameStateEngineTests {
 		assertThat(StateSchema.NumericSpec.DEFAULT_MAX_DELTA).isEqualTo(5);
 	}
 
+	/**
+	 * 상태에 없던 수치는 {@code min} 을 기준으로 시작한다.
+	 *
+	 * <p>원문이 초기값을 규정하지 않아 내린 판단이다 — {@code state_schema} 에 기본값을 선언할
+	 * 자리가 없다. {@code 0} 을 쓰면 {@code min} 이 양수인 스키마에서 범위 밖 값이 된다.
+	 * 세션 시작 시의 정식 초기화는 S-9 범위다.
+	 */
+	@Test
+	void R4_2_absent_numeric_starts_from_min_and_stays_in_range() {
+		StateSchema shifted = StateSchema.from(JSON.readTree("""
+				{"trust": {"ally": {"min": 10, "max": 20, "maxDeltaPerTurn": 5}}}"""));
+		GameState empty = GameState.initial().advanceTo(1, 1);
+
+		GameState result = this.engine.apply(empty, shifted, changes("""
+				{"trust.ally": 3}"""));
+
+		assertThat(result.numerics()).containsEntry("trust.ally", 13);
+	}
+
 	// ── §13-9 연산자 ────────────────────────────────────────
 
 	/** §13-9 — 허용 연산자 일곱 가지가 전부 동작한다. */
