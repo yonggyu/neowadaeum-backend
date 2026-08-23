@@ -23,7 +23,8 @@ CLAUDE.md(헌법) > docs/corrections.md > docs/openapi.yaml > docs/backend-requi
 4. **`docs/corrections.md`의 `[결정 필요]` 항목에 손대는가.** 임의로 정하지 말고 기본 채택안을 따르되 PR 본문에 명시한다.
 5. **작업 중 다른 문제를 발견하면 그 자리에서 고치지 않는다.** 새 이슈 후보로만 보고한다.
 
-**`/task B-xx`가 1~5를 자동으로 수행한다.**
+**`/task B-xx [이슈번호]`가 1~5를 자동으로 수행한다.** 사용자가 `S-3 착수`처럼 작업 번호를 지목하면 **슬래시 입력 없이도 이 스킬로 진입한다.**
+이슈가 없으면 스킬이 `docs/tasks.md` 정의로 이슈를 열고 그 번호로 브랜치를 판다 — **"이슈 없이 코드를 쓰지 않는다"는 그대로다.** 확보 방법이 바뀐 것뿐이다.
 
 ## 불변 규칙 I-1 ~ I-20 (전문: `docs/invariants-and-security.md`)
 
@@ -202,7 +203,7 @@ PR 400줄 · 브랜치 수명 3일. 상세는 `docs/git-workflow.md`.
 
 | 명령 | 용도 |
 |---|---|
-| `/task B-xx [이슈번호]` | 작업 정의 조회 → 최소 탐색 → 구현 → 검증 → 셀프 리뷰 |
+| `/task B-xx [이슈번호]` | 이슈 확보·생성 → 브랜치 → 작업 정의 조회 → 최소 탐색 → 구현 → 검증 → 셀프 리뷰 → Draft PR. **작업 번호 지시만으로도 자동 진입** |
 | `/verify` | 변경 성격에 맞는 최소 검증만 실행 |
 | `/review` | 현재 diff를 심각도순으로 검토 |
 | `/migration` | Flyway · Entity · Repository · DataSource 작업 체크리스트 |
