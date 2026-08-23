@@ -44,12 +44,36 @@ cp src/main/resources/application.yml.template src/main/resources/application.ym
 
 §5.3의 4-스토어 분리는 **컨테이너 1개 안의 스키마 4개**로 시작한다.
 
-| 스토어 | 스키마 | 계정 |
-|---|---|---|
-| Identity | `identity` | `identity_user` |
-| Catalog + Authoring | `catalog` | `catalog_user` |
-| Session | `play` | `play_user` |
-| Prompt Log | `promptlog` | `promptlog_user` |
+| 스토어 | 스키마 | 계정 | 마이그레이션 |
+|---|---|---|---|
+| Identity | `identity` | `identity_user` | `db/migration/identity` |
+| Catalog + Authoring | `catalog` | `catalog_user` | `db/migration/catalog` |
+| Session | `play` | `play_user` | `db/migration/play` |
+| Prompt Log | `promptlog` | `promptlog_user` | `db/migration/promptlog` |
+
+DataSource·Flyway·이력 테이블(`flyway_schema_history`)이 스토어마다 따로 있다.
+**각 계정은 자기 스키마에만 권한을 갖는다.** 스키마 간 JOIN 을 쓴 코드는 로컬에서 곧바로 권한 오류로
+터진다 — 운영에서 발견하는 것보다 낫다. 스키마 간 FK 도 만들지 않는다(§5.3).
+
+접속 URL 에는 `?currentSchema=<스키마>` 가 반드시 있어야 한다. 없으면 부팅이 실패한다.
+빠진 채로 뜨면 모든 테이블이 조용히 다른 스키마에 만들어진다.
+
+### 마이그레이션 파일 명명 규칙
+
+| | |
+|---|---|
+| 파일명 | `V<번호>__<snake_case>.sql` |
+| 번호 | **스토어별로 독립.** 이슈 번호가 아니라 **그 스토어의 마지막 번호 + 1** |
+| 충돌 | 리베이스로 번호를 다시 매긴다. **이미 머지된 마이그레이션은 수정하지 않는다** |
+
+번호가 스토어별로 독립인 이유는 이력 테이블이 스키마마다 따로 있기 때문이다.
+`identity/V2__`와 `play/V2__`는 서로 무관하다. **같은 스토어 안에서만 겹치면 안 된다.**
+
+> **실패 시 증상.** Flyway 기본값이 `outOfOrder=false` · `validateOnMigrate=true`다.
+> 두 브랜치가 같은 스토어에 각각 `V2__`를 만들어 차례로 머지되면, **두 번째 머지 이후 기동이
+> 순서·체크섬 검증 실패로 막힌다.** 증상은 애플리케이션 버그처럼 보이지만 원인은 번호다.
+> 나중에 머지된 쪽의 파일을 **새 번호로 다시 매기고 재기동**한다. 이미 적용된 마이그레이션의
+> 내용이나 번호를 고치면 체크섬이 어긋나 더 나빠진다.
 
 초기화는 `docker/postgres/init/01-init-schemas.sh`가 담당하며, **볼륨이 비어 있을 때 한 번만** 실행된다.
 스크립트나 `.env`의 스키마 계정 비밀번호를 고쳤다면 아래로 다시 만든다.
@@ -63,11 +87,35 @@ docker compose down -v && ./gradlew bootRun
 ## 테스트
 
 ```bash
-./gradlew test
+./gradlew test              # 빠른 루프 — 컨테이너 없이 도는 것만
+./gradlew integrationTest   # 컨테이너 테스트 (Docker 필요)
+./gradlew test integrationTest   # 전부. CI 가 이렇게 돈다
 ```
 
-테스트는 docker-compose를 건너뛰고 **Testcontainers**를 쓴다(`spring.docker.compose.skip.in-tests: true`).
-`application-test.yml`을 만들지 않는다 — `@DynamicPropertySource`로 런타임 주입한다(§7.2).
+**두 태스크로 나뉘어 있다.** `@Tag("container")` 가 붙은 테스트는 기본 `test` 에서 빠진다.
+
+| | 실측 (이 레포, WSL2 + `/mnt/c`) |
+|---|---|
+| `./gradlew test` (코드 한 줄 고친 뒤) | **약 2초** |
+| `./gradlew integrationTest` | 약 36초 — 그중 **Spring 컨텍스트 기동이 28초** |
+
+나눈 이유는 하나다. 저장할 때마다 30초를 기다리게 되면 결국 테스트를 덜 돌린다.
+**검증을 줄인 것이 아니다** — CI 는 두 태스크를 모두 돌리고(§8.9 — CI 가 승인 리뷰를 대체한다),
+`integrationTest` 가 빠지면 그 자체가 검증 축소다. PR 을 올리기 전에 한 번은 전부 돌린다.
+
+컨테이너 테스트에 관해:
+
+- Docker 데몬이 필요하다. WSL 에서 돌린다면 Docker Desktop 의 WSL 통합을 켠다.
+  (`docker` CLI 가 PATH 에 없어도 `/var/run/docker.sock` 만 있으면 Testcontainers 는 동작한다.)
+- 테스트 컨테이너는 로컬과 **같은 이미지 태그**(`docker-compose.yml` 에서 읽는다)와
+  **같은 초기화 스크립트**를 쓴다. 스키마 4개·계정 4개가 그대로 만들어진다.
+- 컨테이너는 1개다. 스토어마다 컨테이너를 띄우면 계정 권한 경계가 검증되지 않는다.
+- docker-compose 는 건너뛴다(`spring.docker.compose.skip.in-tests: true`).
+  `application-test.yml` 을 만들지 않는다 — `@DynamicPropertySource` 로 런타임 주입한다(§7.2).
+
+> **더 빠르게 하려면 — 레포 위치.** 이 프로젝트가 `/mnt/c` 에 있으면 WSL2 는 9p 로 접근한다.
+> Gradle·JVM 의 파일 I/O 가 전부 느려지고, 위의 28초짜리 컨텍스트 기동 대부분이 여기서 나온다.
+> WSL 네이티브 경로(`~/...`)로 옮기면 체감이 크게 달라진다. 컨테이너 기동은 전체의 10초뿐이다.
 
 ## 보안 규칙 (요약, 원문은 §7)
 

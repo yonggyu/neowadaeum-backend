@@ -286,6 +286,7 @@ spring:
 - **B-01 완료 조건**은 "컨테이너 자동 기동 + 스키마 4개 생성"까지다. 앱이 초록으로 뜨는 것은 B-01의 조건이 아니다.
 - **B-02~B-04**는 이 제외 덕분에 `/actuator/health` 200을 볼 수 있다.
 - **B-05**에서 위 블록을 지우지 않으면 DataSource가 4개 정의돼 있어도 JPA가 붙지 않는다. B-05의 DoD에 "제외 블록 삭제 확인"이 들어가는 이유다.
+- **B-05는 이 한시적 제외를 지우는 대신 JPA 자동설정 2종(`HibernateJpaAutoConfiguration` / `DataJpaRepositoriesAutoConfiguration`)과 `FlywayAutoConfiguration`을 영구 제외한다.** 자동설정은 EntityManagerFactory와 Flyway를 각각 1벌만 만드는데, §5.3은 스토어별 4벌을 요구한다. 스토어별 EMF/TransactionManager 4벌은 **B-05-1**이다.
 
 #### 제외만으로 부족한 경우 — `EntityManager`를 무조건 요구하는 자동설정
 
@@ -1265,6 +1266,9 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | **B-04** | Git/CI 파이프라인 | `.github/workflows/ci.yml`(빌드·테스트·gitleaks), `.gitmessage.txt`, `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/` 4종 + `config.yml`, 라벨 생성, 브랜치 보호 문서 | PR 생성 시 CI 3잡 통과. 시크릿 심어 스캔 실패 확인. 이슈 생성 시 4종 폼만 보이고 빈 이슈가 막힘 | B-01 |
 | **B-04-1** | 연결 이슈 자동 종료 워크플로 | `.github/workflows/close-linked-issues.yml` | `backend` 대상 PR 머지 시 닫기 키워드로 연결된 이슈가 코멘트와 함께 닫힘. 머지 없이 닫은 PR은 무동작, 이미 닫힌 이슈는 코멘트 중복 없음, 없는 번호는 잡 성공. 액션이 커밋 SHA로 고정 | B-04 |
 | **B-05** | 4-스토어 DataSource 분리 + Flyway | §5.3의 DataSource 4개, Flyway 4세트, 스키마별 계정 | 통합 테스트에서 4개 스키마 마이그레이션 성공. 크로스 스키마 FK 0건. **`spring.autoconfigure.exclude`의 `DataSourceAutoConfiguration` 블록 삭제 확인(§2.5)** | B-02 |
+| **B-05-1** | 스토어별 EntityManagerFactory / TransactionManager 4벌 | EMF 4벌, TransactionManager 4벌, 스토어별 `@EnableJpaRepositories`, `packagesToScan` 고정 | 한 EMF에 다른 모듈 패키지가 들어가면 실패하는 테스트. 크로스 스키마 조인이 매핑 단계에서 거부됨. **B-07의 선행 조건** | B-05 |
+
+> **B-05-1이 왜 필요한가.** B-05는 DataSource 4개까지를 범위로 하고 JPA 자동설정을 **제외**한다. `@Primary` DataSource 하나로 자동설정을 통과시키면 EntityManagerFactory가 1벌 생기고, B-07 이후 네 스키마의 엔티티가 그 하나에 묶여 **JPQL 한 줄로 크로스 스키마 조인이 가능해진다.** B-05의 FK 검증은 FK만 보므로 이 경로를 잡지 못한다. 그래서 EMF 분할을 별도 작업으로 세우고 **B-07의 선행 조건**으로 둔다. 엔티티가 먼저 생기면 자동설정이 붙을 자리를 찾게 되고 그 우회로 되돌아간다.
 
 > **B-04-1이 왜 필요한가.** 기본 브랜치는 `main`인데 작업 머지는 `backend`로 간다(§8.2). GitHub는 **기본 브랜치로 머지된** PR의 닫기 키워드만 처리하므로 `feat/* → backend` 머지에서는 이슈가 열린 채 남는다. 사람이 매번 기억해야 하는 절차는 반드시 빠지므로 워크플로로 대신한다.
 
@@ -1273,11 +1277,11 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | # | 작업 | 산출물 | 완료 조건 | 의존 |
 |---|---|---|---|---|
 | **B-06** | OpenAPI 계약 확정 | `docs/openapi.yaml`(수기 작성, 계약 우선), springdoc 연동 | 상위 문서 13장의 모든 엔드포인트·필드가 스펙에 존재. **§13의 정정 사항 반영** | B-03 |
-| **B-07** | Identity 스키마 & 엔티티 | `user`, `oauth_identity`, `consent_log`, `ai_notice_impression`(신설) | 마이그레이션 + 엔티티 매핑 테스트 | B-05 |
-| **B-08** | Catalog 스키마 & 엔티티 | `story`, `story_version`, `character`, `chapter_def`, `ending_def`, `genre`, `story_genre`, `author_profile`(신설), `ending_stat` | **§13-1 정정 반영**: `character`/`chapter_def`/`ending_def`는 `story_version_id`를 FK로 갖는다. `is_default` partial unique index 존재 | B-05 |
-| **B-09** | Session 스키마 & 엔티티 | `play_session`, `turn`, `game_state_snapshot`, `story_summary` | 작품당 active 세션 1개 partial unique index. 스냅샷·요약에 `deleted_at` 존재(롤백용) | B-05 |
-| **B-10** | Authoring 스키마 & 엔티티 (P0: 스키마만) | `story_draft`, `story_review`, `content_report`, `blocklist_entry` | 마이그레이션 통과. **기능 구현은 B-40 이후** | B-05 |
-| **B-11** | Prompt Log / Audit 스키마 | `ai_call_log`(신설 정의 §13-4), `admin_audit_log`, `access_audit_log`, `service_config` | 별도 스키마·별도 DataSource로 분리 확인 | B-05 |
+| **B-07** | Identity 스키마 & 엔티티 | `user`, `oauth_identity`, `consent_log`, `ai_notice_impression`(신설) | 마이그레이션 + 엔티티 매핑 테스트 | B-05-1 |
+| **B-08** | Catalog 스키마 & 엔티티 | `story`, `story_version`, `character`, `chapter_def`, `ending_def`, `genre`, `story_genre`, `author_profile`(신설), `ending_stat` | **§13-1 정정 반영**: `character`/`chapter_def`/`ending_def`는 `story_version_id`를 FK로 갖는다. `is_default` partial unique index 존재 | B-05-1 |
+| **B-09** | Session 스키마 & 엔티티 | `play_session`, `turn`, `game_state_snapshot`, `story_summary` | 작품당 active 세션 1개 partial unique index. 스냅샷·요약에 `deleted_at` 존재(롤백용) | B-05-1 |
+| **B-10** | Authoring 스키마 & 엔티티 (P0: 스키마만) | `story_draft`, `story_review`, `content_report`, `blocklist_entry` | 마이그레이션 통과. **기능 구현은 B-40 이후** | B-05-1 |
+| **B-11** | Prompt Log / Audit 스키마 | `ai_call_log`(신설 정의 §13-4), `admin_audit_log`, `access_audit_log`, `service_config` | 별도 스키마·별도 DataSource로 분리 확인 | B-05-1 |
 
 ### 단계 2 — 기본 기능 (개발 순서 ④) · **P0**
 
@@ -1376,7 +1380,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 
 | 개발 순서 | 작업 |
 |---|---|
-| ① 백엔드 기술/구조 설계 | B-01 ~ B-05 |
+| ① 백엔드 기술/구조 설계 | B-01 ~ B-05-1 |
 | ② API 명세 확정 | B-06 |
 | ③ DB / Entity 설계 | B-07 ~ B-11 |
 | ④ Backend 기본 기능 | B-12 ~ B-17 |

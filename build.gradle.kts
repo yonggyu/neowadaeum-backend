@@ -63,6 +63,31 @@ dependencyManagement {
 	}
 }
 
-tasks.withType<Test> {
-	useJUnitPlatform()
+// ── 테스트 분리 (§10) ────────────────────────────────────────
+// 컨테이너가 필요한 테스트는 기동 비용이 크고 Docker 데몬을 요구한다. 개발 루프에서 매번 돌리면
+// 한 번의 확인이 수십 초가 되어 결국 테스트를 덜 돌리게 된다. 그래서 기본 `test` 에서 분리한다.
+//
+//   ./gradlew test              빠른 루프 — 컨테이너 없이 도는 것만
+//   ./gradlew integrationTest   컨테이너 테스트 (Docker 필요)
+//   ./gradlew test integrationTest   전부. CI 가 이렇게 돈다
+//
+// 분리는 "검증을 줄이는 것"이 아니다. CI 는 여전히 전부 돌린다(§8.9 — CI 가 승인 리뷰를 대체한다).
+// 바뀌는 것은 로컬에서 저장할 때마다 무엇이 도는가뿐이다.
+// useJUnitPlatform() 을 tasks.withType<Test> 에서 한 번, 태스크별로 또 한 번 호출하지 않는다.
+// 두 번 호출하면 어느 쪽이 필터를 덮는지가 Gradle 버전에 달린 문제가 된다. 태스크마다 한 번만 쓴다.
+tasks.test {
+	useJUnitPlatform {
+		excludeTags("container")
+	}
+}
+
+val integrationTest by tasks.registering(Test::class) {
+	group = "verification"
+	description = "Testcontainers 가 필요한 테스트. Docker 데몬이 있어야 한다."
+	testClassesDirs = sourceSets.test.get().output.classesDirs
+	classpath = sourceSets.test.get().runtimeClasspath
+	useJUnitPlatform {
+		includeTags("container")
+	}
+	shouldRunAfter(tasks.test)
 }
