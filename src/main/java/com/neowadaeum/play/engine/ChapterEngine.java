@@ -59,7 +59,18 @@ public class ChapterEngine {
 
 		Optional<ChapterDefinition> next = find(chapters, currentChapterNo + 1);
 		if (next.isEmpty()) {
-			// 마지막 챕터다. 갈 곳이 없으므로 강제 전환도 일어나지 않는다 — 여기서 끝나는 것은
+			// 다음 번호가 없다고 곧바로 "마지막 챕터"로 보지 않는다.
+			//
+			// 챕터 번호는 UNIQUE(story_version_id, chapter_no) 로 유일하지만 **연속성은 강제되지
+			// 않는다** — 작성 도중 삭제나 잘못된 시드로 [1, 3] 같은 구멍이 생길 수 있다.
+			// 그때 1장을 마지막으로 오판하면 세션은 3장에 영영 닿지 못하고, 증상은 "엔딩이
+			// 하나밖에 안 나온다"로 나타난다. 조용히 틀리는 쪽이라 여기서 끊는다.
+			if (hasChapterBeyond(chapters, currentChapterNo)) {
+				throw new IllegalStateException(
+						"chapter numbering has a gap after " + currentChapterNo + " — the story is not playable");
+			}
+
+			// 진짜 마지막 챕터다. 갈 곳이 없으므로 강제 전환도 일어나지 않는다 — 여기서 끝나는 것은
 			// 챕터가 아니라 세션이고, 그 판정은 EndingEngine 이 한다 (R7.7).
 			return ChapterDecision.stay(currentChapterNo);
 		}
@@ -89,6 +100,10 @@ public class ChapterEngine {
 			return true;
 		}
 		return this.evaluator.evaluate(condition, state);
+	}
+
+	private static boolean hasChapterBeyond(List<ChapterDefinition> chapters, int chapterNo) {
+		return chapters.stream().anyMatch(chapter -> chapter.chapterNo() > chapterNo);
 	}
 
 	private static Optional<ChapterDefinition> find(List<ChapterDefinition> chapters, int chapterNo) {

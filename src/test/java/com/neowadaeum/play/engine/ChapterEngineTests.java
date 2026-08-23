@@ -119,6 +119,37 @@ class ChapterEngineTests {
 	}
 
 	/**
+	 * 챕터 번호에 구멍이 있으면 조용히 마지막 챕터로 보지 않는다.
+	 *
+	 * <p>{@code UNIQUE(story_version_id, chapter_no)} 는 유일성만 보장하고 <b>연속성은 강제하지
+	 * 않는다.</b> {@code [1, 3]} 에서 1장을 마지막으로 오판하면 세션은 3장에 영영 닿지 못하고,
+	 * 증상은 "엔딩이 하나밖에 안 나온다"로 나타난다 — 원인을 찾기 어려운 쪽이라 끊는다.
+	 */
+	@Test
+	void R7_2_gap_in_chapter_numbering_fails_fast_instead_of_looking_like_the_last_chapter() {
+		List<ChapterDefinition> gapped = List.of(
+				new ChapterDefinition(1, "1장", null, 1, 3),
+				new ChapterDefinition(3, "3장", null, 1, 3));
+
+		assertThatThrownBy(() -> this.engine.decide(gapped, 1, 2, stateWithAffinity(0)))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("gap");
+	}
+
+	/** 구멍 방어가 <b>진짜 마지막 챕터</b>까지 막지는 않는다. 막으면 모든 세션이 끝나지 못한다. */
+	@Test
+	void R7_2_real_last_chapter_is_not_mistaken_for_a_gap() {
+		List<ChapterDefinition> gapped = List.of(
+				new ChapterDefinition(1, "1장", null, 1, 3),
+				new ChapterDefinition(3, "3장", null, 1, 3));
+
+		var decision = this.engine.decide(gapped, 3, 99, stateWithAffinity(0));
+
+		assertThat(decision.changed()).isFalse();
+		assertThat(decision.chapterNo()).isEqualTo(3);
+	}
+
+	/**
 	 * R7.1 — AI 제안값을 <b>받을 자리가 없다</b> (B-28 DoD "AI 제안값 무시").
 	 *
 	 * <p>{@code chapterAdvanceSuggested} 를 인자로 받아 무시하는 구현은 다음 사람이 되살릴 수 있다.
