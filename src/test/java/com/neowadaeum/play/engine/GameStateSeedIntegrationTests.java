@@ -12,6 +12,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -41,6 +43,10 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 	private final GameStateEngine engine = new GameStateEngine();
 
 	private final ConditionEvaluator evaluator = new ConditionEvaluator();
+
+	private final ChapterEngine chapterEngine = new ChapterEngine(this.evaluator);
+
+	private final EndingEngine endingEngine = new EndingEngine(this.evaluator);
 
 	@Autowired
 	@Qualifier("catalogDataSource")
@@ -174,6 +180,129 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 		}
 
 		return state;
+	}
+
+	// ── S-7 시드 작품으로 끝까지 돌리기 ──────────────────
+
+	/**
+	 * §10.1-11 · R2.2 · R7.7 — <b>실제 시드 작품</b>에서 어떤 조건도 안 걸려도 세션이 끝난다.
+	 *
+	 * <p>단위 테스트는 엔딩 정의를 테스트가 직접 만든다. 여기서는 S-4 가 저장한 챕터 3 · 엔딩 2 를
+	 * 읽어 와서, <b>상태를 전혀 올리지 않는 플레이</b>를 돌린다. 챕터는 {@code max_turns} 로 강제
+	 * 전환되고 마지막 챕터가 소진되면 기본 엔딩으로 끝나야 한다.
+	 */
+	@Test
+	void S10_1_11_seed_story_always_terminates_even_with_no_progress() throws SQLException {
+		Playthrough result = play(0, Set.of(), 40);
+
+		assertThat(result.ended()).as("40턴 안에 끝나지 않았다 — 무한 진행이다").isTrue();
+		assertThat(result.decision().ending().defaultEnding()).isTrue();
+		assertThat(result.decision().byDefault()).isTrue();
+	}
+
+	/** R7.6 — 조건을 채우며 플레이하면 조건부 엔딩으로 끝난다. 폴백으로 새지 않는다. */
+	@Test
+	void R7_6_seed_story_reaches_the_conditional_ending_when_conditions_are_met() throws SQLException {
+		Playthrough result = play(5, Set.of("met_yuna", "shared_lunch"), 40);
+
+		assertThat(result.ended()).isTrue();
+		assertThat(result.decision().ending().defaultEnding()).isFalse();
+		assertThat(result.decision().ending().endingNo()).isEqualTo(1);
+		assertThat(result.decision().byDefault()).isFalse();
+	}
+
+	/** R7.2 — 조건을 못 채워도 챕터는 {@code max_turns} 로 끝까지 전진한다. */
+	@Test
+	void R7_2_seed_chapters_advance_by_max_turns_when_conditions_never_hold() throws SQLException {
+		Playthrough result = play(0, Set.of(), 40);
+
+		assertThat(result.finalChapterNo()).isEqualTo(3);
+	}
+
+	/**
+	 * 매 턴 {@code affinityPerTurn} 만큼 올리고 플래그를 붙이며 §4.3 의 8·9·10 단계 순서대로 돌린다 —
+	 * GameState 병합 → Chapter 판정 → Ending 판정.
+	 */
+	private Playthrough play(int affinityPerTurn, Set<String> flags, int maxTurns) throws SQLException {
+		StateSchema schema = seedSchema();
+		List<ChapterDefinition> chapters = seedChapters();
+		List<EndingDefinition> endings = seedEndings();
+		int lastChapterNo = chapters.stream().mapToInt(ChapterDefinition::chapterNo).max().orElseThrow();
+
+		GameState state = GameState.initial();
+		int chapterNo = 1;
+		int turnsInChapter = 0;
+
+        for (int turn = 1; turn <= maxTurns; turn++) {
+			state = state.advanceTo(chapterNo, turn);
+			turnsInChapter++;
+
+			state = this.engine.apply(state, schema, StateChanges.from(JSON.readTree(proposal(affinityPerTurn, flags))));
+
+			var chapterDecision = this.chapterEngine.decide(chapters, chapterNo, turnsInChapter, state);
+			if (chapterDecision.changed()) {
+				chapterNo = chapterDecision.chapterNo();
+				turnsInChapter = 0;
+				state = state.advanceTo(chapterNo, turn);
+			}
+
+			ChapterDefinition last = chapters.stream()
+					.filter(chapter -> chapter.chapterNo() == lastChapterNo).findFirst().orElseThrow();
+			boolean exhausted = chapterNo == lastChapterNo && turnsInChapter >= last.maxTurns();
+
+			var endingDecision = this.endingEngine.decide(endings, state, exhausted);
+			if (endingDecision.reached()) {
+				return new Playthrough(true, endingDecision, chapterNo);
+			}
+		}
+
+		return new Playthrough(false, null, chapterNo);
+	}
+
+	private static String proposal(int affinityPerTurn, Set<String> flags) {
+		String flagPart = flags.isEmpty() ? ""
+				: ", \"flags.add\": [" + flags.stream().map(flag -> '"' + flag + '"')
+						.reduce((left, right) -> left + ", " + right).orElseThrow() + "]";
+		return "{\"affinity.yuna\": %d%s}".formatted(affinityPerTurn, flagPart);
+	}
+
+	private record Playthrough(boolean ended, EndingEngine.EndingDecision decision, int finalChapterNo) {
+	}
+
+	private List<ChapterDefinition> seedChapters() throws SQLException {
+		List<ChapterDefinition> chapters = new ArrayList<>();
+		try (Connection connection = this.catalog.getConnection();
+				Statement statement = connection.createStatement();
+				ResultSet rows = statement.executeQuery("""
+						SELECT chapter_no, title, entry_condition, min_turns, max_turns
+						FROM chapter_def ORDER BY chapter_no""")) {
+			while (rows.next()) {
+				String condition = rows.getString("entry_condition");
+				chapters.add(new ChapterDefinition(rows.getInt("chapter_no"), rows.getString("title"),
+						(condition != null) ? JSON.readTree(condition) : null,
+						rows.getInt("min_turns"), rows.getInt("max_turns")));
+			}
+		}
+		assertThat(chapters).as("시드 챕터가 없다").hasSize(3);
+		return chapters;
+	}
+
+	private List<EndingDefinition> seedEndings() throws SQLException {
+		List<EndingDefinition> endings = new ArrayList<>();
+		try (Connection connection = this.catalog.getConnection();
+				Statement statement = connection.createStatement();
+				ResultSet rows = statement.executeQuery("""
+						SELECT ending_no, label, condition, is_secret, is_default
+						FROM ending_def ORDER BY ending_no""")) {
+			while (rows.next()) {
+				String condition = rows.getString("condition");
+				endings.add(new EndingDefinition(rows.getInt("ending_no"), rows.getString("label"),
+						(condition != null) ? JSON.readTree(condition) : null,
+						rows.getBoolean("is_secret"), rows.getBoolean("is_default")));
+			}
+		}
+		assertThat(endings).as("시드 엔딩이 없다").hasSize(2);
+		return endings;
 	}
 
 	private StateSchema seedSchemaUnchecked() {
