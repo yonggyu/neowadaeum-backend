@@ -5,18 +5,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.neowadaeum.ContainerTestBase;
 import static org.assertj.core.api.Assertions.fail;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 /**
  * §5.3 스토어 물리 분리를 실제 DB 에 대고 확인한다. B-05 완료 조건 1 · 2 · 4.
@@ -56,7 +62,9 @@ class StoreSeparationTests extends ContainerTestBase {
 					versions.add(rows.getString("version"));
 				}
 			}
-			assertThat(versions).as("%s 스토어 마이그레이션 이력", store.schema()).containsExactly("1");
+			assertThat(versions)
+					.as("%s 스토어 마이그레이션 이력", store.schema())
+					.containsExactlyElementsOf(migrationVersions(store));
 		}
 	}
 
@@ -147,6 +155,33 @@ class StoreSeparationTests extends ContainerTestBase {
 					.as("%s_user → %s 스키마 접근은 권한 오류여야 한다 (실제: %s)", store.schema(), other.schema(),
 							ex.getMessage())
 					.isEqualTo(INSUFFICIENT_PRIVILEGE);
+		}
+	}
+
+	/**
+	 * 그 스토어의 마이그레이션 파일에서 기대 버전을 도출한다.
+	 *
+	 * <p>기대값을 테스트에 적어 두면 마이그레이션을 더할 때마다 여기가 함께 깨진다. 그때 사람이 하는 일은
+	 * 숫자를 하나 늘리는 것뿐이고, 그 습관은 <b>이력이 비어 있어도 숫자를 늘려 통과시키는 것</b>과
+	 * 구분되지 않는다. 그래서 기대값을 파일 목록에서 가져오고, 이 테스트는 "적용된 것과 적용될 것이
+	 * 같은가"만 본다.
+	 */
+	private static List<String> migrationVersions(StoreSchema store) {
+		try {
+			Resource[] resources = new PathMatchingResourcePatternResolver()
+					.getResources(store.migrationLocation() + "/V*__*.sql");
+			List<String> versions = Arrays.stream(resources)
+					.map(Resource::getFilename)
+					.filter(Objects::nonNull)
+					.map(name -> name.substring(1, name.indexOf("__")))
+					.sorted(Comparator.comparingInt(Integer::parseInt))
+					.toList();
+			assertThat(versions).as("%s 스토어에 마이그레이션 파일이 없다", store.schema()).isNotEmpty();
+			return versions;
+		}
+		catch (IOException ex) {
+			throw new UncheckedIOException(
+					"%s 의 마이그레이션 파일을 읽지 못했다".formatted(store.migrationLocation()), ex);
 		}
 	}
 

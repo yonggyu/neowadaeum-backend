@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.util.ClassUtils;
 
 /**
@@ -93,13 +94,28 @@ class AutoConfigurationExclusionTests extends ContainerTestBase {
 	}
 
 	/**
-	 * B-05 범위 — EntityManagerFactory 는 아직 0벌이다.
+	 * §5.3 — EntityManagerFactory 는 <b>엔티티를 가진 스토어마다 1벌</b>이다. 지금은 play 하나다 (#39).
 	 *
-	 * <p>1벌이 생기는 순간 네 스키마의 엔티티가 한 EMF 에 묶여 JPQL 한 줄로 크로스 스키마 조인이
-	 * 가능해진다. FK 검증은 FK 만 보므로 그 경로를 잡지 못한다. 스토어별 4벌은 B-05-1 이다.
+	 * <p>B-05 시점에는 0벌이었다. 이 테스트가 지키는 것은 개수가 아니라 <b>자동설정이 만든 EMF 가 섞이지
+	 * 않는다</b>는 것이다. 자동설정 EMF 는 이름이 {@code entityManagerFactory} 이고 스캔 범위가 전체다.
+	 * 1벌이 그렇게 생기면 네 스키마의 엔티티가 거기 묶여 JPQL 한 줄로 크로스 스키마 조인이 가능해지며,
+	 * FK 검증은 FK 만 보므로 그 경로를 잡지 못한다. 나머지 3벌은 B-05-1(#20)이다.
 	 */
 	@Test
-	void B05_no_entity_manager_factory_exists_yet() {
-		assertThat(this.context.getBeanNamesForType(EntityManagerFactory.class)).isEmpty();
+	void S5_3_only_the_play_entity_manager_factory_exists() {
+		assertThat(this.context.getBeanNamesForType(EntityManagerFactory.class))
+				.containsExactly("playEntityManagerFactory");
+	}
+
+	/**
+	 * §5.3 — TransactionManager 도 스토어별이다.
+	 *
+	 * <p>자동설정이 하나 더 만들면 이름 없는 {@code @Transactional} 이 어느 스토어에 붙는지가 빈 등록
+	 * 순서에 달린 문제가 된다. 후보가 여럿일 때 실패하는 편이 조용히 다른 스토어를 잡는 것보다 낫다.
+	 */
+	@Test
+	void S5_3_only_the_play_transaction_manager_exists() {
+		assertThat(this.context.getBeanNamesForType(PlatformTransactionManager.class))
+				.containsExactly("playTransactionManager");
 	}
 }
