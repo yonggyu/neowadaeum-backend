@@ -74,11 +74,22 @@ class AutoConfigurationExclusionTests extends ContainerTestBase {
 						"promptLogDataSource");
 	}
 
-	/** §5.3 — Flyway 도 스토어별 4개뿐이어야 한다. 자동설정이 만든 5번째가 있으면 안 된다. */
+	/**
+	 * §5.3 — 마이그레이션은 <b>설정된 스토어 수만큼</b> 등록된다 (ADR-0004).
+	 *
+	 * <p>테스트는 네 스토어를 전부 설정하므로 4벌이다. 운영·개발은 설정한 만큼만 뜬다.
+	 */
 	@Test
-	void S5_3_only_the_four_store_flyway_instances_exist() {
-		assertThat(this.context.getBeanNamesForType(Flyway.class))
-				.containsExactlyInAnyOrder("identityFlyway", "catalogFlyway", "playFlyway", "promptLogFlyway");
+	void S5_3_one_migration_per_configured_store() {
+		assertThat(this.context.getBeanNamesForType(StoreMigration.class))
+				.containsExactlyInAnyOrder("identityMigration", "catalogMigration", "playMigration",
+						"promptLogMigration");
+	}
+
+	/** §2.2 — 자동설정이 만든 {@code Flyway} 빈이 하나도 없어야 한다. 우리는 직접 만든다. */
+	@Test
+	void S2_2_no_autoconfigured_flyway_bean_exists() {
+		assertThat(this.context.getBeanNamesForType(Flyway.class)).isEmpty();
 	}
 
 	/**
