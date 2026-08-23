@@ -68,6 +68,10 @@
 # .github 은 설정 전용이며 시크릿을 담지 않는다. CI·이슈 템플릿·PR 설정이 여기 있다.
 !.github/**/*.yml
 
+# API 계약(B-06). 공개 계약 문서이며 설정·시크릿 파일이 아니다 — 스키마와 예시값뿐이다.
+# 이 한 파일만 예외다. docs/ 아래 다른 yaml 은 그대로 무시된다.
+!docs/openapi.yaml
+
 *.properties
 !gradle.properties
 # 없으면 clone 후 ./gradlew 가 동작하지 않는다. 시크릿이 아니라 빌드 메타데이터다.
@@ -108,6 +112,7 @@ bin/
 |---|---|
 | `docker-compose.yml` | **추적한다** (팀 규칙 명시 예외). 값은 전부 `${VAR}`로, 실제 값은 `.env`에서 주입 |
 | `.github/**/*.yml` | **추적한다.** 워크플로(`workflows/*.yml`)가 없으면 CI가 존재할 수 없고, 이슈 템플릿(`ISSUE_TEMPLATE/*.yml`)이 없으면 §8.6이 동작하지 않는다. 시크릿은 `${{ secrets.* }}`만 사용 |
+| `docs/openapi.yaml` | **추적한다** (이슈 #36). API 계약은 공개 문서이며 설정·시크릿 파일이 아니다 — 스키마와 예시값뿐이다. **이 한 파일만이고 `docs/` 아래 다른 yaml 은 무시된다** |
 | `src/main/resources/application*.yml` | **추적하지 않는다.** 대신 `application.yml.template`을 커밋하고 로컬·CI에서 복사해 쓴다 |
 | 테스트 설정 | **yml 파일을 만들지 않는다.** Testcontainers + `@DynamicPropertySource`로 런타임 주입한다 |
 | Flyway 마이그레이션(`.sql`) | 추적 대상. 시크릿·실데이터를 넣지 않는다 |
@@ -116,8 +121,22 @@ bin/
 
 > **`.gitignore`에 줄 끝 주석을 쓰지 않는다.** git은 `#`을 **줄 첫 글자일 때만** 주석으로 본다. `!.github/**/*.yml   # 설명`이라고 쓰면 주석까지 패턴의 일부가 되어 예외가 통째로 무효화된다. 설명은 반드시 **윗줄**에 단독으로 쓴다. 이 규칙을 어기면 조용히 실패하므로 리뷰에서 잡기 어렵다.
 
-**예외는 이 2종(`docker-compose.yml`, `.github/**`)뿐이다.** 다른 `.yml` 예외를 승인 없이 추가하지 않는다.
+**YAML은 기본적으로 추적하지 않는다. 명시적으로 승인된 공개 설정·계약 파일만 최소 범위로 예외 처리한다.**
 
+현재 승인된 예외는 이 3종(패턴 4개)뿐이다.
+
+```
+docker-compose.yml
+docker-compose.*.yml
+.github/**/*.yml
+docs/openapi.yaml
+```
+
+**다른 `.yml` / `.yaml` 예외를 승인 없이 추가하지 않는다.** 넓히지도 않는다 — `docs/**/*.yaml` 같은
+디렉터리 단위 허용은 이 규칙이 막으려는 것 자체다.
+
+> `docs/openapi.yaml` 예외(이슈 #36)의 근거는 `.github/**` 와 같다 — **구조적으로 시크릿을 담을 이유가 없는 파일**이다. OpenAPI 스펙에는 스키마와 예시값만 들어간다. 다만 §15가 이 파일을 "런타임 진실의 원천"으로 규정하므로, 여기에 실제 토큰·키·운영 도메인을 예시로 적는 PR은 반려한다(S-11).
+>
 > `.github/**` 확대는 팀 규칙(`docker-compose.yml`만 예외)에 대한 추가 예외다. 근거는 `.github` 디렉터리가 순수 설정만 담고 시크릿을 담을 이유가 구조적으로 없다는 것이다. 이 디렉터리에 값이 박힌 시크릿을 넣는 PR은 반려한다.
 
 ### 7.3 `application.yml.template` 규칙
