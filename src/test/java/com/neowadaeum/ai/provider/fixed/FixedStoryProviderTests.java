@@ -22,6 +22,9 @@ class FixedStoryProviderTests {
 
 	private static final UUID FIXTURE_STORY = UUID.fromString("22222222-2222-4222-8222-222222222222");
 
+	/** {@code src/main/resources/scenarios/demo-first-day.json} — 개발 도구로 배포되는 시나리오. */
+	private static final UUID DEMO_STORY = UUID.fromString("11111111-1111-4111-8111-111111111111");
+
 	private static FixedStoryProvider provider() {
 		FixedStoryScenarioLoader loader = new FixedStoryScenarioLoader(JsonMapper.builder().build(),
 				new org.springframework.core.io.support.PathMatchingResourcePatternResolver(),
@@ -68,6 +71,30 @@ class FixedStoryProviderTests {
 		TurnResult ending = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 2, 1));
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-test");
+	}
+
+	/**
+	 * B-44 선행 — <b>실제로 배포되는</b> 개발 도구 시나리오가 엔딩까지 닿는다.
+	 *
+	 * <p>테스트 픽스처만 검증하면 {@code src/main/resources/scenarios/} 의 시나리오는 조용히 썩는다.
+	 * 그때의 증상은 S-9·S-10 에서 "왜 여기서 막히지"로 나타나고, 원인이 시나리오 파일이라는 것을
+	 * 찾는 데 시간이 든다.
+	 */
+	@Test
+	void B44_shipped_dev_scenario_replays_to_an_ending() {
+		FixedStoryScenarioLoader loader = new FixedStoryScenarioLoader(JsonMapper.builder().build(),
+				new org.springframework.core.io.support.PathMatchingResourcePatternResolver(),
+				"classpath*:scenarios/demo-first-day.json");
+		FixedStoryProvider provider = new FixedStoryProvider(loader.load());
+
+		assertThat(provider.generateTurn(TurnRequest.opening(DEMO_STORY)).choices()).hasSize(2);
+		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 1, 1)).endingSuggested()).isNull();
+		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 2, 1)).chapterAdvanceSuggested()).isTrue();
+
+		TurnResult ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 3, 1));
+
+		assertThat(ending.choices()).isEmpty();
+		assertThat(ending.endingSuggested()).isEqualTo("ending-first-light");
 	}
 
 	/** §0.2 — 미구현 경로를 스텁으로 통과시키지 않는다. 없는 턴은 지어내지 않고 던진다. */
