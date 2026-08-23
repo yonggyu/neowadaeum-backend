@@ -1,6 +1,7 @@
 package com.neowadaeum.play.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.neowadaeum.ContainerTestBase;
@@ -53,6 +54,21 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 
 	// ── 정상 경로 ───────────────────────────────────────────
 
+	/**
+	 * CSRF 토큰 없이는 거절된다.
+	 *
+	 * <p>인증 우회는 <b>인증을 없앤 것이지 요청 위조를 허용한 것이 아니다.</b> 토큰이 없으면 남의
+	 * 사이트가 고정 {@code player_ref} 의 세션을 만들 수 있다 — 초안의 {@code csrf().disable()} 을
+	 * CodeQL 이 high 로 잡았고 그 지적이 맞았다.
+	 */
+	@Test
+	void S9_2_a_request_without_a_csrf_token_is_rejected() throws Exception {
+		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(403));
+
+		assertThat(this.sessions.count()).as("거절된 요청이 세션을 만들면 안 된다").isZero();
+	}
+
 	/** §4.2 — 세션 시작과 함께 턴 1 이 온다. 별도 요청이 필요 없다. */
 	@Test
 	void S4_2_starting_a_session_returns_the_first_turn() throws Exception {
@@ -101,7 +117,7 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	void S13_9_starting_a_second_session_for_the_same_story_is_rejected() throws Exception {
 		startSession();
 
-		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY))
+		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(csrf()))
 				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(409))
 				.andExpect(result -> assertThat(errorOf(result)).isEqualTo("SESSION_ALREADY_ACTIVE"));
 	}
@@ -192,7 +208,7 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	// ── 보조 ────────────────────────────────────────────────
 
 	private JsonNode startSession() throws Exception {
-		MvcResult result = this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY))
+		MvcResult result = this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(csrf()))
 				.andReturn();
 		assertThat(result.getResponse().getStatus()).isEqualTo(201);
 		return JSON.readTree(result.getResponse().getContentAsString());
@@ -200,6 +216,7 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 
 	private JsonNode advance(UUID sessionId, String choiceId, int turnNo, int expectedStatus) throws Exception {
 		MvcResult result = this.mockMvc.perform(post("/api/v1/sessions/{sessionId}/turns", sessionId)
+						.with(csrf())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"choiceId\":\"%s\",\"turnNo\":%d}".formatted(choiceId, turnNo)))
 				.andReturn();
