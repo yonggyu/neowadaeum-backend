@@ -116,6 +116,39 @@ public class PlaySession {
 		return session;
 	}
 
+	/**
+	 * 턴 하나가 저장됐다 (§4.3-11).
+	 *
+	 * <p><b>I-6 — {@code turn_no} 는 여기서만 증가한다.</b> 낙관적 잠금의 키이므로 다른 경로에서
+	 * 흔들리면 동시 요청 판정이 무너진다. 실패한 턴은 이 메서드에 오지 않으므로 세션 상태가
+	 * 그대로 남는다 (R6.6).
+	 *
+	 * <p><b>I-4 는 그대로다</b> — {@code story_version_id} · {@code provider_id} · {@code model_id} 를
+	 * 바꾸는 수단은 여기에도 없다.
+	 */
+	public void recordTurn(int newTurnNo, int newChapterNo, Instant now) {
+		if (newTurnNo != this.turnNo + 1) {
+			throw new IllegalArgumentException(
+					"turn numbers advance by one (I-6): expected %d, got %d".formatted(this.turnNo + 1, newTurnNo));
+		}
+		this.turnNo = newTurnNo;
+		this.chapterNo = newChapterNo;
+		this.updatedAt = now;
+	}
+
+	/**
+	 * 엔딩에 도달해 종료한다 (R7.8).
+	 *
+	 * <p>{@code completed_at} 을 함께 채운다 — 마이그레이션의 CHECK 가 {@code status = 'completed'} 와
+	 * 짝을 강제하므로, 한쪽만 세우면 저장에서 거절된다.
+	 */
+	public void complete(UUID endingId, Instant now) {
+		this.status = SessionStatus.COMPLETED;
+		this.currentEndingId = endingId;
+		this.completedAt = now;
+		this.updatedAt = now;
+	}
+
 	public UUID getId() {
 		return this.id;
 	}

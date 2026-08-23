@@ -78,7 +78,8 @@ class SessionMappingTests extends ContainerTestBase {
 		String choices = """
 				[{"choiceId": "1-0-a1b2c3", "text": "문을 연다"}, {"choiceId": "1-1-d4e5f6", "text": "돌아선다"}]""";
 
-		Turn saved = this.turns.save(Turn.create(session.getId(), 1, 1, paragraphs, choices, false, SafetyVerdict.PASS, NOW));
+		Turn saved = this.turns.save(Turn.create(new Turn.TurnDraft(session.getId(), 1, 1, paragraphs, choices,
+				null, false, false, null, SafetyVerdict.PASS), NOW));
 		Turn found = this.turns.findById(saved.getId()).orElseThrow();
 
 		assertThat(JSON.readTree(found.getParagraphs())).isEqualTo(JSON.readTree(paragraphs));
@@ -97,10 +98,16 @@ class SessionMappingTests extends ContainerTestBase {
 		assertThat(found.getDeletedAt()).isNull();
 	}
 
-	/** I-2 · R9.3 — 판정 없이 턴을 만들 수 없다. 기본값을 두면 검수 생략이 통과로 기록된다. */
+	/**
+	 * I-2 · R9.3 — 판정 없이 턴을 만들 수 없다. 기본값을 두면 검수 생략이 통과로 기록된다.
+	 *
+	 * <p>{@code TurnDraft} 의 컴팩트 생성자에서 걸린다 — 열 개 가까운 인자를 나열하는 대신 레코드로
+	 * 묶었고(S-9-1), 검증도 그 자리로 옮겼다.
+	 */
 	@Test
 	void I2_turn_cannot_be_created_without_a_safety_verdict() {
-		assertThatThrownBy(() -> Turn.create(UUID.randomUUID(), 1, 1, "[]", "[]", false, null, NOW))
+		assertThatThrownBy(() -> Turn.create(new Turn.TurnDraft(UUID.randomUUID(), 1, 1, "[]", "[]",
+				null, false, false, null, null), NOW))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 

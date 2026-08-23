@@ -12,4 +12,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface GameStateSnapshotRepository extends JpaRepository<GameStateSnapshot, UUID> {
 
+	/**
+	 * 가장 최근의 살아 있는 스냅샷. 다음 턴의 병합 기준이다 (§4.3-8).
+	 *
+	 * <p>되돌려진 스냅샷은 제외한다 — 롤백은 soft delete 이므로 행은 남아 있다 (§13-9, I-5).
+	 */
+	java.util.Optional<GameStateSnapshot> findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(UUID sessionId);
 }

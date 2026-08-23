@@ -34,9 +34,28 @@ ModuleStructureTests > S5_4_module_dependencies_are_within_allowed_boundaries() 
 **`play` 의 허용 의존에 `ai` 와 `safety` 를 추가한다.**
 
 ```java
-@ApplicationModule(allowedDependencies = { "common", "catalog", "ai", "safety" })
+@ApplicationModule(allowedDependencies = { "common", "catalog :: query", "ai :: provider", "safety :: l2" })
 package com.neowadaeum.play;
 ```
+
+**모듈 이름이 아니라 명명 인터페이스로 적는다.** Spring Modulith 는 기본적으로 모듈의 **베이스
+패키지만** API 로 본다 — 실제로 `play` 에 의존을 허용한 직후에도 `verify()` 는 계속 실패했고,
+이유는 참조 대상이 전부 내부 하위 패키지(`ai.provider` · `safety.l2` · `catalog.query`)였기 때문이다.
+
+그래서 각 모듈이 **계약 패키지 하나씩만** `@NamedInterface` 로 노출한다.
+
+| 모듈 | 노출 | 닫힌 채로 남는 것 |
+|---|---|---|
+| `catalog` | `query` — 조회 파사드 | 엔티티·Repository (B-08) |
+| `ai` | `provider` — `StoryProvider` seam + DTO | `gateway` · `prompt` · `schema` · `log`, **벤더 어댑터** |
+| `safety` | `l2` — 판정기와 결과 | L0 · L1 · L3 |
+
+**모듈 이름만 적지 않는 이유** — `"ai"` 라고 쓰면 그 모듈의 *모든* 명명 인터페이스가 열린다.
+나중에 다른 패키지를 노출했을 때 `play` 가 그것까지 조용히 쓸 수 있게 된다. §5.4 의
+*"모듈 간 호출은 파사드로만"* 이 선언으로 표현된 것이 이 형태다.
+
+벤더 어댑터가 `ai.provider.anthropic` 처럼 더 깊은 패키지에 있는 것이 여기서 값을 한다 —
+`ai :: provider` 를 열어도 **구현체는 닫혀 있어** I-14(Provider 선택은 관리자 전용)가 유지된다.
 
 §5.4 의 해당 줄을 같은 내용으로 고친다. **문서와 애노테이션이 어긋난 채로 두지 않는다** — 어느
 한쪽만 고치면 다음 사람이 다른 쪽을 근거로 반대 결론을 낸다.
