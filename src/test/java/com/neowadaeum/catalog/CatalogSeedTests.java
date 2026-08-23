@@ -258,6 +258,29 @@ class CatalogSeedTests extends ContainerTestBase {
 		assertRejected(CHECK_VIOLATION, () -> insertEnding(98, null, true, true));
 	}
 
+	/**
+	 * §13-16 결정 2 — 일반 엔딩은 {@code condition} 을 반드시 갖는다.
+	 *
+	 * <p>조건 없는 일반 엔딩이 하나라도 들어가면 R7.6 의 {@code ending_no} 순회에서 <b>항상 최초
+	 * 매칭</b>이 되어 뒤의 엔딩을 전부 가린다. 증상은 "엔딩이 하나밖에 안 나온다"로 보이고 원인이
+	 * 데이터라는 것을 찾는 데 시간이 든다.
+	 */
+	@Test
+	void S13_16_non_default_ending_requires_a_condition() {
+		assertRejected(CHECK_VIOLATION, () -> insertEnding(97, null, false, false));
+	}
+
+	/**
+	 * §13-16 결정 1 — 기본 엔딩은 {@code condition} 을 갖지 않는다.
+	 *
+	 * <p>기본 엔딩은 조건 판정에 참여하지 않는 fallback 이다 (R7.7). 조건을 가지면 폴백이 아니다.
+	 */
+	@Test
+	void S13_16_default_ending_must_not_carry_a_condition() {
+		assertRejected(CHECK_VIOLATION,
+				() -> insertEnding(96, "{\"gte\": [\"affinity.yuna\", 1]}", true, false));
+	}
+
 	/** R7.2 — min_turns 충족 후 조건 평가, 불만족이면 max_turns 강제 전환. max < min 이면 성립하지 않는다. */
 	@Test
 	void R7_2_chapter_max_turns_must_not_be_below_min_turns() {
