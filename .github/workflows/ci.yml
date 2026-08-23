@@ -78,8 +78,12 @@ jobs:
 
       # Testcontainers 는 러너에 이미 있는 Docker 를 쓴다. 서비스 컨테이너를 따로 띄우지 않고,
       # 접속 정보는 @DynamicPropertySource 로 주입한다 (§7.2, §10).
+      #
+      # ★ 두 태스크를 모두 돌린다. `test` 는 컨테이너 없이 도는 것만, `integrationTest` 는
+      #   @Tag("container") 가 붙은 것만이다. 로컬 개발 루프를 빠르게 하려고 나눈 것이므로
+      #   CI 에서는 반드시 둘 다 돈다 — 하나라도 빠지면 분리가 곧 검증 축소가 된다.
       - name: 테스트
-        run: ./gradlew test --no-daemon
+        run: ./gradlew test integrationTest --no-daemon
 
       - name: 테스트 리포트 (실패 시에만)
         if: failure()

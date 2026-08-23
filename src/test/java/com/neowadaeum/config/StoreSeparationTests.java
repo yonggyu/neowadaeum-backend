@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +34,7 @@ import org.springframework.context.annotation.Import;
  * 한 번에 관찰하기 때문이다. §5.3 의 인스턴스 분리 승격 시에는 스토어별 조회로 나눠야 한다 —
  * 애플리케이션 코드가 아니라 이 검증 방식이 바뀐다.
  */
+@Tag("container")
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class StoreSeparationTests {

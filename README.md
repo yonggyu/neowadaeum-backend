@@ -87,16 +87,35 @@ docker compose down -v && ./gradlew bootRun
 ## 테스트
 
 ```bash
-./gradlew test
+./gradlew test              # 빠른 루프 — 컨테이너 없이 도는 것만
+./gradlew integrationTest   # 컨테이너 테스트 (Docker 필요)
+./gradlew test integrationTest   # 전부. CI 가 이렇게 돈다
 ```
 
-테스트는 docker-compose를 건너뛰고 **Testcontainers**를 쓴다(`spring.docker.compose.skip.in-tests: true`).
-`application-test.yml`을 만들지 않는다 — `@DynamicPropertySource`로 런타임 주입한다(§7.2).
+**두 태스크로 나뉘어 있다.** `@Tag("container")` 가 붙은 테스트는 기본 `test` 에서 빠진다.
+
+| | 실측 (이 레포, WSL2 + `/mnt/c`) |
+|---|---|
+| `./gradlew test` (코드 한 줄 고친 뒤) | **약 2초** |
+| `./gradlew integrationTest` | 약 36초 — 그중 **Spring 컨텍스트 기동이 28초** |
+
+나눈 이유는 하나다. 저장할 때마다 30초를 기다리게 되면 결국 테스트를 덜 돌린다.
+**검증을 줄인 것이 아니다** — CI 는 두 태스크를 모두 돌리고(§8.9 — CI 가 승인 리뷰를 대체한다),
+`integrationTest` 가 빠지면 그 자체가 검증 축소다. PR 을 올리기 전에 한 번은 전부 돌린다.
+
+컨테이너 테스트에 관해:
 
 - Docker 데몬이 필요하다. WSL 에서 돌린다면 Docker Desktop 의 WSL 통합을 켠다.
+  (`docker` CLI 가 PATH 에 없어도 `/var/run/docker.sock` 만 있으면 Testcontainers 는 동작한다.)
 - 테스트 컨테이너는 로컬과 **같은 이미지 태그**(`docker-compose.yml` 에서 읽는다)와
   **같은 초기화 스크립트**를 쓴다. 스키마 4개·계정 4개가 그대로 만들어진다.
 - 컨테이너는 1개다. 스토어마다 컨테이너를 띄우면 계정 권한 경계가 검증되지 않는다.
+- docker-compose 는 건너뛴다(`spring.docker.compose.skip.in-tests: true`).
+  `application-test.yml` 을 만들지 않는다 — `@DynamicPropertySource` 로 런타임 주입한다(§7.2).
+
+> **더 빠르게 하려면 — 레포 위치.** 이 프로젝트가 `/mnt/c` 에 있으면 WSL2 는 9p 로 접근한다.
+> Gradle·JVM 의 파일 I/O 가 전부 느려지고, 위의 28초짜리 컨텍스트 기동 대부분이 여기서 나온다.
+> WSL 네이티브 경로(`~/...`)로 옮기면 체감이 크게 달라진다. 컨테이너 기동은 전체의 10초뿐이다.
 
 ## 보안 규칙 (요약, 원문은 §7)
 
