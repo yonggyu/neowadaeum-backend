@@ -45,4 +45,9 @@ public enum StoreSchema {
 	public String migrationLocation() {
 		return "classpath:db/migration/" + schema;
 	}
+
+	/** 이 스토어의 마이그레이션 실행 빈 이름. DataSource 빈 이름과 짝을 이룬다. */
+	public String migrationBeanName() {
+		return dataSourceBeanName().replace("DataSource", "Migration");
+	}
 }
