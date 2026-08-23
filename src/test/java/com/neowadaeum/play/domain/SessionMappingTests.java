@@ -1,6 +1,7 @@
 package com.neowadaeum.play.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
@@ -61,7 +62,9 @@ class SessionMappingTests extends ContainerTestBase {
 		assertThat(found.getTurnNo()).isZero();
 		assertThat(found.getChapterNo()).isEqualTo(1);
 		assertThat(found.isTestSession()).isFalse();
-		assertThat(found.getStartedAt()).isEqualTo(NOW);
+		assertThat(found.getCreatedAt()).isEqualTo(NOW);
+		assertThat(found.getUpdatedAt()).isEqualTo(NOW);
+		assertThat(found.getExpiresAt()).isNull();
 		assertThat(found.getCompletedAt()).isNull();
 		assertThat(found.getDeletedAt()).isNull();
 	}
@@ -75,7 +78,7 @@ class SessionMappingTests extends ContainerTestBase {
 		String choices = """
 				[{"choiceId": "1-0-a1b2c3", "text": "문을 연다"}, {"choiceId": "1-1-d4e5f6", "text": "돌아선다"}]""";
 
-		Turn saved = this.turns.save(Turn.create(session.getId(), 1, 1, paragraphs, choices, false, NOW));
+		Turn saved = this.turns.save(Turn.create(session.getId(), 1, 1, paragraphs, choices, false, SafetyVerdict.PASS, NOW));
 		Turn found = this.turns.findById(saved.getId()).orElseThrow();
 
 		assertThat(JSON.readTree(found.getParagraphs())).isEqualTo(JSON.readTree(paragraphs));
@@ -86,6 +89,19 @@ class SessionMappingTests extends ContainerTestBase {
 		// §13-9 isPending — 아직 고르지 않은 마지막 턴이다.
 		assertThat(found.getChosenChoiceId()).isNull();
 		assertThat(found.getChosenAt()).isNull();
+		// R9.3 — 판정이 함께 저장된다. I-2 의 기록이다.
+		assertThat(found.getSafetyVerdict()).isEqualTo(SafetyVerdict.PASS);
+		// R14.2 — 일반 턴은 자유입력이 아니다.
+		assertThat(found.isAdminFreeInput()).isFalse();
+		// R14.4 — 되돌려지지 않은 턴이다.
+		assertThat(found.getDeletedAt()).isNull();
+	}
+
+	/** I-2 · R9.3 — 판정 없이 턴을 만들 수 없다. 기본값을 두면 검수 생략이 통과로 기록된다. */
+	@Test
+	void I2_turn_cannot_be_created_without_a_safety_verdict() {
+		assertThatThrownBy(() -> Turn.create(UUID.randomUUID(), 1, 1, "[]", "[]", false, null, NOW))
+				.isInstanceOf(IllegalArgumentException.class);
 	}
 
 	/** I-5 — 스냅샷은 GameState 를 통째로 담고, 저장 후 되돌아온 값이 같다. */
