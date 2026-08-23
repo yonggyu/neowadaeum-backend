@@ -177,7 +177,7 @@ public class TurnPipeline {
 		int newTurnNo = context.turnNo() + 1;
 
 		StateSchema schema = StateSchema.from(context.version().stateSchema());
-		StateChanges changes = StateChanges.from(JSON.valueToTree(generated.result().proposedStateChanges()));
+		StateChanges changes = StateChanges.from(generated.result().proposedStateChanges());
 
 		// 8 — 화이트리스트 → clamp → 병합. 그다음 서버 전용 경로로 턴 번호를 올린다 (I-9).
 		GameState merged = this.gameStateEngine.apply(context.state(), schema, changes)
