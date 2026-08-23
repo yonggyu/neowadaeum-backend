@@ -32,6 +32,9 @@ class SessionConstraintTests extends ContainerTestBase {
 	/** PostgreSQL {@code check_violation}. */
 	private static final String CHECK_VIOLATION = "23514";
 
+	/** PostgreSQL {@code not_null_violation}. */
+	private static final String NOT_NULL_VIOLATION = "23502";
+
 	private static final Instant NOW = Instant.parse("2026-08-23T04:05:06Z");
 
 	@Autowired
@@ -87,6 +90,45 @@ class SessionConstraintTests extends ContainerTestBase {
 		assertRejected(UNIQUE_VIOLATION, () -> insertTurn(sessionId, 1));
 	}
 
+	/**
+	 * I-2 · R9.3 — 판정 없는 턴은 저장되지 않는다.
+	 *
+	 * <p>{@code safety_verdict} 에 <b>기본값을 두지 않은 것이 이 테스트의 대상</b>이다. {@code 'pass'} 를
+	 * 기본값으로 두면 검수를 거치지 않은 INSERT 가 조용히 "통과"로 기록되고, 그 순간 이 컬럼은
+	 * 아무것도 증명하지 못한다. 세이프티 필드에서 fail-open 은 가장 나쁜 기본값이다.
+	 */
+	@Test
+	void I2_turn_without_a_safety_verdict_is_rejected() throws SQLException {
+		UUID sessionId = insertSession(UUID.randomUUID(), UUID.randomUUID(), "active");
+
+		assertRejected(NOT_NULL_VIOLATION, () -> insertTurnWithoutVerdict(sessionId, 1));
+	}
+
+	/** R9.3 — 판정값은 pass / revised / blocked 셋뿐이다. */
+	@Test
+	void R9_3_unknown_safety_verdict_is_rejected() throws SQLException {
+		UUID sessionId = insertSession(UUID.randomUUID(), UUID.randomUUID(), "active");
+
+		assertRejected(CHECK_VIOLATION, () -> insertTurn(sessionId, 1, "probably_fine"));
+	}
+
+	/**
+	 * R14.4 — 되돌린 턴은 자리를 비켜 준다.
+	 *
+	 * <p>스냅샷과 같은 규칙이다. V2 시점에는 {@code turn} 에 {@code deleted_at} 이 없어 스냅샷만
+	 * 되돌릴 수 있었고, 그것은 "함께 되돌린다"를 지킬 수 없는 상태였다.
+	 */
+	@Test
+	void R14_4_soft_deleted_turn_frees_the_turn_number_for_a_new_row() throws SQLException {
+		UUID sessionId = insertSession(UUID.randomUUID(), UUID.randomUUID(), "active");
+		UUID first = insertTurn(sessionId, 1);
+		softDeleteTurn(first);
+
+		UUID second = insertTurn(sessionId, 1);
+
+		assertThat(second).isNotEqualTo(first);
+	}
+
 	/** I-5 — 스냅샷은 턴당 1행이다. 두 번째 행이 들어가면 어느 것이 그 턴의 상태인지 알 수 없다. */
 	@Test
 	void I5_snapshot_is_one_live_row_per_turn() throws SQLException {
@@ -118,7 +160,7 @@ class SessionConstraintTests extends ContainerTestBase {
 		try (Connection connection = this.dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
 						INSERT INTO play_session (id, player_ref, story_id, story_version_id, provider_id,
-								model_id, status, turn_no, chapter_no, started_at, last_played_at, completed_at)
+								model_id, status, turn_no, chapter_no, created_at, updated_at, completed_at)
 						VALUES (?, ?, ?, ?, 'fixed', 'scenario-v1', ?, 0, 1, ?, ?, ?)
 						""")) {
 			statement.setObject(1, id);
@@ -135,19 +177,50 @@ class SessionConstraintTests extends ContainerTestBase {
 	}
 
 	private UUID insertTurn(UUID sessionId, int turnNo) throws SQLException {
+		return insertTurn(sessionId, turnNo, "pass");
+	}
+
+	private UUID insertTurn(UUID sessionId, int turnNo, String safetyVerdict) throws SQLException {
 		UUID id = UUID.randomUUID();
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection.prepareStatement("""
+						INSERT INTO turn (id, session_id, turn_no, chapter_no, paragraphs, choices,
+						                  safety_verdict, created_at)
+						VALUES (?, ?, ?, 1, '[]'::jsonb, '[]'::jsonb, ?, ?)
+						""")) {
+			statement.setObject(1, id);
+			statement.setObject(2, sessionId);
+			statement.setInt(3, turnNo);
+			statement.setString(4, safetyVerdict);
+			statement.setTimestamp(5, Timestamp.from(NOW));
+			statement.executeUpdate();
+		}
+		return id;
+	}
+
+	/** 판정 없이 저장되는 턴을 만들지 않는다. 기본값이 없으므로 생략은 곧 실패다 (I-2, R9.3). */
+	private void insertTurnWithoutVerdict(UUID sessionId, int turnNo) throws SQLException {
 		try (Connection connection = this.dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
 						INSERT INTO turn (id, session_id, turn_no, chapter_no, paragraphs, choices, created_at)
 						VALUES (?, ?, ?, 1, '[]'::jsonb, '[]'::jsonb, ?)
 						""")) {
-			statement.setObject(1, id);
+			statement.setObject(1, UUID.randomUUID());
 			statement.setObject(2, sessionId);
 			statement.setInt(3, turnNo);
 			statement.setTimestamp(4, Timestamp.from(NOW));
 			statement.executeUpdate();
 		}
-		return id;
+	}
+
+	private void softDeleteTurn(UUID id) throws SQLException {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection.prepareStatement(
+						"UPDATE turn SET deleted_at = ? WHERE id = ?")) {
+			statement.setTimestamp(1, Timestamp.from(NOW));
+			statement.setObject(2, id);
+			statement.executeUpdate();
+		}
 	}
 
 	private UUID insertSnapshot(UUID sessionId, int turnNo) throws SQLException {

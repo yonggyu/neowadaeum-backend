@@ -63,17 +63,28 @@ public class PlaySession {
 	private boolean testSession;
 
 	/** 도달한 엔딩. catalog 스키마이므로 FK 없이 UUID 만 갖는다 (§4.6). */
-	@Column(name = "ending_id")
-	private UUID endingId;
+	@Column(name = "current_ending_id")
+	private UUID currentEndingId;
 
-	@Column(name = "started_at", nullable = false, updatable = false)
-	private Instant startedAt;
+	/** Resume 화면이 "어디까지 왔는지"를 보여줄 때 쓴다 (§2.5, §4.7). */
+	@Column(name = "last_scene_summary")
+	private String lastSceneSummary;
 
-	@Column(name = "last_played_at", nullable = false)
-	private Instant lastPlayedAt;
+	@Column(name = "last_choice_text")
+	private String lastChoiceText;
+
+	@Column(name = "created_at", nullable = false, updatable = false)
+	private Instant createdAt;
+
+	@Column(name = "updated_at", nullable = false)
+	private Instant updatedAt;
 
 	@Column(name = "completed_at")
 	private Instant completedAt;
+
+	/** 90일 무활동 만료 시각 (§4.7). {@code status = 'expired'} 의 판정 근거다. */
+	@Column(name = "expires_at")
+	private Instant expiresAt;
 
 	/** 사용자 삭제. §4.7 의 {@code deleted} resume 상태 판정 근거다. */
 	@Column(name = "deleted_at")
@@ -100,8 +111,8 @@ public class PlaySession {
 		session.status = SessionStatus.ACTIVE;
 		session.turnNo = 0;
 		session.chapterNo = 1;
-		session.startedAt = now;
-		session.lastPlayedAt = now;
+		session.createdAt = now;
+		session.updatedAt = now;
 		return session;
 	}
 
@@ -145,16 +156,28 @@ public class PlaySession {
 		return this.testSession;
 	}
 
-	public UUID getEndingId() {
-		return this.endingId;
+	public UUID getCurrentEndingId() {
+		return this.currentEndingId;
 	}
 
-	public Instant getStartedAt() {
-		return this.startedAt;
+	public Instant getCreatedAt() {
+		return this.createdAt;
 	}
 
-	public Instant getLastPlayedAt() {
-		return this.lastPlayedAt;
+	public Instant getUpdatedAt() {
+		return this.updatedAt;
+	}
+
+	public String getLastSceneSummary() {
+		return this.lastSceneSummary;
+	}
+
+	public String getLastChoiceText() {
+		return this.lastChoiceText;
+	}
+
+	public Instant getExpiresAt() {
+		return this.expiresAt;
 	}
 
 	public Instant getCompletedAt() {
