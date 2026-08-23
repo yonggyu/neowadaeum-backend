@@ -8,12 +8,29 @@
 ## Source of Truth
 
 ```
-CLAUDE.md(헌법) > docs/corrections.md > docs/openapi.yaml > docs/backend-requirements.md > docs/너와다음.md
+CLAUDE.md(헌법) > docs/corrections.md > docs/openapi.yaml > backend-requirements.md > 너와다음.md
 ```
 
 `docs/corrections.md`(구 §13)가 상위 문서를 정정한다. 충돌하면 정정본이 이긴다.
-뒤의 셋은 **아직 이 레포에 없다** — `openapi.yaml`은 B-06, 나머지 둘은 비공개 문서 쪽에 있다.
-**없는 문서를 근거로 결론을 내지 않는다.** 필요하면 그 사실을 밝히고 확인을 요청한다.
+
+### 비공개 원문 — `docs/internal/`
+
+**요구사항 원문은 존재한다. 레포에 커밋되지 않을 뿐이다.** `docs/internal/` 은 `.gitignore` 대상이며(S-11, 공개 레포) 로컬에만 있다.
+
+| 파일 | 내용 |
+|---|---|
+| `docs/internal/backend-requirements.md` | **R 조항 원문.** §2 도메인 모델(테이블 정의) · §3 Provider · §4 컨텍스트/GameState · §5 프롬프트·출력 스키마 · §6 턴 파이프라인 · §7 Chapter/Ending · §8 UGC · §9 세이프티 |
+| `docs/internal/너와다음.md` | 기획서 |
+| `docs/internal/13-12-ugc-review-policy.md` | UGC 검수 정책(§13-12) |
+
+**탐색 규칙**
+
+1. **스키마·조건 문법·임계값·정책이 필요하면 `docs/internal/` 을 먼저 읽는다.** 공개 문서의 인용문으로 대신하지 않는다 — 인용은 요약이라 컬럼이 빠져 있다.
+2. `docs/internal/` 에 파일이 없으면 **레포 밖도 확인한다** (`~/Downloads`, `~/Documents`). 찾으면 `docs/internal/` 로 복사해 고정하고 그 사실을 보고한다.
+3. **원문에 없는 값·문법·정책은 추측하지 않는다.** `docs/corrections.md` 에 `[결정 필요]` 로 올리고 기본 채택안을 PR 본문에 명시한다.
+4. **`docs/internal/` 의 내용을 공개물에 옮기지 않는다** — 커밋·이슈·PR·코드 주석 어디에도. 인용이 필요하면 **조항 번호로만 지목한다**(예: "R4.2 의 기본 델타 상한"). 구현에 쓴 공개 가능한 결정만 `docs/corrections.md` 또는 ADR 에 남긴다 (S-11).
+
+`docs/openapi.yaml` 은 아직 없다 — B-06 이다. **없는 문서를 근거로 결론을 내지 않는다.**
 
 ## 작업 시작 전
 

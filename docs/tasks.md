@@ -214,8 +214,9 @@
 > **B-08 은 닫지 않는다.** `genre` · `story_genre` · `ending_stat` · `service_config` ·
 > `author_profile` · `content_report` · `blocklist_entry` 와 catalog 모듈의 파사드·엔티티·
 > 리포지토리·조회 API 는 전부 범위 밖이며, 복귀 조건은 아래 제외표의 B-08 행 그대로다.
-> 컬럼 정의의 원문(`backend-requirements.md` §2.3)이 이 레포에 없어 **레포 안 문서에서 확인되는
-> 컬럼만** 넣었다 — 복귀 시점에 원문으로 보강한다.
+> 컬럼 이름과 구성은 **`backend-requirements.md` §2.3 원문을 그대로 따랐다**(비공개 원문,
+> `docs/internal/`). 원문이 규정하지 않은 두 가지는 스키마로 고정하지 않고 `[결정 필요]` 로 올렸다 —
+> `docs/corrections.md` §13-15(`slug` 유일성) · §13-16(`ending_def.condition` 과 `is_default` 의 관계).
 
 ## 제외한 작업과 복귀 조건
 
