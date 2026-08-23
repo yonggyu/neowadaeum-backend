@@ -7,6 +7,10 @@
 # .github 은 설정 전용이며 시크릿을 담지 않는다. CI·이슈 템플릿·PR 설정이 여기 있다.
 !.github/**/*.yml
 
+# API 계약(B-06). 공개 계약 문서이며 설정·시크릿 파일이 아니다 — 스키마와 예시값뿐이다.
+# 이 한 파일만 예외다. docs/ 아래 다른 yaml 은 그대로 무시된다.
+!docs/openapi.yaml
+
 *.properties
 !gradle.properties
 # 없으면 clone 후 ./gradlew 가 동작하지 않는다. 시크릿이 아니라 빌드 메타데이터다.
