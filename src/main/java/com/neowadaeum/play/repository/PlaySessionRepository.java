@@ -1,6 +1,7 @@
 package com.neowadaeum.play.repository;
 
 import com.neowadaeum.play.domain.PlaySession;
+import com.neowadaeum.play.domain.SessionStatus;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -13,4 +14,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> {
 
+	/**
+	 * 작품당 {@code active} 세션 1개 (§13-9).
+	 *
+	 * <p>애플리케이션이 먼저 확인하더라도 동시 요청 두 개는 그 확인을 나란히 통과한다 —
+	 * 마지막 방어선은 DB 의 partial unique index 다. 이 조회는 <b>사용자에게 409 를 돌려주기
+	 * 위한 것</b>이지 유일성을 보장하는 수단이 아니다.
+	 */
+	boolean existsByPlayerRefAndStoryIdAndStatus(UUID playerRef, UUID storyId, SessionStatus status);
 }
