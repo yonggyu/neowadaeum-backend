@@ -18,25 +18,29 @@ API 서버 + AI Gateway + Safety + Admin을 소유한다. 프론트엔드는 별
 
 ## 최초 1회 셋업
 
-### 0. 레포 위치 — **WSL 을 쓴다면 반드시 네이티브 경로에 둔다**
+### 0. 레포 위치 — **툴체인과 경로를 같은 쪽에 둔다** (Windows + WSL 사용자만 해당)
 
-Windows + WSL2 조합에서 `/mnt/c/...` 는 9p 프로토콜로 접근한다. Gradle 과 JVM 의 파일 I/O 가
-전부 느려지고, 그 영향이 테스트 시간에 그대로 나타난다.
+느린 것은 특정 경로가 아니라 **툴체인과 경로가 엇갈린 조합**이다.
+`/mnt/c/Users/...` 는 **WSL 이 읽을 때만** 9p 프로토콜을 탄다. Windows 입장에서 `C:\Users\...` 는
+네이티브 NTFS 경로이고 아무 손해가 없다.
 
-| `n=5`, 순서 무작위, 중앙값 | `/mnt/c` (9p) | `~/...` (ext4) | |
+| 조합 | `./gradlew test` (`--rerun`) | `./gradlew integrationTest` | |
 |---|---|---|---|
-| `./gradlew integrationTest` | 35.9s | **8.8s** | **4.1배** |
-| `./gradlew test` (`--rerun`) | 16.8s | **3.0s** | 5.6배 |
+| **Windows 툴체인 → `C:\...`** | 4.4s | 11.8s | ✅ **이 프로젝트의 기본** |
+| WSL 툴체인 → `~/...` (ext4) | 3.0s | 8.8s | ✅ 조금 더 빠르다 |
+| WSL 툴체인 → `/mnt/c/...` (9p) | 16.8s | 35.9s | ❌ **섞인 조합. 3~4배 느리다** |
 
-```bash
-# ✅ 이렇게
-git clone <repo> ~/neowadaeum-backend
+> WSL 쪽은 `n=5`(순서 무작위, 중앙값), Windows 쪽은 `n=3`(Gradle 데몬 워밍업 후).
 
-# ❌ 이렇게 하지 않는다 (Windows 탐색기에서 편하다는 이유로)
-git clone <repo> /mnt/c/Users/<이름>/Documents/neowadaeum-backend
-```
+**이 프로젝트는 Windows 툴체인 + `C:\` 를 기본으로 한다.** IntelliJ 가 Windows 쪽 JDK 와 Gradle 로
+빌드하므로 그 조합이 자연스럽고, 위 표대로 충분히 빠르다.
 
-IntelliJ 는 WSL 경로(`\\wsl$\...`)를 그대로 연다. 취향 문제가 아니라 **온보딩 절차**다.
+**지키면 되는 규칙은 하나다.**
+
+- 레포를 `C:\...` 에 뒀다면 → **빌드·테스트도 Windows 쪽에서** 돌린다 (IntelliJ, `gradlew.bat`)
+- 레포를 WSL 홈(`~/...`)에 뒀다면 → **빌드·테스트도 WSL 안에서** 돌린다
+- **WSL 셸에서 `/mnt/c` 의 `./gradlew` 를 돌리는 것만 피한다.** 이것이 위 표의 마지막 줄이다
+
 macOS · Linux 네이티브 환경에는 해당하지 않는다.
 
 ### 1. 설정 파일
@@ -118,11 +122,13 @@ docker compose down -v && ./gradlew bootRun
 **태그로 나뉘어 있다.** `container` 는 "Docker 가 필요한가", `nightly` 는 "PR 마다 돌 만한가"다.
 둘은 직교하며, 한 테스트가 둘 다일 수 있다.
 
-| 태스크 | 도는 것 | 실측 (ext4, `n=5` 중앙값) |
-|---|---|---|
-| `test` | 컨테이너도 nightly 도 아닌 것 | **약 1초** (코드 한 줄 고친 뒤) |
-| `integrationTest` | `@Tag("container")` | **8.8초** |
-| `nightlyTest` | `@Tag("nightly")` | 대상 0건 (B-32 이후 생긴다) |
+| 태스크 | 도는 것 | Windows + `C:\` | WSL + `~/` |
+|---|---|---|---|
+| `test` | 컨테이너도 nightly 도 아닌 것 | 4.4s | 3.0s |
+| `integrationTest` | `@Tag("container")` | 11.8s | 8.8s |
+| `nightlyTest` | `@Tag("nightly")` | 대상 0건 (B-32 이후 생긴다) | — |
+
+코드 한 줄만 고친 증분 실행은 어느 쪽이든 **약 1~2초**다. 위 수치는 `--rerun` 기준이다.
 
 나눈 이유는 하나다. 저장할 때마다 30초를 기다리게 되면 결국 테스트를 덜 돌린다.
 
@@ -156,8 +162,10 @@ export TESTCONTAINERS_RYUK_DISABLED=true
 > 러너에서 끄면 크래시한 실행의 고아 컨테이너가 쌓인다. 로컬에서는 `docker ps` 로 눈에 보이고
 > 직접 지울 수 있지만 러너에서는 그렇지 않다. 이 비대칭이 의도된 것이다.
 
-레포가 이미 WSL 네이티브 경로에 있다는 전제다. 아직 `/mnt/c` 에 있다면 **그것부터 옮긴다** —
-Ryuk 0.5초보다 27초가 먼저다 (위 "최초 1회 셋업 0").
+WSL 안에서 테스트를 돌리는 경우에만 해당한다. Windows 쪽에서 돌린다면 같은 변수를
+`setx` 또는 시스템 환경 변수로 둔다.
+
+0.5초짜리 조정이다. **위 "최초 1회 셋업 0" 의 조합부터 맞추는 것이 먼저다** — 그쪽은 20초 이상이다.
 
 ## 보안 규칙 (요약, 원문은 §7)
 
