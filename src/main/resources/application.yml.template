@@ -52,8 +52,9 @@ spring:
     property-naming-strategy: LOWER_CAMEL_CASE   # API JSON은 camelCase (§9.1)
 
 # ── 4-스토어 DataSource (§5.3, §2.5) ─────────────────────────
-# DataSource Bean 4개는 B-05에서 이 프로퍼티를 읽어 직접 정의한다.
+# DataSourceConfiguration 이 이 프로퍼티만 읽어 DataSource 빈 4개를 만든다.
 # 스키마 간 FK / JOIN 금지. 각 계정은 자기 스키마에만 권한을 갖는다.
+# URL 에 `?currentSchema=<스키마>` 가 없으면 부팅이 실패한다 — 빠지면 조용히 다른 스키마에 쓴다.
 app:
   datasource:
     identity:
