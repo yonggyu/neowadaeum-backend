@@ -44,12 +44,19 @@ cp src/main/resources/application.yml.template src/main/resources/application.ym
 
 §5.3의 4-스토어 분리는 **컨테이너 1개 안의 스키마 4개**로 시작한다.
 
-| 스토어 | 스키마 | 계정 |
-|---|---|---|
-| Identity | `identity` | `identity_user` |
-| Catalog + Authoring | `catalog` | `catalog_user` |
-| Session | `play` | `play_user` |
-| Prompt Log | `promptlog` | `promptlog_user` |
+| 스토어 | 스키마 | 계정 | 마이그레이션 |
+|---|---|---|---|
+| Identity | `identity` | `identity_user` | `db/migration/identity` |
+| Catalog + Authoring | `catalog` | `catalog_user` | `db/migration/catalog` |
+| Session | `play` | `play_user` | `db/migration/play` |
+| Prompt Log | `promptlog` | `promptlog_user` | `db/migration/promptlog` |
+
+DataSource·Flyway·이력 테이블(`flyway_schema_history`)이 스토어마다 따로 있다.
+**각 계정은 자기 스키마에만 권한을 갖는다.** 스키마 간 JOIN 을 쓴 코드는 로컬에서 곧바로 권한 오류로
+터진다 — 운영에서 발견하는 것보다 낫다. 스키마 간 FK 도 만들지 않는다(§5.3).
+
+접속 URL 에는 `?currentSchema=<스키마>` 가 반드시 있어야 한다. 없으면 부팅이 실패한다.
+빠진 채로 뜨면 모든 테이블이 조용히 다른 스키마에 만들어진다.
 
 초기화는 `docker/postgres/init/01-init-schemas.sh`가 담당하며, **볼륨이 비어 있을 때 한 번만** 실행된다.
 스크립트나 `.env`의 스키마 계정 비밀번호를 고쳤다면 아래로 다시 만든다.
@@ -68,6 +75,11 @@ docker compose down -v && ./gradlew bootRun
 
 테스트는 docker-compose를 건너뛰고 **Testcontainers**를 쓴다(`spring.docker.compose.skip.in-tests: true`).
 `application-test.yml`을 만들지 않는다 — `@DynamicPropertySource`로 런타임 주입한다(§7.2).
+
+- Docker 데몬이 필요하다. WSL 에서 돌린다면 Docker Desktop 의 WSL 통합을 켠다.
+- 테스트 컨테이너는 로컬과 **같은 이미지 태그**(`docker-compose.yml` 에서 읽는다)와
+  **같은 초기화 스크립트**를 쓴다. 스키마 4개·계정 4개가 그대로 만들어진다.
+- 컨테이너는 1개다. 스토어마다 컨테이너를 띄우면 계정 권한 경계가 검증되지 않는다.
 
 ## 보안 규칙 (요약, 원문은 §7)
 
