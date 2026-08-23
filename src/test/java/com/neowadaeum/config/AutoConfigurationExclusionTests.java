@@ -2,20 +2,18 @@ package com.neowadaeum.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.neowadaeum.TestcontainersConfiguration;
+import com.neowadaeum.ContainerTestBase;
+
 import jakarta.persistence.EntityManagerFactory;
 import java.util.List;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 import org.springframework.util.ClassUtils;
 
@@ -33,10 +31,7 @@ import org.springframework.util.ClassUtils;
  * 이름이었다. 즉 B-02~B-04 구간의 제외는 실제로 동작하고 있었다. 이 테스트는 사고의 기록이 아니라
  * 사후 확인이며, 같은 확인을 반복하지 않기 위해 남긴다.
  */
-@Tag("container")
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-class AutoConfigurationExclusionTests {
+class AutoConfigurationExclusionTests extends ContainerTestBase {
 
 	@Autowired
 	private ApplicationContext context;

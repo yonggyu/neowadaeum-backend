@@ -18,6 +18,29 @@ API 서버 + AI Gateway + Safety + Admin을 소유한다. 프론트엔드는 별
 
 ## 최초 1회 셋업
 
+### 0. 레포 위치 — **WSL 을 쓴다면 반드시 네이티브 경로에 둔다**
+
+Windows + WSL2 조합에서 `/mnt/c/...` 는 9p 프로토콜로 접근한다. Gradle 과 JVM 의 파일 I/O 가
+전부 느려지고, 그 영향이 테스트 시간에 그대로 나타난다.
+
+| `n=5`, 순서 무작위, 중앙값 | `/mnt/c` (9p) | `~/...` (ext4) | |
+|---|---|---|---|
+| `./gradlew integrationTest` | 35.9s | **8.8s** | **4.1배** |
+| `./gradlew test` (`--rerun`) | 16.8s | **3.0s** | 5.6배 |
+
+```bash
+# ✅ 이렇게
+git clone <repo> ~/neowadaeum-backend
+
+# ❌ 이렇게 하지 않는다 (Windows 탐색기에서 편하다는 이유로)
+git clone <repo> /mnt/c/Users/<이름>/Documents/neowadaeum-backend
+```
+
+IntelliJ 는 WSL 경로(`\\wsl$\...`)를 그대로 연다. 취향 문제가 아니라 **온보딩 절차**다.
+macOS · Linux 네이티브 환경에는 해당하지 않는다.
+
+### 1. 설정 파일
+
 ```bash
 cp .env.example .env
 # .env 의 값을 채운다.
@@ -92,16 +115,22 @@ docker compose down -v && ./gradlew bootRun
 ./gradlew test integrationTest   # 전부. CI 가 이렇게 돈다
 ```
 
-**두 태스크로 나뉘어 있다.** `@Tag("container")` 가 붙은 테스트는 기본 `test` 에서 빠진다.
+**태그로 나뉘어 있다.** `container` 는 "Docker 가 필요한가", `nightly` 는 "PR 마다 돌 만한가"다.
+둘은 직교하며, 한 테스트가 둘 다일 수 있다.
 
-| | 실측 (이 레포, WSL2 + `/mnt/c`) |
-|---|---|
-| `./gradlew test` (코드 한 줄 고친 뒤) | **약 2초** |
-| `./gradlew integrationTest` | 약 36초 — 그중 **Spring 컨텍스트 기동이 28초** |
+| 태스크 | 도는 것 | 실측 (ext4, `n=5` 중앙값) |
+|---|---|---|
+| `test` | 컨테이너도 nightly 도 아닌 것 | **약 1초** (코드 한 줄 고친 뒤) |
+| `integrationTest` | `@Tag("container")` | **8.8초** |
+| `nightlyTest` | `@Tag("nightly")` | 대상 0건 (B-32 이후 생긴다) |
 
 나눈 이유는 하나다. 저장할 때마다 30초를 기다리게 되면 결국 테스트를 덜 돌린다.
-**검증을 줄인 것이 아니다** — CI 는 두 태스크를 모두 돌리고(§8.9 — CI 가 승인 리뷰를 대체한다),
-`integrationTest` 가 빠지면 그 자체가 검증 축소다. PR 을 올리기 전에 한 번은 전부 돌린다.
+
+**검증을 줄인 것이 아니다.** CI 는 `test integrationTest` 를 모두 돌리고(§8.9 — CI 가 승인 리뷰를
+대체한다), nightly 는 별도 워크플로가 매일 돌린다. 어떤 항목도 "안 돌린다"가 되지 않는다.
+분류 근거 · 승격 시점 · 복귀 조건은 [`docs/adr/0001-mvp-test-execution-policy.md`](docs/adr/0001-mvp-test-execution-policy.md).
+
+**PR 을 올리기 전에 한 번은 `./gradlew test integrationTest` 를 돌린다.**
 
 컨테이너 테스트에 관해:
 
@@ -113,9 +142,22 @@ docker compose down -v && ./gradlew bootRun
 - docker-compose 는 건너뛴다(`spring.docker.compose.skip.in-tests: true`).
   `application-test.yml` 을 만들지 않는다 — `@DynamicPropertySource` 로 런타임 주입한다(§7.2).
 
-> **더 빠르게 하려면 — 레포 위치.** 이 프로젝트가 `/mnt/c` 에 있으면 WSL2 는 9p 로 접근한다.
-> Gradle·JVM 의 파일 I/O 가 전부 느려지고, 위의 28초짜리 컨텍스트 기동 대부분이 여기서 나온다.
-> WSL 네이티브 경로(`~/...`)로 옮기면 체감이 크게 달라진다. 컨테이너 기동은 전체의 10초뿐이다.
+### 더 빠르게 — Ryuk 끄기 (선택, 로컬 전용)
+
+Testcontainers 는 Ryuk 이라는 정리용 컨테이너를 함께 띄운다. 로컬에서 끄면 실행마다 약 0.5초를
+아낀다(8.69s → 8.15s, `n=5` 중앙값).
+
+```bash
+# 셸 환경에 둔다. .env 가 아니다 — .env 는 애플리케이션 설정이지 테스트 실행 환경이 아니다 (§7.1).
+export TESTCONTAINERS_RYUK_DISABLED=true
+```
+
+> **CI 에서는 절대 끄지 않는다.** Ryuk 은 JVM 이 비정상 종료했을 때 남는 컨테이너를 치우는 장치다.
+> 러너에서 끄면 크래시한 실행의 고아 컨테이너가 쌓인다. 로컬에서는 `docker ps` 로 눈에 보이고
+> 직접 지울 수 있지만 러너에서는 그렇지 않다. 이 비대칭이 의도된 것이다.
+
+레포가 이미 WSL 네이티브 경로에 있다는 전제다. 아직 `/mnt/c` 에 있다면 **그것부터 옮긴다** —
+Ryuk 0.5초보다 27초가 먼저다 (위 "최초 1회 셋업 0").
 
 ## 보안 규칙 (요약, 원문은 §7)
 
