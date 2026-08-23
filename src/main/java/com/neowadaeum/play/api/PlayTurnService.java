@@ -2,6 +2,7 @@ package com.neowadaeum.play.api;
 
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
+import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.domain.PlaySession;
@@ -10,7 +11,9 @@ import com.neowadaeum.play.domain.Turn;
 import com.neowadaeum.play.orchestrator.TurnOutcome;
 import com.neowadaeum.play.orchestrator.TurnPipeline;
 import com.neowadaeum.play.repository.PlaySessionRepository;
+import com.neowadaeum.common.web.IdempotencyStore;
 import com.neowadaeum.play.repository.TurnRepository;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,17 +36,25 @@ public class PlayTurnService {
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
+	/** §6.3 — 서버 전체 응답 예산. 진행 중인 요청을 기다리는 상한이기도 하다. */
+	private static final Duration SERVER_BUDGET = Duration.ofSeconds(28);
+
 	private final PlaySessionRepository sessions;
 	private final TurnRepository turns;
 	private final StoryVersionFacade storyVersions;
 	private final TurnPipeline pipeline;
+	private final TurnGuards guards;
+	private final IdempotencyStore idempotency;
 
 	public PlayTurnService(PlaySessionRepository sessions, TurnRepository turns,
-			StoryVersionFacade storyVersions, TurnPipeline pipeline) {
+			StoryVersionFacade storyVersions, TurnPipeline pipeline, TurnGuards guards,
+			IdempotencyStore idempotency) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.storyVersions = storyVersions;
 		this.pipeline = pipeline;
+		this.guards = guards;
+		this.idempotency = idempotency;
 	}
 
 	/**
@@ -60,13 +71,77 @@ public class PlayTurnService {
 					Map.of("currentTurnNo", session.getTurnNo(), "chapterNo", session.getChapterNo()));
 		}
 
-		int chosenOrder = resolveChoiceOrder(sessionId, request.choiceId());
+		// R6.5 — 서버가 강제하는 쿨다운. 클라이언트 쿨다운과 별개다.
+		this.guards.requireNotCoolingDown(sessionId);
 
-		TurnOutcome outcome = this.pipeline.advance(sessionId, chosenOrder);
-		if (outcome.status() == TurnOutcome.TurnStatus.SAFETY_BLOCKED) {
-			throw safetyBlocked(outcome);
+		int chosenOrder = resolveChoiceOrder(sessionId, request.choiceId());
+		String key = idempotencyKey(playerRef, sessionId, request);
+
+		// R6.2 — 같은 요청이 이미 진행 중이면 기다렸다 그 결과를 준다. 409 를 주면 클라이언트가
+		// 다시 눌러 결국 두 번 생성된다 — 보호 대상은 중복 과금이다.
+		if (!this.idempotency.reserve(key)) {
+			return this.idempotency.awaitResult(key, SERVER_BUDGET)
+					.map(json -> JSON.readValue(json, TurnView.class))
+					.orElseThrow(() -> new ApiException(ErrorCode.CONCURRENT_GENERATION));
 		}
-		return view(session.getStoryVersionId(), outcome);
+
+		return generate(playerRef, session, sessionId, chosenOrder, key);
+	}
+
+	/**
+	 * 실제 생성. 락과 실패 카운터가 여기를 감싼다.
+	 *
+	 * <p><b>{@code finally} 에서 락을 푼다.</b> 실패 경로에서 빠뜨리면 그 계정은 TTL 이 지날 때까지
+	 * 아무것도 못 한다.
+	 */
+	private TurnView generate(UUID playerRef, PlaySession session, UUID sessionId, int chosenOrder, String key) {
+		// §4.3-2 — 동시 생성 락(계정당 1개).
+		this.guards.acquireGenerationLock(playerRef);
+		try {
+			TurnOutcome outcome = this.pipeline.advance(sessionId, chosenOrder);
+			if (outcome.status() == TurnOutcome.TurnStatus.SAFETY_BLOCKED) {
+				throw safetyBlocked(outcome);
+			}
+
+			TurnView view = view(session.getStoryVersionId(), outcome);
+			this.idempotency.complete(key, JSON.writeValueAsString(view));
+			this.guards.recordSuccess(sessionId);
+			return view;
+		}
+		catch (TimeLimitedStoryProvider.GenerationTimedOutException ex) {
+			// R6.4 — 세션은 직전 턴 상태 그대로다. §4.3 의 8단계 이전에서 끊겼다.
+			failed(sessionId, key);
+			throw new ApiException(ErrorCode.GENERATION_TIMEOUT);
+		}
+		catch (RuntimeException ex) {
+			failed(sessionId, key);
+			throw ex;
+		}
+		finally {
+			this.guards.releaseGenerationLock(playerRef);
+		}
+	}
+
+	/**
+	 * 실패를 기록하고 멱등 자리를 비운다.
+	 *
+	 * <p>비우지 않으면 <b>같은 선택으로는 영영 재시도할 수 없다.</b> 실패는 결과가 아니다.
+	 */
+	private void failed(UUID sessionId, String key) {
+		this.idempotency.release(key);
+		this.guards.recordFailure(sessionId);
+	}
+
+	/**
+	 * R6.2 — 동일 {@code (sessionId, turnNo, choiceId)} 가 식별자다.
+	 *
+	 * <p><b>{@code playerRef} 를 넣는다.</b> 없으면 다른 사람의 결과를 받을 수 있는 키가 된다.
+	 * 클라이언트가 보낸 {@code Idempotency-Key} 헤더는 있으면 함께 넣는다 — 같은 선택을 의도적으로
+	 * 다시 하려는 경우를 구분할 수 있어야 한다.
+	 */
+	private static String idempotencyKey(UUID playerRef, UUID sessionId, TurnRequestBody request) {
+		return "idem:%s:%s:%d:%s:%s".formatted(playerRef, sessionId, request.turnNo(), request.choiceId(),
+				(request.idempotencyKey() != null) ? request.idempotencyKey() : "");
 	}
 
 	/** 세션 시작 직후의 첫 턴을 응답으로 바꾼다 (§4.2). */
