@@ -38,7 +38,8 @@ VALUES (
 -- choice_policy 는 §2.3 의 값 그대로다.
 -- state_schema 는 R4.1 화이트리스트이며 수치 필드는 R4.2 의 min / max / maxDeltaPerTurn 을 갖는다.
 -- 델타 상한은 원문의 기본값 ±5 를 쓴다 — 이 작품만의 값을 임의로 정하지 않는다.
-INSERT INTO story_version (id, story_id, version_no, world_prompt, choice_policy, state_schema, published_at)
+INSERT INTO story_version (id, story_id, version_no, world_prompt, choice_policy,
+                           state_schema, state_template_key, published_at)
 VALUES (
     '11111111-1111-4111-8111-111111111111',
     '11111111-1111-4111-8111-000000000001',
@@ -51,6 +52,7 @@ VALUES (
        },
        "flags": ["met_yuna", "shared_lunch"]
      }'::JSONB,
+    'affinity',
     TIMESTAMPTZ '2026-01-01 00:00:00+00'
 );
 

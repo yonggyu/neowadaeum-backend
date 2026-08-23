@@ -72,13 +72,20 @@ CREATE TABLE story_version (
 
     -- R4.1 — GameState 화이트리스트. 미정의 키는 AI 가 반환해도 무시한다.
     -- R4.2 — 수치 필드는 min / max / maxDeltaPerTurn 을 갖는다 (기본 델타 상한 ±5).
-    state_schema  JSONB       NOT NULL,
+    state_schema       JSONB  NOT NULL,
+
+    -- §13-9 — R4.4 는 "UGC 작성자가 state_schema 를 자유 정의하게 하지 않는다. 플랫폼 템플릿 중
+    -- 선택하게 한다"를 요구한다. 자유 정의를 허용하면 clamp 규칙과 disabled 판정을 일반화할 수 없다.
+    -- 정정본이 §2.3(이 컬럼이 없다)을 이긴다.
+    state_template_key TEXT   NOT NULL,
     published_at  TIMESTAMPTZ NOT NULL,
 
     CONSTRAINT story_version_pkey PRIMARY KEY (id),
     CONSTRAINT story_version_story_fkey FOREIGN KEY (story_id) REFERENCES story (id),
     CONSTRAINT story_version_no_key UNIQUE (story_id, version_no),
-    CONSTRAINT story_version_no_check CHECK (version_no >= 1)
+    CONSTRAINT story_version_no_check CHECK (version_no >= 1),
+    CONSTRAINT story_version_state_template_key_check
+        CHECK (state_template_key IN ('affinity', 'flag', 'numeric'))
 );
 
 -- ── 캐릭터 ───────────────────────────────────────────────────

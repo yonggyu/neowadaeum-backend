@@ -68,7 +68,7 @@ class CatalogSeedTests extends ContainerTestBase {
 	void S2_3_story_version_columns_match_the_requirement_source() throws SQLException {
 		assertThat(columns("story_version")).containsExactlyInAnyOrder(
 				"id", "story_id", "version_no", "world_prompt", "choice_policy",
-				"state_schema", "published_at");
+				"state_schema", "state_template_key", "published_at");
 	}
 
 	/** §2.3 {@code character} + §13-1 — 원문 컬럼에 {@code story_version_id} 가 더해진다. */
@@ -147,6 +147,24 @@ class CatalogSeedTests extends ContainerTestBase {
 		assertThat(policy.get("min").asInt()).isEqualTo(1);
 		assertThat(policy.get("max").asInt()).isEqualTo(4);
 		assertThat(policy.get("preferred").asInt()).isEqualTo(3);
+	}
+
+	/**
+	 * §13-9 · R4.4 — {@code state_schema} 는 플랫폼 템플릿 중 하나여야 한다.
+	 *
+	 * <p>작성자가 자유 정의하게 두면 clamp 규칙(R4.2)과 disabled 판정을 일반화할 수 없다.
+	 * 템플릿 키가 없으면 "어떤 규칙을 적용할 것인가"를 매번 스키마 모양에서 추론해야 한다.
+	 */
+	@Test
+	void S13_9_state_schema_is_bound_to_a_platform_template() throws SQLException {
+		assertThat((String) scalarObject("SELECT state_template_key FROM story_version"))
+				.isEqualTo("affinity");
+	}
+
+	/** §13-9 — 템플릿은 affinity / flag / numeric 셋뿐이다. */
+	@Test
+	void S13_9_unknown_state_template_key_is_rejected() {
+		assertRejected(CHECK_VIOLATION, () -> insertVersion("freeform"));
 	}
 
 	/** R2.3 — 공식 작품은 {@code author_type = 'official'} 이고 작성자 참조를 갖지 않는다. */
@@ -283,6 +301,20 @@ class CatalogSeedTests extends ContainerTestBase {
 			statement.setString(2, slug);
 			statement.setString(3, shortDesc);
 			statement.setString(4, authorType);
+			statement.executeUpdate();
+		}
+	}
+
+	private void insertVersion(String templateKey) throws SQLException {
+		try (Connection connection = dataSource.getConnection();
+				PreparedStatement statement = connection.prepareStatement("""
+						INSERT INTO story_version (id, story_id, version_no, world_prompt,
+						                           choice_policy, state_schema, state_template_key, published_at)
+						VALUES (?, ?, 99, '검증용', '{}'::JSONB, '{}'::JSONB, ?, now())
+						""")) {
+			statement.setObject(1, UUID.randomUUID());
+			statement.setObject(2, SEED_STORY);
+			statement.setString(3, templateKey);
 			statement.executeUpdate();
 		}
 	}
