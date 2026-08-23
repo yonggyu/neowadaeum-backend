@@ -568,10 +568,11 @@ com.neowadaeum
 ├── common/            공통 응답·에러·시간·ID·정규화 유틸
 │   ├── error/         ErrorCode enum, GlobalExceptionHandler
 │   ├── web/           ApiResponse, 공통 필터, Idempotency 인터셉터
-│   └── support/       Clock, UuidGenerator, TextNormalizer
+│   ├── support/       Clock, UuidGenerator, TextNormalizer
+│   └── spi/           모듈 간 계약. 구현은 데이터를 소유한 모듈에 있다 (ADR-0002, ADR-0003)
 ├── identity/          회원·OAuth·동의·연령 게이트
 ├── catalog/           작품·버전·챕터·엔딩·캐릭터·장르
-├── authoring/         UGC 드래프트·검수·신고·블록리스트
+├── authoring/         UGC 드래프트·검수·신고·블록리스트 ★소유 (ADR-0002)
 ├── play/              세션·턴·히스토리
 │   ├── engine/        GameStateEngine, ChapterEngine, EndingEngine
 │   └── orchestrator/  TurnOrchestrator (§4.3 파이프라인)
@@ -581,9 +582,9 @@ com.neowadaeum
 │   ├── prompt/        PromptAssembler, 레이어 빌더, TokenBudget
 │   ├── schema/        TurnOutput DTO, 파서, 스키마 검증
 │   └── log/           AiCallLogWriter
-├── safety/            L0~L3 판정기, 블록리스트, 카테고리 정책
+├── safety/            L0~L3 판정기, 카테고리 정책 (블록리스트는 common/spi 로 조회만 — ADR-0002)
 ├── admin/             디버그·롤백·재생성·검수 큐·감사 로그
-├── batch/             ending_stat 집계, 세션 만료, UGC 재스캔, 로그 파기
+├── batch/             스케줄링·실행만. 로직은 데이터 소유 모듈이 구현한다 (ADR-0003)
 └── config/            DataSource 4분할, Security, RestClient, Redis, Modulith
 ```
 
@@ -614,12 +615,17 @@ catalog   ← identity(X)  // player_ref만 받는다
 play      ← catalog(파사드 O), identity(X)
 authoring ← catalog(파사드 O), safety(O)
 ai        ← (도메인 모듈 참조 X). 순수 DTO만 입출력받는다
-safety    ← (도메인 모듈 참조 X)
-admin     ← 전 모듈(O)
+safety    ← (도메인 모듈 참조 X). 블록리스트는 common/spi 로 주입받는다 (ADR-0002)
+batch     ← common만. 배치 로직은 데이터 소유 모듈이 common/spi 를 구현한다 (ADR-0003)
+admin     ← 도메인 전 모듈(O). batch 는 제외한다 — 아래 참조
+config    ← 전 모듈(O). 배선 지점이며 도메인 로직을 갖지 않는다
 ```
 
 - `ai` 패키지는 **도메인 엔티티를 알지 못한다.** `TurnRequest` / `TurnResult` DTO만 주고받는다. 이것이 R12.1(회원 식별정보 미포함)을 구조적으로 보장한다.
 - 모듈 간 호출은 `XxxFacade` 인터페이스로만. 다른 모듈의 Repository·Entity를 직접 참조하면 리뷰에서 반려한다.
+- **`safety`와 `batch`는 파사드가 아니라 SPI를 쓴다.** 둘 다 자기가 필요한 데이터의 소유자가 아니면서 그 데이터를 참조할 수 없는 모듈이다. 인터페이스는 `common/spi`에 두고 **데이터를 소유한 모듈이 구현**하며, 호출자는 주입받는다. 방향이 반대라는 점이 요점이다 — `safety → authoring`이 아니라 `authoring → common/spi ← safety`다.
+- **SPI 미주입 시 동작**: 구현 빈이 없으면 **부팅 실패**, 런타임 조회 실패는 **차단(fail-closed)** + `ERROR` + 알람. 세이프티에서 fail-open은 장애가 곧 검수 우회다 (I-2, ADR-0002).
+- **`admin ← batch`를 허용하지 않는 이유**: S-10(감사 로그 파기) 때문에 `batch → admin`이 필요해지는 순간 양방향이 되어 순환이다. B-02가 `admin → batch`를 미리 끊어 그 가능성을 없앴다. `admin`의 "전 모듈"은 **도메인 모듈 전부**를 뜻하며 `batch`·`config`는 포함하지 않는다 (ADR-0003).
 
 ---
 
@@ -1280,7 +1286,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | **B-07** | Identity 스키마 & 엔티티 | `user`, `oauth_identity`, `consent_log`, `ai_notice_impression`(신설) | 마이그레이션 + 엔티티 매핑 테스트 | B-05-1 |
 | **B-08** | Catalog 스키마 & 엔티티 | `story`, `story_version`, `character`, `chapter_def`, `ending_def`, `genre`, `story_genre`, `author_profile`(신설), `ending_stat` | **§13-1 정정 반영**: `character`/`chapter_def`/`ending_def`는 `story_version_id`를 FK로 갖는다. `is_default` partial unique index 존재 | B-05-1 |
 | **B-09** | Session 스키마 & 엔티티 | `play_session`, `turn`, `game_state_snapshot`, `story_summary` | 작품당 active 세션 1개 partial unique index. 스냅샷·요약에 `deleted_at` 존재(롤백용) | B-05-1 |
-| **B-10** | Authoring 스키마 & 엔티티 (P0: 스키마만) | `story_draft`, `story_review`, `content_report`, `blocklist_entry` | 마이그레이션 통과. **기능 구현은 B-40 이후** | B-05-1 |
+| **B-10** | Authoring 스키마 & 엔티티 (P0: 스키마만) | `story_draft`, `story_review`, `content_report`, `blocklist_entry` | 마이그레이션 통과. **기능 구현은 B-40 이후.** `blocklist_entry`는 **authoring 소유 / catalog 스키마**(ADR-0002) | B-05-1 |
 | **B-11** | Prompt Log / Audit 스키마 | `ai_call_log`(신설 정의 §13-4), `admin_audit_log`, `access_audit_log`, `service_config` | 별도 스키마·별도 DataSource로 분리 확인 | B-05-1 |
 
 ### 단계 2 — 기본 기능 (개발 순서 ④) · **P0**
@@ -1315,7 +1321,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | **B-27** | 조건 평가기 (Condition DSL) | `{"all":[{"gte":["affinity.yuna",30]},{"has":["flags","first_talk"]}]}` 평가기 | 연산자: `all` `any` `not` `gte` `gt` `lte` `lt` `eq` `has` `turnGte`. **난수 없음**(I-15). 미정의 키 참조 시 false + 경고 로그 | B-26 |
 | **B-28** | Chapter 엔진 | `ChapterEngine` — §4.5 로직 | AI 제안값 무시 테스트. `max_turns` 강제 전환 테스트 | B-27 |
 | **B-29** | Ending 엔진 | `EndingEngine` — §4.6 로직, 기본 엔딩 폴백 | §10.1-11 통과. `endingIndex`/`totalEndings` 시크릿 제외 | B-27 |
-| **B-30** | Safety L2 판정기 | 별개 모델 호출 + 블록리스트 + 정규화기, 카테고리별 정책(즉시차단 vs 재생성 1회) | I-12, I-13 테스트. 즉시차단에서 재생성 미발생 확인 | B-24 |
+| **B-30** | Safety L2 판정기 | 별개 모델 호출 + 블록리스트 조회 SPI(`common/spi`) + 정규화기, 카테고리별 정책(즉시차단 vs 재생성 1회) | I-12, I-13 테스트. 즉시차단에서 재생성 미발생 확인. **SPI 미주입 시 부팅 실패 · 조회 실패 시 차단**(ADR-0002) | B-24 |
 | **B-31** | 텍스트 정규화기 | 공백 제거·자모 분리·유사 문자/숫자 치환 | 공백 삽입형 · 숫자 치환형 · 자모 혼용형이 전부 동일 정규화 값으로 수렴 (R9.2). **실제 문자열은 테스트 픽스처에만 두고 문서에 적지 않는다 (S-11)** | B-03 |
 | **B-32** | **Turn 오케스트레이터** ★최우선 | `POST /sessions/{id}/turns` — §4.3 13단계 전체 | §10.1의 1,5,6,7,8,9,10번 전부 통과. 트랜잭션 내 외부 호출 0건 | B-21,26,28,29,30 |
 | **B-33** | 멱등성·동시성·쿨다운 | Redis 기반 Idempotency-Key, 계정당 동시 생성 락, 연속 실패 3회 쿨다운 | R6.2, R6.5 테스트. 중복 과금 0건 | B-32 |
@@ -1329,7 +1335,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | **B-36** | My Stories API | `GET /me/sessions`, `GET /me/stories` | 쿼리 파라미터 값이 §13-6 정정안을 따름 | B-17 |
 | **B-37** | Landing API | `GET /landing` | `isLoggedIn` 미반환(클라이언트 판단) | B-15 |
 | **B-38** | Rate limit / Quota | 턴 분당 10, precheck 분당 20, 일일 토큰 한도, IP 기준 별도 제한(S-8) | 429 3종이 코드로 구분됨 | B-33 |
-| **B-39** | `ending_stat` 배치 집계 | 스케줄 배치, 50건 미만 `null` 처리 | 실시간 계산 경로 0건(I-20) | B-29 |
+| **B-39** | `ending_stat` 배치 집계 | 스케줄 배치(batch) + **집계 SPI 를 catalog·play 가 구현**(`common/spi`) | 실시간 계산 경로 0건(I-20). **batch 가 catalog·play 를 직접 참조하지 않음**(ADR-0003) | B-29 |
 
 ### 단계 6 — 관리자 · **P1**
 
@@ -1354,7 +1360,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 
 | # | 작업 | 산출물 | 완료 조건 | 의존 |
 |---|---|---|---|---|
-| **B-49** | 블록리스트 관리 | `POST /admin/blocklist`, 정규화 저장, 운영 중 갱신 | R2.5, R9.4 | B-31, B-40 |
+| **B-49** | 블록리스트 관리 | `POST /admin/blocklist`, 정규화 저장, 운영 중 갱신, **authoring 의 `common/spi` 조회 구현** | R2.5, R9.4. **갱신 → 캐시 무효화 경로가 존재**(ADR-0002) | B-31, B-40 |
 | **B-50** | precheck (L0) | `POST /authoring/drafts/{id}/precheck` — `{state, findings:[{field, span, kind, message}]}` | span 정확도 테스트. 분당 20회 제한 | B-49, B-24 |
 | **B-51** | 드래프트 CRUD | `POST/PATCH /authoring/drafts` 5단계 저장 | `blocked` 상태에서 서버가 다음 단계 거부(R8.3) | B-50, B-10 |
 | **B-52** | 챕터·엔딩 AI 초안 | `POST /authoring/drafts/{id}/outline` — 챕터 5 + 엔딩 3 | 초안 결과도 검수 대상(R7.15). 조건은 템플릿 선택만(R7.16) | B-51, B-24 |
@@ -1364,14 +1370,14 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | **B-56** | 게시 & 버전 발행 | 승인 시 `story_version` 발행, 진행 중 세션 영향 없음 | §10.1-12 통과 | B-55 |
 | **B-57** | 신고 API (L3) | `POST /reports`, 누적 3건 자동 정지, 중복 신고자 제외 | R8.9. IP 기준 rate limit(S-8) | B-54 |
 | **B-58** | 정지 처리 & 읽기 전용 | `suspended` 세션 읽기 전용, `423 STORY_SUSPENDED`, `story_suspended` resume 상태 | R8.10, R13.3 | B-57, B-17 |
-| **B-59** | 사후 검수 배치 | 랜덤 샘플링(R8.11), 블록리스트 갱신 시 승인작 재스캔(R9.4) | 배치 실행 결과가 검수 큐에 적재 | B-55 |
+| **B-59** | 사후 검수 배치 | 랜덤 샘플링(R8.11), 블록리스트 갱신 시 승인작 재스캔(R9.4), **재스캔 SPI 를 authoring 이 구현** | 배치 실행 결과가 검수 큐에 적재 — **적재 주체는 authoring**(ADR-0003) | B-55 |
 | **B-60** | UGC 비용 통제 | 일일 `draftOutline` 호출·미리보기 턴·작품 개수 상한 | R8.12 | B-52, B-38 |
 
 ### 단계 9 — 운영 / 배포 (개발 순서 ⑬)
 
 | # | 작업 | 산출물 | 완료 조건 | 의존 |
 |---|---|---|---|---|
-| **B-61** | 데이터 파기 배치 | 프롬프트 로그 90일, 세션 만료 90일, 탈퇴 시 삭제·익명화, `player_ref` 매핑 파기 | R12.4, R12.5. **실제로 지워지는지 테스트** | B-11 |
+| **B-61** | 데이터 파기 배치 | 프롬프트 로그 90일, 세션 만료 90일, 탈퇴 시 삭제·익명화, `player_ref` 매핑 파기. **파기 SPI 를 ai·play·identity·admin 이 각각 구현**(ADR-0003) | R12.4, R12.5. **실제로 지워지는지 테스트.** 약관 문구와 파기 주기 일치 확인 | B-11 |
 | **B-62** | 탈퇴 & UGC 예외 처리 | 탈퇴 시 공개 UGC 처리 정책 구현 | §13-9 결정에 따름. 약관 문구와 일치 | B-61, B-56 |
 | **B-63** | 배포 파이프라인 | 이미지 빌드(시크릿 미포함, S-2), 마이그레이션 순서, 롤백 절차 | 스테이징 무중단 배포 1회 성공 | B-04 |
 | **B-64** | 운영 런북 | `docs/runbook/` — Provider 장애, 세이프티 오탐 급증, 비용 폭주, 유출 대응 | 각 시나리오별 1페이지 | B-48 |
