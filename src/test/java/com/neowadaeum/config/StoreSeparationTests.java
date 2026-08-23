@@ -28,6 +28,10 @@ import org.springframework.context.annotation.Import;
  *
  * <p>초기에는 동일 인스턴스 내 스키마 분리로 시작하고 트래픽·규제 요구에 따라 인스턴스 분리로 승격한다.
  * <b>승격 시 애플리케이션 코드는 변경이 없어야 한다</b> — 그것이 이 규칙들의 존재 이유다.
+ *
+ * <p><b>이 테스트 자체는 동일 인스턴스를 전제한다.</b> 커넥션 하나로 {@code pg_catalog} 를 읽어 네 스키마를
+ * 한 번에 관찰하기 때문이다. §5.3 의 인스턴스 분리 승격 시에는 스토어별 조회로 나눠야 한다 —
+ * 애플리케이션 코드가 아니라 이 검증 방식이 바뀐다.
  */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest

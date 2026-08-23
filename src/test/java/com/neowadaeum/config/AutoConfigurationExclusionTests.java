@@ -26,6 +26,11 @@ import org.springframework.util.ClassUtils;
  * Boot 4 에서 자동설정 클래스가 전부 기능별 패키지로 옮겨졌으므로 낡은 이름은 이렇게 무력화된다.
  * 그래서 이 테스트는 (1) 적힌 이름이 실재하는 자동설정 클래스인지, (2) 그 결과 컨텍스트에 어떤 빈이
  * 있고 없는지를 본다.
+ *
+ * <p>조사 결과(B-05) — B-05 이전에 쓰이던
+ * {@code org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration} 은 Boot 4.1 에서도 유효한
+ * 이름이었다. 즉 B-02~B-04 구간의 제외는 실제로 동작하고 있었다. 이 테스트는 사고의 기록이 아니라
+ * 사후 확인이며, 같은 확인을 반복하지 않기 위해 남긴다.
  */
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
