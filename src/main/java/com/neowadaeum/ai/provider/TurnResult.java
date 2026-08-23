@@ -1,7 +1,7 @@
 package com.neowadaeum.ai.provider;
 
 import java.util.List;
-import java.util.Map;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Provider 가 돌려주는 턴 생성 결과 (S-3).
@@ -22,14 +22,18 @@ import java.util.Map;
  *
  * @param narrative            턴 본문
  * @param choices              선택지. 엔딩 턴이면 빈 목록이다 (§4.6)
- * @param proposedStateChanges AI 가 제안하는 상태 변화. 서버가 필터·clamp 한다
+ * @param proposedStateChanges AI 가 제안하는 상태 변화. 서버가 필터·clamp 한다.
+ *                             <b>{@code Map<String, Integer>} 가 아니라 원시 JSON 이다</b> —
+ *                             §5.2 의 {@code stateChanges} 는 수치 델타와 배열 연산자
+ *                             ({@code flags.add} 등, §13-9)가 섞인 형태다. 타입을 좁히면
+ *                             그 절반을 표현할 수 없고, 실제로 S-9 에서 그 사실이 드러났다
  * @param chapterAdvanceSuggested 챕터 전환 제안. 서버 판정에 구속력이 없다 (R7.1)
  * @param endingSuggested      엔딩 제안 식별자. 조건이 매칭되지 않으면 무시된다 (R7.9). 없으면 {@code null}
  */
 public record TurnResult(
 		String narrative,
 		List<ProposedChoice> choices,
-		Map<String, Integer> proposedStateChanges,
+		JsonNode proposedStateChanges,
 		boolean chapterAdvanceSuggested,
 		String endingSuggested) {
 
@@ -38,7 +42,7 @@ public record TurnResult(
 			throw new IllegalArgumentException("narrative is required");
 		}
 		choices = List.copyOf(choices == null ? List.of() : choices);
-		proposedStateChanges = Map.copyOf(proposedStateChanges == null ? Map.of() : proposedStateChanges);
+
 	}
 
 	/**

@@ -2,8 +2,8 @@ package com.neowadaeum.ai.provider.fixed;
 
 import com.neowadaeum.ai.provider.TurnResult;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import tools.jackson.databind.JsonNode;
 
 /**
  * 시나리오 파일 1벌의 표현 (S-3).
@@ -42,7 +42,7 @@ public record FixedStoryScenario(UUID storyVersionRef, String description, List<
 			Integer chosenChoiceOrder,
 			String narrative,
 			List<Choice> choices,
-			Map<String, Integer> proposedStateChanges,
+			JsonNode proposedStateChanges,
 			boolean chapterAdvanceSuggested,
 			String endingSuggested) {
 

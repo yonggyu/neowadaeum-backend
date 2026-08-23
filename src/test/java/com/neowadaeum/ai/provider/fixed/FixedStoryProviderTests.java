@@ -8,7 +8,6 @@ import com.neowadaeum.ai.provider.TurnResult;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -82,19 +81,46 @@ class FixedStoryProviderTests {
 	 */
 	@Test
 	void B44_shipped_dev_scenario_replays_to_an_ending() {
-		FixedStoryScenarioLoader loader = new FixedStoryScenarioLoader(JsonMapper.builder().build(),
-				new org.springframework.core.io.support.PathMatchingResourcePatternResolver(),
-				"classpath*:scenarios/demo-first-day.json");
-		FixedStoryProvider provider = new FixedStoryProvider(loader.load());
+		FixedStoryProvider provider = demoProvider();
 
 		assertThat(provider.generateTurn(TurnRequest.opening(DEMO_STORY)).choices()).hasSize(2);
 		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 1, 1)).endingSuggested()).isNull();
 		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 2, 1)).chapterAdvanceSuggested()).isTrue();
+		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 3, 1)).endingSuggested()).isNull();
 
-		TurnResult ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 3, 1));
+		TurnResult ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 4, 1));
 
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-first-light");
+	}
+
+	/**
+	 * B-44 선행 — <b>두 갈래 모두</b> 끝까지 간다.
+	 *
+	 * <p>한 갈래만 완주하면 다른 갈래는 도중에 시나리오가 끊긴 채로 남고, S-9 에서
+	 * "시나리오에 없는 요청"으로 터진다. 실제로 S-9-1 착수 때 그렇게 드러났다.
+	 */
+	@Test
+	void B44_the_other_branch_also_replays_to_an_ending() {
+		FixedStoryProvider provider = demoProvider();
+
+		for (int turnNo = 1; turnNo <= 7; turnNo++) {
+			assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, turnNo, 2)).endingSuggested())
+					.as("%d 턴에서 끝나면 안 된다", turnNo)
+					.isNull();
+		}
+
+		TurnResult ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 8, 2));
+
+		assertThat(ending.choices()).isEmpty();
+		assertThat(ending.endingSuggested()).isEqualTo("ending-quiet-exit");
+	}
+
+	private static FixedStoryProvider demoProvider() {
+		FixedStoryScenarioLoader loader = new FixedStoryScenarioLoader(JsonMapper.builder().build(),
+				new org.springframework.core.io.support.PathMatchingResourcePatternResolver(),
+				"classpath*:scenarios/demo-first-day.json");
+		return new FixedStoryProvider(loader.load());
 	}
 
 	/** §0.2 — 미구현 경로를 스텁으로 통과시키지 않는다. 없는 턴은 지어내지 않고 던진다. */
@@ -121,7 +147,7 @@ class FixedStoryProviderTests {
 	@Test
 	void I15_duplicate_scenario_entry_is_rejected_at_load_time() {
 		FixedStoryScenario.Entry entry = new FixedStoryScenario.Entry(0, null, "본문",
-				List.of(new FixedStoryScenario.Entry.Choice(1, "선택")), Map.of(), false, null);
+				List.of(new FixedStoryScenario.Entry.Choice(1, "선택")), JsonMapper.builder().build().readTree("{}"), false, null);
 		FixedStoryScenario scenario = new FixedStoryScenario(FIXTURE_STORY, "중복", List.of(entry, entry));
 
 		assertThatThrownBy(() -> new FixedStoryProvider(List.of(scenario)))

@@ -111,24 +111,54 @@ public class Turn {
 	/**
 	 * 생성된 턴을 기록한다. 선택은 다음 요청에서 채워진다(§4.3-3) — 여기서는 비어 있다.
 	 *
-	 * <p><b>{@code safetyVerdict} 는 인자다.</b> 기본값을 두면 검수를 건너뛴 경로가 조용히 통과로
-	 * 기록된다. 턴은 §4.3-7 의 L2 이후에만 저장되므로 이 시점에 판정은 이미 정해져 있다 (I-2).
+	 * <p>인자를 {@link TurnDraft} 로 묶은 이유는 열 개 가까운 값을 나열하면 <b>순서를 잘못 넣어도
+	 * 컴파일이 통과하기 때문</b>이다. 같은 타입이 여럿 있는 자리에서 그 실수는 조용하다.
 	 */
-	public static Turn create(UUID sessionId, int turnNo, int chapterNo, String paragraphs, String choices,
-			boolean ending, SafetyVerdict safetyVerdict, Instant now) {
-		if (safetyVerdict == null) {
-			throw new IllegalArgumentException("safetyVerdict is required (I-2, R9.3)");
+	public static Turn create(TurnDraft draft, Instant now) {
+		if (draft == null) {
+			throw new IllegalArgumentException("draft is required");
 		}
 		Turn turn = new Turn();
-		turn.sessionId = sessionId;
-		turn.turnNo = turnNo;
-		turn.chapterNo = chapterNo;
-		turn.paragraphs = paragraphs;
-		turn.choices = choices;
-		turn.ending = ending;
-		turn.safetyVerdict = safetyVerdict;
+		turn.sessionId = draft.sessionId();
+		turn.turnNo = draft.turnNo();
+		turn.chapterNo = draft.chapterNo();
+		turn.paragraphs = draft.paragraphs();
+		turn.choices = draft.choices();
+		turn.speakerName = draft.speakerName();
+		turn.chapterChanged = draft.chapterChanged();
+		turn.ending = draft.ending();
+		turn.endingId = draft.endingId();
+		turn.safetyVerdict = draft.safetyVerdict();
 		turn.createdAt = now;
 		return turn;
+	}
+
+	/**
+	 * 턴 생성 입력 (§4.3-11).
+	 *
+	 * <p><b>{@code safetyVerdict} 에 기본값이 없다.</b> 판정 없이 턴을 만들 수 없게 하기 위해서다 —
+	 * 턴은 §4.3-7 의 L2 이후에만 저장되므로 이 시점에 판정은 이미 정해져 있다 (I-2, R9.3).
+	 */
+	public record TurnDraft(
+			UUID sessionId,
+			int turnNo,
+			int chapterNo,
+			String paragraphs,
+			String choices,
+			String speakerName,
+			boolean chapterChanged,
+			boolean ending,
+			UUID endingId,
+			SafetyVerdict safetyVerdict) {
+
+		public TurnDraft {
+			if (safetyVerdict == null) {
+				throw new IllegalArgumentException("safetyVerdict is required (I-2, R9.3)");
+			}
+			if (ending == (endingId == null)) {
+				throw new IllegalArgumentException("an ending turn carries its ending id, and only it does (R7.8)");
+			}
+		}
 	}
 
 	public UUID getId() {

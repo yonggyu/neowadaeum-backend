@@ -197,7 +197,7 @@ PR 400줄 · 브랜치 수명 3일. 상세는 `docs/git-workflow.md`.
 | `docs/invariants-and-security.md` | I-1~I-20 전문, §7 보안 규칙 전문(S-1~S-11) |
 | `docs/engineering-guide.md` | 제품 개요 · 기술 스택 · 용어 사전 · 핵심 플로우 · 아키텍처 · 코딩 컨벤션 · 테스트 규칙 · 에러 코드 · 자주 하는 실수 |
 | `docs/git-workflow.md` | Git 규칙 전문(§8) |
-| `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 |
+| `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 |
 | `docs/openapi.yaml` | API 계약 — 런타임 진실의 원천. **아직 없다(B-06).** `.gitignore` 예외는 처리됨(#36) |
 | `README.md` | 로컬 실행 · 스키마 4개 · 마이그레이션 명명 규칙 |
 
