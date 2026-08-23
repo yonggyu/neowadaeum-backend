@@ -1,0 +1,84 @@
+{
+  "storyVersionRef": "11111111-1111-4111-8111-111111111111",
+  "description": "S-3 결정론 시나리오. 시작(turnNo 0)부터 엔딩까지 분기 한 번을 포함해 재생된다. 개발 도구이며 실제 작품이 아니다.",
+  "entries": [
+    {
+      "turnNo": 0,
+      "chosenChoiceOrder": null,
+      "narrative": "전학 첫날. 복도 창으로 들어온 빛이 아직 이름을 못 외운 교실 번호판 위에 걸려 있다. 문 앞에서 한 박자 숨을 고른다.",
+      "choices": [
+        { "order": 1, "text": "문을 열고 들어간다" },
+        { "order": 2, "text": "복도에서 조금 더 기다린다" }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 1,
+      "chosenChoiceOrder": 1,
+      "narrative": "문이 열리자 스무 개의 시선이 한꺼번에 돌아온다. 창가 자리에 앉은 유나가 먼저 눈을 맞추고, 아주 짧게 고개를 끄덕인다.",
+      "choices": [
+        { "order": 1, "text": "유나 쪽으로 걸어간다" },
+        { "order": 2, "text": "빈 자리에 조용히 앉는다" }
+      ],
+      "proposedStateChanges": { "affinity.yuna": 3 },
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 1,
+      "chosenChoiceOrder": 2,
+      "narrative": "종이 울리고 나서야 문을 연다. 늦은 만큼 시선은 짧게 스치고 지나간다. 창가 자리의 유나만 잠깐 더 이쪽을 본다.",
+      "choices": [
+        { "order": 1, "text": "유나 쪽으로 걸어간다" },
+        { "order": 2, "text": "빈 자리에 조용히 앉는다" }
+      ],
+      "proposedStateChanges": { "affinity.yuna": 1 },
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 2,
+      "chosenChoiceOrder": 1,
+      "narrative": "\"자리 비었어.\" 유나가 옆 의자를 살짝 당겨 준다. 점심시간까지, 대화는 세 번쯤 끊기고 네 번쯤 다시 이어진다.",
+      "choices": [
+        { "order": 1, "text": "내일도 같이 점심을 먹자고 한다" },
+        { "order": 2, "text": "인사만 하고 돌아선다" }
+      ],
+      "proposedStateChanges": { "affinity.yuna": 5 },
+      "chapterAdvanceSuggested": true,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 2,
+      "chosenChoiceOrder": 2,
+      "narrative": "맨 뒷줄에 앉는다. 수업이 끝날 때까지 아무도 말을 걸지 않았고, 그건 생각보다 편했다.",
+      "choices": [
+        { "order": 1, "text": "내일도 같이 점심을 먹자고 한다" },
+        { "order": 2, "text": "인사만 하고 돌아선다" }
+      ],
+      "proposedStateChanges": { "affinity.yuna": 0 },
+      "chapterAdvanceSuggested": true,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 3,
+      "chosenChoiceOrder": 1,
+      "narrative": "\"내일도.\" 유나가 웃으며 대답한다. 하교길 그림자가 길어지고, 첫날이 첫날로만 끝나지는 않겠다는 예감이 든다.",
+      "choices": [],
+      "proposedStateChanges": { "affinity.yuna": 8 },
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": "ending-first-light"
+    },
+    {
+      "turnNo": 3,
+      "chosenChoiceOrder": 2,
+      "narrative": "가방을 메고 먼저 교문을 나선다. 이름을 세 개쯤 외웠고, 그중 하나는 유나였다. 첫날은 그렇게 끝난다.",
+      "choices": [],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": "ending-quiet-exit"
+    }
+  ]
+}
