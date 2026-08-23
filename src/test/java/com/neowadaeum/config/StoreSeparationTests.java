@@ -1,9 +1,10 @@
 package com.neowadaeum.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
+import com.neowadaeum.ContainerTestBase;
 import static org.assertj.core.api.Assertions.fail;
 
-import com.neowadaeum.TestcontainersConfiguration;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -13,12 +14,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Import;
 
 /**
  * §5.3 스토어 물리 분리를 실제 DB 에 대고 확인한다. B-05 완료 조건 1 · 2 · 4.
@@ -34,10 +32,7 @@ import org.springframework.context.annotation.Import;
  * 한 번에 관찰하기 때문이다. §5.3 의 인스턴스 분리 승격 시에는 스토어별 조회로 나눠야 한다 —
  * 애플리케이션 코드가 아니라 이 검증 방식이 바뀐다.
  */
-@Tag("container")
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-class StoreSeparationTests {
+class StoreSeparationTests extends ContainerTestBase {
 
 	/** PostgreSQL {@code insufficient_privilege}. 메시지 문구 대신 SQLState 로 본다. */
 	private static final String INSUFFICIENT_PRIVILEGE = "42501";
