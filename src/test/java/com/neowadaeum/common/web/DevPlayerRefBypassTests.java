@@ -2,6 +2,7 @@ package com.neowadaeum.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.neowadaeum.config.DevPlayApiSecurityConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -63,6 +64,27 @@ class DevPlayerRefBypassTests {
 					assertThat(context).hasSingleBean(PlayerRefResolver.class);
 					assertThat(context.getBean(PlayerRefResolver.class).currentPlayerRef()).isNotNull();
 				});
+	}
+
+	/**
+	 * <b>보안 구성도 같은 조건으로 막힌다.</b>
+	 *
+	 * <p>우회는 두 조각이다 — 리졸버가 "누구인가"를 고정하고, {@code DevPlayApiSecurityConfiguration}
+	 * 이 "들어올 수 있는가"를 연다. <b>한쪽만 막으면 다른 쪽이 남는다.</b> 여기서는 존재하지 않아야
+	 * 하는 방향만 확인한다 — {@code dev} 에서 실제로 동작한다는 것은 {@code PlayApiIntegrationTests}
+	 * 가 HTTP 로 증명한다.
+	 */
+	@Test
+	void ADR0004_dev_security_configuration_is_absent_outside_dev() {
+		ApplicationContextRunner securityRunner = new ApplicationContextRunner()
+				.withUserConfiguration(DevPlayApiSecurityConfiguration.class);
+
+		securityRunner.run(context ->
+				assertThat(context).doesNotHaveBean(DevPlayApiSecurityConfiguration.class));
+		securityRunner.withPropertyValues("spring.profiles.active=prod").run(context ->
+				assertThat(context).doesNotHaveBean(DevPlayApiSecurityConfiguration.class));
+		securityRunner.withPropertyValues("spring.profiles.active=prod,dev").run(context ->
+				assertThat(context).doesNotHaveBean(DevPlayApiSecurityConfiguration.class));
 	}
 
 	/** 고정 값이다. 요청마다 달라지면 세션 소유자 판정이 무너진다. */
