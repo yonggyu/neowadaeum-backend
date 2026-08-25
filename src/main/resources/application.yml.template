@@ -92,7 +92,19 @@ security:
 
 # ── AI Provider (§12 B-18, B-24) ─────────────────────────────
 # Provider 활성/비활성은 설정으로 전환한다 (R3.1). 키는 절대 기본값을 두지 않는다.
+#
+# ★ `provider`(단수)와 `providers`(복수)는 다른 것이다.
+#     provider  — 어느 어댑터를 붙이든 같아야 하는 공통 값. 시간 제한이 여기다
+#     providers — 어댑터별 키·엔드포인트
+#   한 글자 차이라 오타가 조용히 무시된다. B-18 이 Provider 등록 구조를 잡을 때
+#   이 두 이름을 함께 정리할 것 (#25).
 ai:
+  provider:
+    # R6.4 · §6.3 · §11 이 못박은 계약값이다. 배포마다 정하는 값이 아니므로
+    # 빠져도 부팅을 막지 않는다 — ProviderProperties 가 같은 값을 알고 있다.
+    # 테스트는 @DynamicPropertySource 로 짧은 값을 주입해 25초를 기다리지 않는다 (#25).
+    timeout-ms: 25000
+
   providers:
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}

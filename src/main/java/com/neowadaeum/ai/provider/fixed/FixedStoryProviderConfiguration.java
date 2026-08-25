@@ -1,9 +1,11 @@
 package com.neowadaeum.ai.provider.fixed;
 
 import tools.jackson.databind.ObjectMapper;
+import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import java.util.concurrent.Executors;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Configuration;
@@ -36,6 +38,7 @@ import org.springframework.context.annotation.Profile;
  */
 @Configuration(proxyBeanMethods = false)
 @Profile("dev & !prod")
+@EnableConfigurationProperties(ProviderProperties.class)
 public class FixedStoryProviderConfiguration {
 
 	@Bean
@@ -55,10 +58,14 @@ public class FixedStoryProviderConfiguration {
 	 * provider 와 무관하게 서버가 보장한다는 점에서 I-13 과 같은 성질이다.
 	 *
 	 * <p>실행기를 가상 스레드로 둔다. 대기가 대부분인 호출이라 플랫폼 스레드를 붙들 이유가 없다.
+	 *
+	 * <p>제한 시간은 {@link ProviderProperties} 에서 온다 (#25). 여기에 상수를 적으면 어댑터가
+	 * 늘어날 때마다 같은 숫자가 복제된다.
 	 */
 	@Bean
 	@Primary
-	public StoryProvider timeLimitedStoryProvider(FixedStoryProvider delegate) {
-		return new TimeLimitedStoryProvider(delegate, Executors.newVirtualThreadPerTaskExecutor());
+	public StoryProvider timeLimitedStoryProvider(FixedStoryProvider delegate, ProviderProperties properties) {
+		return new TimeLimitedStoryProvider(delegate, Executors.newVirtualThreadPerTaskExecutor(),
+				properties.timeoutMs());
 	}
 }

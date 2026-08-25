@@ -153,10 +153,31 @@ class TimeLimitedStoryProviderTests {
 				.hasMessageNotContaining(storyVersion.toString());
 	}
 
-	/** §6.3 — 문서상 Provider 구간은 25초다. */
+	/**
+	 * <b>제한 시간은 주입된 값이다</b> (#25).
+	 *
+	 * <p>같은 위임을 서로 다른 제한으로 감싸면 결과가 갈린다 — 하나는 통과하고 하나는 끊긴다.
+	 * 상수를 재확인하는 테스트가 아니라 <b>설정된 값이 지켜지는지</b>를 본다.
+	 */
 	@Test
-	void S6_3_default_timeout_matches_the_documented_budget() {
-		assertThat(TimeLimitedStoryProvider.PROVIDER_TIMEOUT).isEqualTo(Duration.ofSeconds(25));
+	void R6_4_the_configured_timeout_is_what_is_enforced() {
+		CountDownLatch never = new CountDownLatch(1);
+
+		assertThatThrownBy(() -> new TimeLimitedStoryProvider(sleeping(never), this.executor, SHORT)
+				.generateTurn(request()))
+				.isInstanceOf(TimeLimitedStoryProvider.GenerationTimedOutException.class);
+
+		assertThat(new TimeLimitedStoryProvider(new StoryProvider() {
+			@Override
+			public String providerId() {
+				return "prompt";
+			}
+
+			@Override
+			public TurnResult generateTurn(TurnRequest ignored) {
+				return answer();
+			}
+		}, this.executor, GENEROUS).generateTurn(request()).narrative()).isEqualTo("본문");
 	}
 
 	private static StoryProvider sleeping(CountDownLatch never) {

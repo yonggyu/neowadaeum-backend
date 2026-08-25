@@ -11,7 +11,7 @@ import java.util.concurrent.TimeoutException;
 /**
  * Provider 호출에 시간 제한을 건다 (R6.4, §6.3).
  *
- * <p><b>25초를 넘기면 요청을 취소하고 {@link GenerationTimedOutException} 을 던진다.</b> 호출자는
+ * <p><b>제한을 넘기면 요청을 취소하고 {@link GenerationTimedOutException} 을 던진다.</b> 호출자는
  * 이것을 {@code 504 GENERATION_TIMEOUT} 으로 바꾸며, <b>세션은 직전 턴 상태 그대로 유지된다</b> —
  * §4.3 의 8단계(상태 병합) 이전에서 끊기기 때문이다 (R6.6).
  *
@@ -23,24 +23,17 @@ import java.util.concurrent.TimeoutException;
  */
 public class TimeLimitedStoryProvider implements StoryProvider {
 
-	/**
-	 * §6.3 의 Provider 구간 값이다.
-	 *
-	 * <p>설정으로 빼는 것은 <b>#25</b> 이며 B-18/B-22 착수 전에 하기로 되어 있다 — 실 Provider 가
-	 * 붙기 전에는 조정할 이유가 없고, 지금 프로퍼티를 만들면 기본값을 어디에 둘지가 §7.3 과
-	 * 부딪힌다.
-	 */
-	public static final Duration PROVIDER_TIMEOUT = Duration.ofSeconds(25);
-
 	private final StoryProvider delegate;
 	private final ExecutorService executor;
 	private final Duration timeout;
 
-	public TimeLimitedStoryProvider(StoryProvider delegate, ExecutorService executor) {
-		this(delegate, executor, PROVIDER_TIMEOUT);
-	}
-
-	TimeLimitedStoryProvider(StoryProvider delegate, ExecutorService executor, Duration timeout) {
+	/**
+	 * <b>제한 시간을 받지 않는 생성자를 두지 않는다</b> (#25).
+	 *
+	 * <p>기본값을 가진 생성자가 있으면 새 어댑터가 그것을 부르고, 설정으로 뺀 값이 조용히
+	 * 무시된다. 값의 출처는 {@link ProviderProperties} 하나다.
+	 */
+	public TimeLimitedStoryProvider(StoryProvider delegate, ExecutorService executor, Duration timeout) {
 		this.delegate = delegate;
 		this.executor = executor;
 		this.timeout = timeout;
