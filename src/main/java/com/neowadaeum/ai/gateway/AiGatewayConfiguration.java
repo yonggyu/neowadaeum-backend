@@ -40,6 +40,7 @@ public class AiGatewayConfiguration {
 	public StoryProvider aiGateway(List<StoryProvider> adapters, ProviderProperties properties) {
 		StoryProvider selected = new ProviderRegistry(adapters).select(properties.active());
 		return new AiGateway(new TimeLimitedStoryProvider(selected,
-				Executors.newVirtualThreadPerTaskExecutor(), properties.timeoutMs()));
+				Executors.newVirtualThreadPerTaskExecutor(), properties.timeoutMs()),
+				PayloadWhitelistValidator.forProviderPayloads());
 	}
 }
