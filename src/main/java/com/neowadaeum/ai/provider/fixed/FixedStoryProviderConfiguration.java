@@ -1,7 +1,11 @@
 package com.neowadaeum.ai.provider.fixed;
 
 import tools.jackson.databind.ObjectMapper;
+import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
+import java.util.concurrent.Executors;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
@@ -31,5 +35,19 @@ public class FixedStoryProviderConfiguration {
 	@Bean
 	public FixedStoryProvider fixedStoryProvider(FixedStoryScenarioLoader loader) {
 		return new FixedStoryProvider(loader.load());
+	}
+
+	/**
+	 * 호출자에게 주입되는 Provider 는 <b>시간 제한으로 감싼 것</b>이다 (R6.4, §6.3).
+	 *
+	 * <p>어댑터마다 스스로 지키게 하면 새 어댑터가 그것을 잊는다. 감싸는 쪽에 두면 잊을 자리가 없다 —
+	 * provider 와 무관하게 서버가 보장한다는 점에서 I-13 과 같은 성질이다.
+	 *
+	 * <p>실행기를 가상 스레드로 둔다. 대기가 대부분인 호출이라 플랫폼 스레드를 붙들 이유가 없다.
+	 */
+	@Bean
+	@Primary
+	public StoryProvider timeLimitedStoryProvider(FixedStoryProvider delegate) {
+		return new TimeLimitedStoryProvider(delegate, Executors.newVirtualThreadPerTaskExecutor());
 	}
 }

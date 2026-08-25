@@ -2,6 +2,7 @@ package com.neowadaeum.common.web;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 
@@ -21,5 +22,16 @@ public class CommonWebConfiguration {
 		FilterRegistrationBean<RequestIdFilter> registration = new FilterRegistrationBean<>(new RequestIdFilter());
 		registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
 		return registration;
+	}
+
+	/**
+	 * {@code Idempotency-Key} 저장소 (R6.2).
+	 *
+	 * <p>Redis 를 쓰는 이유는 <b>프로세스 간</b> 공유다. 인스턴스가 둘이면 인메모리 맵은 중복 과금을
+	 * 아무것도 막지 못한다.
+	 */
+	@Bean
+	public IdempotencyStore idempotencyStore(StringRedisTemplate redis) {
+		return new IdempotencyStore(redis);
 	}
 }

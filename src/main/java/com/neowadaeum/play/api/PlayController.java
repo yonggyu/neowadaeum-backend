@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -54,10 +55,15 @@ public class PlayController {
 	 *
 	 * <p>요청 {@code turnNo} 는 <b>지금 화면에 떠 있는 턴</b>이고 응답은 그 +1 이다. 불일치는
 	 * {@code 409 TURN_CONFLICT} 이며 현재 턴 상태가 함께 온다 (R6.1).
+	 *
+	 * <p>{@code Idempotency-Key} 헤더를 지원한다 (R6.2). 와이어프레임의 "다시 시도"는 같은
+	 * {@code choiceId} 재전송이므로, 그대로 두면 Provider 가 두 번 불리고 <b>두 번 청구된다</b>.
 	 */
 	@PostMapping("/sessions/{sessionId}/turns")
-	public TurnView advance(@PathVariable UUID sessionId, @Valid @RequestBody TurnRequestBody request) {
-		return this.turns.advance(this.playerRefs.currentPlayerRef(), sessionId, request);
+	public TurnView advance(@PathVariable UUID sessionId, @Valid @RequestBody TurnRequestBody request,
+			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+		return this.turns.advance(this.playerRefs.currentPlayerRef(), sessionId,
+				request.withIdempotencyKey(idempotencyKey));
 	}
 
 	private UUID storyVersionOf(SessionStarter.StartedSession started) {
