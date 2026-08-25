@@ -3,6 +3,7 @@ package com.neowadaeum.ai.prompt;
 import com.neowadaeum.ai.prompt.PromptLayer.BudgetGroup;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.support.TokenCounter;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -45,11 +46,17 @@ public class PromptAssembler {
 
 	private final TokenCounter tokenCounter;
 
-	public PromptAssembler(TokenCounter tokenCounter) {
+	private final RecentTurnsProperties recentTurnsPolicy;
+
+	public PromptAssembler(TokenCounter tokenCounter, RecentTurnsProperties recentTurnsPolicy) {
 		if (tokenCounter == null) {
 			throw new IllegalArgumentException("tokenCounter is required");
 		}
+		if (recentTurnsPolicy == null) {
+			throw new IllegalArgumentException("recentTurnsPolicy is required");
+		}
 		this.tokenCounter = tokenCounter;
+		this.recentTurnsPolicy = recentTurnsPolicy;
 	}
 
 	/**
@@ -62,7 +69,8 @@ public class PromptAssembler {
 			throw new IllegalArgumentException("context is required");
 		}
 
-		List<PromptContext.RecentTurn> recentTurns = new ArrayList<>(context.recentTurns());
+		// §13-2 — 프롬프트에 싣는 것은 최근 N턴까지다. 그보다 오래된 것은 요약의 몫이다 (R4.5).
+		List<PromptContext.RecentTurn> recentTurns = new ArrayList<>(withinWindow(context.recentTurns()));
 
 		// 1) RECENT TURNS 를 오래된 것부터 빼면서 예산 안으로 들어오는지 본다.
 		while (true) {
@@ -105,20 +113,39 @@ public class PromptAssembler {
 		sections.add(new AssembledPrompt.Section(layer, text, this.tokenCounter.count(text)));
 	}
 
+	/** 최근 {@code inPrompt} 턴만 남긴다. 목록은 오래된 것이 앞이므로 뒤에서 센다. */
+	private List<PromptContext.RecentTurn> withinWindow(List<PromptContext.RecentTurn> recentTurns) {
+		int window = this.recentTurnsPolicy.inPrompt();
+		return recentTurns.size() <= window ? recentTurns
+				: recentTurns.subList(recentTurns.size() - window, recentTurns.size());
+	}
+
 	private static String characterText(PromptContext context) {
 		return context.characters().stream()
 				.map(character -> "%s: %s".formatted(character.name(), character.persona()))
 				.collect(Collectors.joining("\n"));
 	}
 
-	/** 오래된 것이 앞이다. 뒤가 최신이며, 빠지는 것은 앞에서부터다 (§4.4). */
-	private static String recentTurnsText(List<PromptContext.RecentTurn> recentTurns) {
-		return recentTurns.stream()
-				.map(turn -> turn.chosenChoiceText() == null
-						? "%d) %s".formatted(turn.turnNo(), turn.paragraphsDigest())
-						: "%d) %s / 선택: %s".formatted(turn.turnNo(), turn.paragraphsDigest(),
-								turn.chosenChoiceText()))
-				.collect(Collectors.joining("\n"));
+	/**
+	 * 오래된 것이 앞이다. 뒤가 최신이며, 빠지는 것은 앞에서부터다 (§4.4).
+	 *
+	 * <p><b>가장 최근 {@code verbatim} 턴만 본문 원문이고 나머지는 압축본이다</b> (§13-2). 1,500토큰
+	 * 안에 원문 5턴은 들어가지 않는다. 원문이 없는 턴은 압축본으로 대신한다.
+	 */
+	private String recentTurnsText(List<PromptContext.RecentTurn> recentTurns) {
+		int verbatimFrom = recentTurns.size() - this.recentTurnsPolicy.verbatim();
+
+		List<String> lines = new ArrayList<>();
+		for (int index = 0; index < recentTurns.size(); index++) {
+			PromptContext.RecentTurn turn = recentTurns.get(index);
+			String body = index >= verbatimFrom && turn.paragraphs() != null && !turn.paragraphs().isBlank()
+					? turn.paragraphs()
+					: turn.paragraphsDigest();
+			lines.add(turn.chosenChoiceText() == null
+					? "%d) %s".formatted(turn.turnNo(), body)
+					: "%d) %s / 선택: %s".formatted(turn.turnNo(), body, turn.chosenChoiceText()));
+		}
+		return String.join("\n", lines);
 	}
 
 	// ── 예산 ────────────────────────────────────────────────

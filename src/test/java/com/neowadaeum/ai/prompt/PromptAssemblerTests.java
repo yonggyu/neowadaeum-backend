@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.support.FixedTokenCounter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -29,7 +30,12 @@ class PromptAssemblerTests {
 	 */
 	private static final Path GOLDEN = Path.of("src/test/resources/prompt/golden/turn-prompt.txt");
 
-	private final PromptAssembler assembler = new PromptAssembler(new ApproximateTokenCounter());
+	/**
+	 * <b>고정 계산기를 쓴다</b> (#82). 근사 계수를 조정했을 때 축소 시점이 달라져 골든 파일이 함께
+	 * 바뀌면, "프롬프트를 바꿨다"와 "계수를 바꿨다"가 같은 diff 에서 구분되지 않는다.
+	 */
+	private final PromptAssembler assembler = new PromptAssembler(new FixedTokenCounter(),
+			RecentTurnsProperties.defaults());
 
 	private static PromptContext context() {
 		return new PromptContext(
@@ -38,8 +44,12 @@ class PromptAssemblerTests {
 				JsonMapper.builder().build().readTree(
 						"{\"chapter\":2,\"turn\":7,\"location\":\"강의실\",\"affinity\":{\"yuna\":18}}"),
 				"주인공은 유나와 두 번 마주쳤고, 두 번 다 말을 걸지 못했다.",
-				List.of(new PromptContext.RecentTurn(6, "먼저 인사한다", "복도에서 유나가 먼저 고개를 돌렸다."),
-						new PromptContext.RecentTurn(7, null, "유나가 우산을 내밀었다.")),
+				List.of(new PromptContext.RecentTurn(6, "먼저 인사한다",
+								"복도에서 유나가 먼저 고개를 돌렸다. 눈이 어깨에 조금 쌓여 있었다.",
+								"복도에서 유나가 먼저 고개를 돌렸다."),
+						new PromptContext.RecentTurn(7, null,
+								"유나가 우산을 내밀었다. 받으라는 말은 하지 않았다.",
+								"유나가 우산을 내밀었다.")),
 				"고맙다고 말한다");
 	}
 
@@ -126,30 +136,60 @@ class PromptAssemblerTests {
 	}
 
 	/**
+	 * §13-2 — 프롬프트에 싣는 것은 <b>최근 N턴까지</b>다 (기본 5).
+	 *
+	 * <p>그보다 오래된 턴은 요약의 몫이다 (R4.5). 예산과 무관하게 창이 먼저 걸린다.
+	 */
+	@Test
+	void S13_2_only_the_recent_window_reaches_the_prompt() {
+		AssembledPrompt assembled = this.assembler.assemble(new PromptContext("세계관", List.of(),
+				JsonMapper.builder().build().readTree("{}"), null, turns(40), "행동"));
+
+		List<String> lines = recentTurnsText(assembled).lines().toList();
+
+		assertThat(lines).hasSize(5);
+		assertThat(lines.getFirst()).startsWith("36) ");
+		assertThat(lines.getLast()).startsWith("40) ");
+	}
+
+	/**
+	 * §13-2 — <b>가장 최근 2턴만 본문 원문</b>이고 나머지는 압축본이다.
+	 *
+	 * <p>1,500토큰 안에 원문 5턴은 들어가지 않는다. 원문/압축 경계는 설정이며 B-46 이 조정한다.
+	 */
+	@Test
+	void S13_2_only_the_newest_turns_carry_the_verbatim_body() {
+		AssembledPrompt assembled = this.assembler.assemble(new PromptContext("세계관", List.of(),
+				JsonMapper.builder().build().readTree("{}"), null, turns(5), "행동"));
+
+		List<String> lines = recentTurnsText(assembled).lines().toList();
+
+		assertThat(lines.get(0)).contains("압축 1").doesNotContain("원문 1");
+		assertThat(lines.get(2)).contains("압축 3").doesNotContain("원문 3");
+		assertThat(lines.get(3)).contains("원문 4");
+		assertThat(lines.get(4)).contains("원문 5");
+	}
+
+	/**
 	 * §4.4 — 예산을 넘기면 <b>최근 턴을 오래된 것부터</b> 뺀다.
 	 *
 	 * <p>최신 턴이 남는 것이 요점이다. 뒤에서부터 빼면 이야기가 방금 일어난 일을 잊는다.
 	 */
 	@Test
 	void S4_4_the_oldest_recent_turns_are_dropped_first() {
-		List<PromptContext.RecentTurn> many = new ArrayList<>();
-		for (int turnNo = 1; turnNo <= 40; turnNo++) {
-			many.add(new PromptContext.RecentTurn(turnNo, "선택 " + turnNo, "가".repeat(120) + turnNo));
+		List<PromptContext.RecentTurn> long5 = new ArrayList<>();
+		for (int turnNo = 1; turnNo <= 5; turnNo++) {
+			long5.add(new PromptContext.RecentTurn(turnNo, "선택 " + turnNo, null,
+					"가".repeat(400) + turnNo));
 		}
 
 		AssembledPrompt assembled = this.assembler.assemble(new PromptContext("세계관", List.of(),
-				JsonMapper.builder().build().readTree("{}"), null, many, "행동"));
+				JsonMapper.builder().build().readTree("{}"), null, long5, "행동"));
 
-		String recentTurns = assembled.sections().stream()
-				.filter(section -> section.layer() == PromptLayer.RECENT_TURNS)
-				.map(AssembledPrompt.Section::text)
-				.findFirst()
-				.orElseThrow();
+		List<String> lines = recentTurnsText(assembled).lines().toList();
 
-		// "31) " 도 "1) " 를 포함한다 — 부분 문자열이 아니라 줄 단위로 본다.
-		List<String> lines = recentTurns.lines().toList();
-		assertThat(lines.getFirst()).doesNotStartWith("1) ");
-		assertThat(lines.getLast()).startsWith("40) ");
+		assertThat(lines).hasSizeLessThan(5);
+		assertThat(lines.getLast()).startsWith("5) ");
 		assertThat(assembled.totalTokens()).isLessThanOrEqualTo(PromptAssembler.TOTAL_BUDGET_TOKENS);
 	}
 
@@ -168,6 +208,23 @@ class PromptAssemblerTests {
 				.isInstanceOf(ApiException.class)
 				.extracting(thrown -> ((ApiException) thrown).errorCode())
 				.isEqualTo(ErrorCode.CONTEXT_BUDGET_EXCEEDED);
+	}
+
+	private static List<PromptContext.RecentTurn> turns(int count) {
+		List<PromptContext.RecentTurn> turns = new ArrayList<>();
+		for (int turnNo = 1; turnNo <= count; turnNo++) {
+			turns.add(new PromptContext.RecentTurn(turnNo, "선택 " + turnNo,
+					"원문 " + turnNo, "압축 " + turnNo));
+		}
+		return turns;
+	}
+
+	private static String recentTurnsText(AssembledPrompt assembled) {
+		return assembled.sections().stream()
+				.filter(section -> section.layer() == PromptLayer.RECENT_TURNS)
+				.map(AssembledPrompt.Section::text)
+				.findFirst()
+				.orElseThrow();
 	}
 
 	/** §4.3 의 표. 묶음 상한이 문서와 어긋나면 예산이 문서와 다른 것이 된다. */

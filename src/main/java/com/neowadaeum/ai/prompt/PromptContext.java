@@ -68,11 +68,16 @@ public record PromptContext(
 	 * 대상이고 이것은 프롬프트에 실을 원문이다 — 지금 같은 것은 필드 세 개뿐이며, 한쪽이 바뀔 때
 	 * 다른 쪽이 끌려가는 것이 더 비싸다 (§2.5 "코드 모양이 비슷하다는 이유로 합치지 않는다").
 	 *
+	 * <p><b>원문과 압축본을 둘 다 들고 온다</b> (§13-2). 어느 쪽을 실을지는 <b>턴의 위치</b>가
+	 * 정하며 그 판단은 조립기의 몫이다 — 가장 최근 몇 턴만 원문이고 나머지는 압축본이다.
+	 * 호출자가 미리 고르면 경계(설정값)가 두 곳에 생긴다.
+	 *
 	 * @param turnNo           세션 내 턴 번호
 	 * @param chosenChoiceText 그 턴에서 고른 선택지 본문. 마지막 턴이면 {@code null}
-	 * @param paragraphsDigest 본문 요지
+	 * @param paragraphs       본문 원문. 없으면 {@code null} 이며 이때는 압축본이 쓰인다
+	 * @param paragraphsDigest 본문 요지. <b>언제나 있어야 한다</b> — 원문이 예산에 들어가지 못할 때의 대안이다
 	 */
-	public record RecentTurn(int turnNo, String chosenChoiceText, String paragraphsDigest) {
+	public record RecentTurn(int turnNo, String chosenChoiceText, String paragraphs, String paragraphsDigest) {
 
 		public RecentTurn {
 			if (turnNo <= 0) {
