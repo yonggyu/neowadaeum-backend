@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.ai.provider.TurnRequest;
 import com.neowadaeum.ai.provider.TurnResult;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
@@ -181,7 +182,7 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 
 	/** 세션과 첫 턴을 만들고, Provider 호출 수를 세는 파이프라인을 붙인다. */
 	private Fixture fixtureCounting(AtomicInteger calls) {
-		StoryProvider counting = new StoryProvider() {
+		StoryProvider counting = new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "counting";

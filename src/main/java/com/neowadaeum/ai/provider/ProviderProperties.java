@@ -19,11 +19,17 @@ import org.springframework.boot.convert.DurationUnit;
  * 그 테스트 하나가 PR 파이프라인을 지배한다. 테스트는 짧은 값을 주입해 <b>같은 코드 경로</b>를
  * 지난다 (§7.2 — 테스트 yml 을 만들지 않는다).
  *
+ * <p><b>{@code active} 가 R3.1 의 스위치다.</b> 어느 어댑터가 실제로 불릴지를 코드 배포 없이 설정이
+ * 정한다. 스위치를 하나만 두는 것이 요점이다 — 어댑터마다 별도의 on/off 를 또 두면 "등록됐지만
+ * 꺼져 있고 활성으로 지목된" 조합이 생기고, 그때 무엇이 이기는지는 아무도 모른다 (#47 이 남긴 교훈).
+ *
  * @param timeoutMs Provider 한 번 호출의 상한 (R6.4, §6.3). 이름의 {@code -ms} 는 <b>설정에 적는
  *                  숫자의 단위</b>를 가리킨다 — 타입은 {@link Duration} 이다
+ * @param active    활성 Provider 의 {@code providerId} (R3.1). 비우면 <b>등록된 어댑터가 정확히
+ *                  하나일 때만</b> 부팅된다 — 둘 이상이면 모호함을 임의로 해소하지 않고 실패한다
  */
 @ConfigurationProperties("ai.provider")
-public record ProviderProperties(@DurationUnit(ChronoUnit.MILLIS) Duration timeoutMs) {
+public record ProviderProperties(@DurationUnit(ChronoUnit.MILLIS) Duration timeoutMs, String active) {
 
 	/**
 	 * §4.3 · §11 이 못박은 계약값이다. <b>배포마다 정하는 값이 아니다.</b>
@@ -37,6 +43,11 @@ public record ProviderProperties(@DurationUnit(ChronoUnit.MILLIS) Duration timeo
 	public ProviderProperties {
 		if (timeoutMs == null) {
 			timeoutMs = CONTRACT_TIMEOUT;
+		}
+		// 빈 문자열과 미지정을 같은 것으로 본다. yml 에서 `active:` 만 적고 값을 비우는 일이 잦고,
+		// 그것을 "이름이 빈 Provider" 로 읽으면 오류 메시지가 엉뚱한 곳을 가리킨다.
+		if (active != null && active.isBlank()) {
+			active = null;
 		}
 	}
 }

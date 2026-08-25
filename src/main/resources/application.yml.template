@@ -105,6 +105,13 @@ ai:
     # 테스트는 @DynamicPropertySource 로 짧은 값을 주입해 25초를 기다리지 않는다 (#25).
     timeout-ms: 25000
 
+    # R3.1 — 어느 어댑터가 실제로 불릴지. 코드 배포 없이 이 값만 바꿔 전환한다 (B-18).
+    # 비워 두면 등록된 어댑터가 정확히 하나일 때만 뜬다. 둘 이상이면 부팅이 멈춘다 —
+    # 모호한 상태에서 서버가 임의로 하나를 고르지 않는다. Provider 선택은 관리자 전용이다 (I-14).
+    active: anthropic
+
+  # 어댑터별 접속 정보. 위의 ai.provider(단수)는 어느 어댑터를 붙이든 같은 값이고,
+  # 아래 ai.providers(복수)는 어댑터마다 다른 값이다 (#25 가 남긴 구분).
   providers:
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}

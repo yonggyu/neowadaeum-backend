@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.ai.provider.TurnRequest;
 import com.neowadaeum.ai.provider.TurnResult;
 import com.neowadaeum.authoring.blocklist.InMemoryBlocklistQuery;
@@ -151,7 +152,7 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 		AtomicInteger calls = new AtomicInteger();
 		String blocked = "이나린";
 
-		StoryProvider offending = new StoryProvider() {
+		StoryProvider offending = new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "offending";
