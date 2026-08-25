@@ -3,7 +3,6 @@ package com.neowadaeum.ai.provider.fixed;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ai.provider.StoryProvider;
-import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import tools.jackson.databind.ObjectMapper;
@@ -62,9 +61,9 @@ class FixedStoryProviderRegistrationTests {
 		runner.withPropertyValues("spring.profiles.active=dev")
 				.run(context -> {
 					assertThat(context).hasSingleBean(FixedStoryProvider.class);
-					// 주입되는 것은 시간 제한으로 감싼 @Primary 쪽이다 (R6.4). 델리게이트 자신도
-					// StoryProvider 라 빈은 둘이고, 단건 단언은 여기서 성립하지 않는다.
-					assertThat(context.getBean(StoryProvider.class)).isInstanceOf(TimeLimitedStoryProvider.class);
+					// 시간 제한 래퍼와 @Primary 배선은 AiGatewayConfiguration 으로 옮겼다 (B-18).
+					// 어댑터 구성이 하는 일은 자기 자신을 등록하는 것뿐이라 빈은 하나다.
+					assertThat(context).hasSingleBean(StoryProvider.class);
 				});
 	}
 

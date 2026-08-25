@@ -48,6 +48,26 @@ class ProviderPropertiesTests {
 						.isEqualTo(Duration.ofSeconds(25)));
 	}
 
+	/** R3.1 — 활성 Provider 도 설정에서 온다 (B-18). */
+	@Test
+	void R3_1_the_active_provider_is_bound() {
+		this.runner.withPropertyValues("ai.provider.active=anthropic")
+				.run(context -> assertThat(context.getBean(ProviderProperties.class).active())
+						.isEqualTo("anthropic"));
+	}
+
+	/**
+	 * <b>비워 둔 값과 적지 않은 값을 같게 본다.</b>
+	 *
+	 * <p>yml 에 {@code active:} 만 적고 값을 비우는 일이 잦다. 그것을 "이름이 빈 Provider" 로 읽으면
+	 * 오류 메시지가 등록 목록이 아니라 엉뚱한 곳을 가리킨다.
+	 */
+	@Test
+	void R3_1_a_blank_active_is_the_same_as_unset() {
+		this.runner.withPropertyValues("ai.provider.active=")
+				.run(context -> assertThat(context.getBean(ProviderProperties.class).active()).isNull());
+	}
+
 	@Configuration(proxyBeanMethods = false)
 	@EnableConfigurationProperties(ProviderProperties.class)
 	static class EnableProperties {

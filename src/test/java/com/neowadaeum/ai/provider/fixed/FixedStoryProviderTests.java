@@ -3,6 +3,9 @@ package com.neowadaeum.ai.provider.fixed;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.neowadaeum.ai.provider.OutlineRequest;
+import com.neowadaeum.ai.provider.ProviderCapabilities;
+import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.provider.TurnRequest;
 import com.neowadaeum.ai.provider.TurnResult;
 import java.lang.reflect.RecordComponent;
@@ -196,6 +199,34 @@ class FixedStoryProviderTests {
 				.isInstanceOf(IllegalArgumentException.class);
 
 		assertThat(TurnRequest.opening(FIXTURE_STORY).chosenChoiceOrder()).isNull();
+	}
+
+	/**
+	 * §3 — 능력을 스스로 밝힌다. <b>모델을 부르지 않는 Provider 라는 사실이 값에 드러난다.</b>
+	 *
+	 * <p>{@code maxContextTokens} 가 {@code 0} 인 것은 상한이 없다는 뜻이 아니라 <b>프롬프트를
+	 * 소비하지 않는다</b>는 뜻이다. 예산 계산(B-20)이 이 Provider 를 기준으로 이뤄지면 즉시 드러난다.
+	 */
+	@Test
+	void B18_the_fixed_provider_reports_that_it_uses_no_model() {
+		assertThat(provider().capabilities()).isEqualTo(ProviderCapabilities.withoutModel());
+		assertThat(provider().capabilities().maxContextTokens()).isZero();
+	}
+
+	/**
+	 * §0.2 — <b>구현하지 않은 용도를 스텁으로 통과시키지 않는다.</b>
+	 *
+	 * <p>빈 문자열을 돌려주는 {@code summarize} 하나면 요약 파이프라인(B-34)이 없는데도 초록이 된다.
+	 */
+	@Test
+	void B18_unimplemented_uses_throw_instead_of_returning_something_plausible() {
+		FixedStoryProvider provider = provider();
+
+		assertThatThrownBy(() -> provider.summarize(
+				new SummaryRequest(null, List.of(new SummaryRequest.TurnDigest(1, null, "요지")), 600)))
+				.isInstanceOf(UnsupportedOperationException.class);
+		assertThatThrownBy(() -> provider.draftOutline(new OutlineRequest("세계관", 5, 3)))
+				.isInstanceOf(UnsupportedOperationException.class);
 	}
 
 	private static List<String> componentNames(Class<?> type) {

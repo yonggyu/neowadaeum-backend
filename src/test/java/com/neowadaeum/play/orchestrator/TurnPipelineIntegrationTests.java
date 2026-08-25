@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.ai.provider.TurnRequest;
 import com.neowadaeum.ai.provider.TurnResult;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
@@ -209,7 +210,7 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 		UUID sessionId = newSession();
 		AtomicInteger calls = new AtomicInteger();
 
-		StoryProvider watching = new StoryProvider() {
+		StoryProvider watching = new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "tx-watching";
@@ -242,7 +243,7 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 
 	/** 매 턴 전환과 종료를 주장하지만 상태는 전혀 바꾸지 않는 Provider. */
 	private static StoryProvider insistentProvider() {
-		return new StoryProvider() {
+		return new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "insistent";

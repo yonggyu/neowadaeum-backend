@@ -58,7 +58,7 @@ class TimeLimitedStoryProviderTests {
 	/** 제한 안에 답하면 그대로 통과한다. 정상 경로가 느려지면 안 된다. */
 	@Test
 	void R6_4_a_prompt_answer_passes_through() {
-		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(new StoryProvider() {
+		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "prompt";
@@ -95,7 +95,7 @@ class TimeLimitedStoryProviderTests {
 		CountDownLatch interrupted = new CountDownLatch(1);
 		AtomicBoolean sawInterrupt = new AtomicBoolean();
 
-		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(new StoryProvider() {
+		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "slow";
@@ -125,7 +125,7 @@ class TimeLimitedStoryProviderTests {
 	/** 위임이 던진 예외는 그대로 올린다. 타임아웃으로 뭉뚱그리면 원인이 사라진다. */
 	@Test
 	void R6_4_a_delegate_failure_is_not_disguised_as_a_timeout() {
-		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(new StoryProvider() {
+		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "failing";
@@ -167,7 +167,7 @@ class TimeLimitedStoryProviderTests {
 				.generateTurn(request()))
 				.isInstanceOf(TimeLimitedStoryProvider.GenerationTimedOutException.class);
 
-		assertThat(new TimeLimitedStoryProvider(new StoryProvider() {
+		assertThat(new TimeLimitedStoryProvider(new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "prompt";
@@ -181,7 +181,7 @@ class TimeLimitedStoryProviderTests {
 	}
 
 	private static StoryProvider sleeping(CountDownLatch never) {
-		return new StoryProvider() {
+		return new TurnOnlyStoryProvider() {
 			@Override
 			public String providerId() {
 				return "slow";

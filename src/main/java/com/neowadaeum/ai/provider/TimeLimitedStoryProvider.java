@@ -18,8 +18,8 @@ import java.util.concurrent.TimeoutException;
  * <p><b>데코레이터로 둔 이유.</b> 시간 제한은 어느 Provider 를 붙이든 같아야 하고(I-13 과 같은
  * 성질), 각 어댑터가 스스로 지키게 하면 새 어댑터가 그것을 잊는다. 감싸는 쪽에 두면 잊을 자리가 없다.
  *
- * <p><b>취소가 요점이다.</b> 기다리다 포기하는 것만으로는 뒤에서 계속 도는 호출이 남고, 그 비용은
- * 그대로 청구된다. {@link Future#cancel(boolean)} 으로 인터럽트를 보낸다.
+ * <p><b>네 메서드 전부에 같은 제한이 걸린다</b> — {@code capabilities()} 만 예외이며 그것은 호출이
+ * 아니라 상수 조회다. 하나라도 빠지면 그 경로가 제한 밖으로 나간다.
  */
 public class TimeLimitedStoryProvider implements StoryProvider {
 
@@ -44,10 +44,44 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 		return this.delegate.providerId();
 	}
 
+	/**
+	 * <b>시간 제한을 걸지 않는다.</b> 능력 조회는 호출이 아니라 상수 조회다 — 여기에 실행기를 태우면
+	 * 스레드만 쓰고 얻는 것이 없다.
+	 */
+	@Override
+	public ProviderCapabilities capabilities() {
+		return this.delegate.capabilities();
+	}
+
 	@Override
 	public TurnResult generateTurn(TurnRequest request) {
-		Callable<TurnResult> call = () -> this.delegate.generateTurn(request);
-		Future<TurnResult> pending = this.executor.submit(call);
+		return withinLimit(() -> this.delegate.generateTurn(request));
+	}
+
+	/**
+	 * 요약도 같은 제한을 받는다.
+	 *
+	 * <p>턴 응답 이후 비동기로 도는 호출이지만(R4.6) <b>비용은 같은 곳에서 나간다.</b> 사용자가
+	 * 기다리지 않는다는 이유로 무한정 도는 호출을 남겨 두지 않는다.
+	 */
+	@Override
+	public String summarize(SummaryRequest request) {
+		return withinLimit(() -> this.delegate.summarize(request));
+	}
+
+	@Override
+	public OutlineResult draftOutline(OutlineRequest request) {
+		return withinLimit(() -> this.delegate.draftOutline(request));
+	}
+
+	/**
+	 * 제한 시간 안에서 위임을 실행한다.
+	 *
+	 * <p><b>취소가 요점이다.</b> 기다리다 포기하는 것만으로는 뒤에서 계속 도는 호출이 남고, 그 비용은
+	 * 그대로 청구된다. {@link Future#cancel(boolean)} 으로 인터럽트를 보낸다.
+	 */
+	private <T> T withinLimit(Callable<T> call) {
+		Future<T> pending = this.executor.submit(call);
 
 		try {
 			return pending.get(this.timeout.toMillis(), TimeUnit.MILLISECONDS);

@@ -1,6 +1,10 @@
 package com.neowadaeum.ai.provider.fixed;
 
+import com.neowadaeum.ai.provider.OutlineRequest;
+import com.neowadaeum.ai.provider.OutlineResult;
+import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.provider.TurnRequest;
 import com.neowadaeum.ai.provider.TurnResult;
 import java.util.HashMap;
@@ -41,6 +45,15 @@ public class FixedStoryProvider implements StoryProvider {
 		return PROVIDER_ID;
 	}
 
+	/**
+	 * <b>모델을 부르지 않는다.</b> 응답은 시나리오 파일이 정하므로 출력은 이미 구조화되어 있고,
+	 * 프롬프트를 소비하지 않아 컨텍스트 상한이 의미를 갖지 않는다 (B-20 이 이 값을 읽는다).
+	 */
+	@Override
+	public ProviderCapabilities capabilities() {
+		return ProviderCapabilities.withoutModel();
+	}
+
 	@Override
 	public TurnResult generateTurn(TurnRequest request) {
 		ScenarioKey key = ScenarioKey.of(request);
@@ -51,6 +64,23 @@ public class FixedStoryProvider implements StoryProvider {
 			throw new UnsupportedOperationException("no scenario entry for " + key);
 		}
 		return result;
+	}
+
+	/**
+	 * <b>요약은 이 Provider 의 일이 아니다</b> (B-34).
+	 *
+	 * <p>§0.2 — 스텁으로 통과시키지 않는다. 빈 문자열이나 입력을 되돌려주는 구현을 두면 요약
+	 * 파이프라인이 붙기 전에도 초록으로 보이고, 그 지점이 검증되지 않은 채 남는다.
+	 */
+	@Override
+	public String summarize(SummaryRequest request) {
+		throw new UnsupportedOperationException("summarize is B-34; the fixed provider does not summarize");
+	}
+
+	/** <b>아웃라인 초안도 이 Provider 의 일이 아니다</b> (B-52). 위와 같은 이유다. */
+	@Override
+	public OutlineResult draftOutline(OutlineRequest request) {
+		throw new UnsupportedOperationException("draftOutline is B-52; the fixed provider does not draft outlines");
 	}
 
 	private static Map<ScenarioKey, TurnResult> index(List<FixedStoryScenario> scenarios) {
