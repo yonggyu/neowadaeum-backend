@@ -75,7 +75,9 @@ public class DevPlayApiSecurityConfiguration {
 	 *
 	 * <p>{@code handle()} 의 {@code csrfToken.get()} 이 지연 로딩을 풀어 <b>첫 GET 에서 쿠키가
 	 * 발급되게</b> 한다. 없으면 토큰을 소비하는 핸들러가 나올 때까지 쿠키가 안 내려가서, 콘솔이
-	 * 첫 POST 를 보낼 때 보낼 토큰이 없다.
+	 * 첫 POST 를 보낼 때 보낼 토큰이 없다. 레퍼런스 구성은 이 즉시 로딩을 별도
+	 * {@code CsrfCookieFilter} 로 분리하는데, 여기서는 핸들러 한 곳에 합쳤다 — dev 전용 체인에
+	 * 프로파일 조건을 지켜야 할 조각을 하나 더 만들지 않기 위해서다.
 	 */
 	static final class SpaCsrfTokenRequestHandler implements CsrfTokenRequestHandler {
 
