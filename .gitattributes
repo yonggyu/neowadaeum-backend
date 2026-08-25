@@ -4,3 +4,6 @@
 
 # 컨테이너 안 bash 가 실행한다. CRLF 로 체크아웃되면 `\r` 때문에 조용히 깨진다.
 *.sh text eol=lf
+
+# 골든 파일은 바이트로 비교된다. CRLF 로 체크아웃되면 플랫폼마다 갈린다.
+src/test/resources/prompt/golden/*.txt text eol=lf
