@@ -3,6 +3,7 @@ package com.neowadaeum.ai.provider.anthropic;
 import com.neowadaeum.ai.prompt.AssembledPrompt;
 import com.neowadaeum.ai.prompt.PromptLayer;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
+import com.neowadaeum.ai.provider.AiPurpose;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
@@ -150,9 +151,24 @@ public class AnthropicStoryProvider implements StoryProvider {
 	 * 작품 입력과 같은 자리에 놓이고, <b>"이전 지시를 무시하라"가 같은 평면에서 경쟁한다</b> (I-7).
 	 * 나머지 레이어는 조립된 순서 그대로 하나의 사용자 메시지가 된다.
 	 */
+	/**
+	 * 용도에 맞는 모델을 고른다 (R3.6, B-24).
+	 *
+	 * <p><b>없으면 실패한다.</b> 조용히 턴 생성 모델을 빌려 쓰지 않는다 — 그 사고는 에러가 아니라
+	 * <b>비용 청구서</b>로 나타나고, 그때는 이미 한 달치다.
+	 */
+	private String modelFor(AiPurpose purpose) {
+		String model = this.properties.modelFor(purpose);
+		if (model == null) {
+			throw new ProviderCallFailedException(
+					"no anthropic model configured for purpose " + purpose.wireValue());
+		}
+		return model;
+	}
+
 	private ObjectNode body(AssembledPrompt prompt) {
 		ObjectNode body = JSON.createObjectNode();
-		body.put("model", this.properties.model());
+		body.put("model", modelFor(AiPurpose.TURN));
 		body.put("max_tokens", this.properties.maxTokens());
 		body.put("system", layer(prompt, PromptLayer.SYSTEM));
 

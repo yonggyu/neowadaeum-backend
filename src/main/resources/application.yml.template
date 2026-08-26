@@ -133,9 +133,21 @@ ai:
     #
     # base-url · max-tokens 는 코드가 기본값을 갖는다 — 배포마다 정할 값이 아니다.
     # 용도별 모델 분리(R3.6)는 B-24 다. 지금은 턴 생성 하나뿐이다.
+    # R3.6 — 용도별 모델을 나눈다. 턴 생성은 고성능, 요약·검수·아웃라인은 저비용이다.
+    # 넷을 한 값으로 합치지 않는다 — 합쳐 두면 요약 한 번이 턴 생성만큼 든다.
+    #
+    # 등록 조건은 api-key 와 models.turn 둘뿐이다. 나머지 셋은 그 기능(B-30 · B-34 · B-52)이
+    # 붙을 때 채운다 — 없는 기능의 설정을 강요하면 그 자리에 아무 값이나 들어간다.
+    #
+    # models.safety 는 생성 모델과 같은 값이어도 된다. 다만 그것은 설정의 선택이지
+    # 구조가 강요하는 것이 아니다 (I-12 — L2 는 생성 모델과 별개 판정기다).
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}
-      # model: claude-opus-5
+      # models:
+      #   turn: claude-opus-5
+      #   summary: claude-haiku-4-5
+      #   safety: claude-haiku-4-5
+      #   outline: claude-haiku-4-5
     openai:
       api-key: ${OPENAI_API_KEY}
     ollama:

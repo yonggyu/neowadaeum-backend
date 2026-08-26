@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ai.prompt.PromptConfiguration;
 import com.neowadaeum.config.SharedPropertiesConfiguration;
+import com.neowadaeum.ai.provider.AiPurpose;
 import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.provider.StoryProvider;
 import java.util.List;
@@ -34,7 +35,7 @@ class AnthropicRegistrationTests {
 	void R3_1_a_fully_configured_adapter_is_registered() {
 		this.runner.withPropertyValues(
 						"ai.providers.anthropic.api-key=test-key",
-						"ai.providers.anthropic.model=claude-opus-5")
+						"ai.providers.anthropic.models.turn=claude-opus-5")
 				.run(context -> {
 					assertThat(context).hasNotFailed();
 					assertThat(context.getBeansOfType(AnthropicStoryProvider.class)).hasSize(1);
@@ -49,7 +50,7 @@ class AnthropicRegistrationTests {
 	 */
 	@Test
 	void S7_3_a_missing_api_key_leaves_the_adapter_unregistered() {
-		this.runner.withPropertyValues("ai.providers.anthropic.model=claude-opus-5")
+		this.runner.withPropertyValues("ai.providers.anthropic.models.turn=claude-opus-5")
 				.run(context -> assertThat(context.getBeansOfType(AnthropicStoryProvider.class)).isEmpty());
 	}
 
@@ -123,13 +124,74 @@ class AnthropicRegistrationTests {
 		}
 	}
 
+	/**
+	 * <b>R3.6 — 네 용도가 서로 다른 모델을 쓸 수 있다.</b> 이 작업의 DoD 다.
+	 *
+	 * <p>턴 생성은 고성능, 나머지는 저비용이라는 것이 요구사항의 문장이며, 그것을 <b>설정으로
+	 * 표현할 수 있는가</b>가 여기서 확인된다.
+	 */
+	@Test
+	void R3_6_each_purpose_can_use_a_different_model() {
+		this.runner.withPropertyValues(
+						"ai.providers.anthropic.api-key=test-key",
+						"ai.providers.anthropic.models.turn=claude-opus-5",
+						"ai.providers.anthropic.models.summary=claude-haiku-4-5",
+						"ai.providers.anthropic.models.safety=claude-sonnet-5",
+						"ai.providers.anthropic.models.outline=claude-haiku-4-5")
+				.run(context -> {
+					AnthropicProperties properties = context.getBean(AnthropicProperties.class);
+
+					assertThat(properties.modelFor(AiPurpose.TURN)).isEqualTo("claude-opus-5");
+					assertThat(properties.modelFor(AiPurpose.SUMMARY)).isEqualTo("claude-haiku-4-5");
+					assertThat(properties.modelFor(AiPurpose.SAFETY)).isEqualTo("claude-sonnet-5");
+					assertThat(properties.modelFor(AiPurpose.OUTLINE)).isEqualTo("claude-haiku-4-5");
+				});
+	}
+
+	/**
+	 * <b>설정되지 않은 용도는 조용히 다른 용도의 모델을 빌려 쓰지 않는다.</b>
+	 *
+	 * <p>빌려 쓰면 그 사고는 에러가 아니라 <b>비용 청구서</b>로 나타나고, 그때는 이미 한 달치다.
+	 */
+	@Test
+	void R3_6_an_unconfigured_purpose_does_not_fall_back_to_another_model() {
+		this.runner.withPropertyValues(
+						"ai.providers.anthropic.api-key=test-key",
+						"ai.providers.anthropic.models.turn=claude-opus-5")
+				.run(context -> {
+					AnthropicProperties properties = context.getBean(AnthropicProperties.class);
+
+					assertThat(properties.modelFor(AiPurpose.TURN)).isEqualTo("claude-opus-5");
+					assertThat(properties.modelFor(AiPurpose.SUMMARY)).isNull();
+					assertThat(properties.modelFor(AiPurpose.SAFETY)).isNull();
+					assertThat(properties.modelFor(AiPurpose.OUTLINE)).isNull();
+				});
+	}
+
+	/**
+	 * <b>턴 생성 모델이 없으면 등록되지 않는다.</b> 나머지 셋은 등록 조건이 아니다 —
+	 * 요약(B-34) · 검수(B-30) · 아웃라인(B-52)은 아직 구현되지 않았다.
+	 */
+	@Test
+	void R3_6_only_the_turn_model_gates_registration() {
+		this.runner.withPropertyValues(
+						"ai.providers.anthropic.api-key=test-key",
+						"ai.providers.anthropic.models.summary=claude-haiku-4-5")
+				.run(context -> assertThat(context.getBeansOfType(AnthropicStoryProvider.class)).isEmpty());
+	}
+
 	/** 기본값은 코드가 갖는다 — 배포마다 정할 값이 아니다. */
 	@Test
 	void B22_base_url_and_max_tokens_have_code_defaults() {
-		AnthropicProperties properties = new AnthropicProperties("key", "model", null, null);
+		AnthropicProperties properties = new AnthropicProperties("key", turnModel("model"), null, null);
 
 		assertThat(properties.baseUrl()).isEqualTo("https://api.anthropic.com");
 		assertThat(properties.maxTokens()).isEqualTo(4096);
 		assertThat(properties.configured()).isTrue();
 	}
+	/** 턴 생성 모델만 채운 설정. 용도별 분리(B-24) 이후 대부분의 테스트가 필요로 하는 최소 형태다. */
+	private static AnthropicProperties.Models turnModel(String model) {
+		return new AnthropicProperties.Models(model, null, null, null);
+	}
+
 }
