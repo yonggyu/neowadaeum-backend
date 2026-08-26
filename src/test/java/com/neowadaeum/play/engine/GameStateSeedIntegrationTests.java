@@ -194,9 +194,15 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 	 */
 	@Test
 	void S10_1_11_seed_story_always_terminates_even_with_no_progress() throws SQLException {
-		Playthrough result = play(0, Set.of(), 40);
+		// 시드가 허용하는 최대 진행만큼 돌린다. 숫자를 손으로 적으면 시드를 늘릴 때마다 어긋난다.
+		//
+		// **이 하네스는 파이프라인보다 한 장당 한 턴을 더 쓴다.** 전환이 일어난 턴을 여기서는
+		// 새 장의 0턴째로 되돌리고, 파이프라인은 그 턴을 새 장의 첫 턴으로 센다. 그래서 같은 시드로
+		// 파이프라인은 40턴에, 이 하네스는 max_turns 합계에 끝난다 (B-44 의 E2E 가 전자를 본다).
+		int budget = seedTurnBudget();
+		Playthrough result = play(0, Set.of(), budget);
 
-		assertThat(result.ended()).as("40턴 안에 끝나지 않았다 — 무한 진행이다").isTrue();
+		assertThat(result.ended()).as("%d턴 안에 끝나지 않았다 — 무한 진행이다", budget).isTrue();
 		assertThat(result.decision().ending().defaultEnding()).isTrue();
 		assertThat(result.decision().byDefault()).isTrue();
 	}
@@ -259,6 +265,16 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 		}
 
 		return new Playthrough(false, null, chapterNo);
+	}
+
+	/** 시드의 {@code max_turns} 합계 — 아무 조건도 채우지 못한 플레이가 쓸 수 있는 최대치다. */
+	private int seedTurnBudget() throws SQLException {
+		try (Connection connection = this.catalog.getConnection();
+				Statement statement = connection.createStatement();
+				ResultSet rows = statement.executeQuery("SELECT SUM(max_turns) FROM chapter_def")) {
+			assertThat(rows.next()).isTrue();
+			return rows.getInt(1);
+		}
 	}
 
 	private static String proposal(int affinityPerTurn, Set<String> flags) {
