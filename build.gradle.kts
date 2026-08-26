@@ -111,10 +111,14 @@ val nightlyTest by tasks.registering(Test::class) {
 	useJUnitPlatform {
 		includeTags("nightly")
 	}
-	// ADR-0001 시점에 nightly 대상은 0건이다. 해당 테스트(§10.1 의 7 · 8 · 12)는 B-32 이후에 생긴다.
-	// 0건에서 실패하면 nightly 워크플로가 첫날부터 빨개지고 실패 이슈가 자동으로 열린다.
-	// 그러면 아무도 안 보게 되고, 정작 진짜 실패했을 때 구분되지 않는다.
-	failOnNoDiscoveredTests = false
+	// 예외를 두지 않는다 (#89). 여기에는 ADR-0001 시점의 임시 조치로 failOnNoDiscoveredTests = false 가
+	// 걸려 있었다. 근거는 "nightly 대상이 0건이라 첫날부터 빨개진다" 였는데 **그 전제가 사라졌다** —
+	// S-9-3(#67)에서 TurnConcurrencyNightlyTests 가 붙었고 이 태스크가 실제로 집어 간다.
+	//
+	// 전제가 살아 있던 동안에도 그 선언은 아무 일도 하지 않았다. Gradle 의 failOnNoDiscoveredTests 는
+	// 태그 필터가 0개를 만든 실행을 잡지 못하므로(아래 가드 주석) 켜든 끄든 결과가 같았다.
+	//
+	// nightly 는 사람이 매일 보지 않는다. 조용한 0건이 가장 오래 숨는 자리가 여기다.
 	shouldRunAfter(tasks.test, integrationTest)
 }
 
@@ -130,8 +134,15 @@ val nightlyTest by tasks.registering(Test::class) {
 // 세는 값의 출처는 JUnit XML 리포트다. 리스너로 세면 configuration cache 와 충돌하고, 리포트는
 // 어차피 태스크가 남기는 산출물이라 새로 만드는 것이 없다.
 //
-// nightlyTest 처럼 0건이 정상인 태스크는 failOnNoDiscoveredTests = false 로 빠져나간다.
-// 그 선언이 지금까지는 아무 일도 하지 않았는데, 이 가드가 그것을 실제 스위치로 만든다.
+// **세 태스크 모두에 같은 규칙이 걸린다** — test · integrationTest · nightlyTest. 지금 예외는 없다.
+//
+// 그래도 Gradle 의 failOnNoDiscoveredTests 를 스위치로 읽는다. 표준 플래그를 false 로 둔 태스크에
+// 이 가드만 살아 있으면 빌드가 자기 모순이 된다 — 0건이 정상인 태스크가 생기면 그 사실을 **선언으로**
+// 남기고, 그 선언이 여기에도 그대로 적용된다. 지금 그 선언을 한 태스크는 없다.
+//
+// UP-TO-DATE 로 건너뛴 태스크에는 doLast 가 돌지 않으므로 개수가 남지 않는다. 이전 실행이 이미
+// 검증한 상태이므로 안전 문제는 아니다. **그 때문에 UP-TO-DATE 를 끄지는 않는다** — 캐시를 버리는
+// 대가가 이 가드가 얻는 것보다 크고, CI 는 매번 새 체크아웃이라 해당되지 않는다.
 tasks.withType<Test>().configureEach {
 	val guardEnabled = failOnNoDiscoveredTests
 	val xmlDir = reports.junitXml.outputLocation
