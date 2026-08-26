@@ -3,6 +3,8 @@ package com.neowadaeum.ai.provider.fixed;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.common.support.FixedTokenCounter;
+import com.neowadaeum.common.support.TokenCounter;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import tools.jackson.databind.ObjectMapper;
@@ -19,6 +21,8 @@ class FixedStoryProviderRegistrationTests {
 
 	private final ApplicationContextRunner runner = new ApplicationContextRunner()
 			.withBean(ObjectMapper.class, () -> JsonMapper.builder().build())
+			// 요약이 예산을 지키려면 세는 수단이 필요하다 (B-34). 운영에서는 common 의 빈이다.
+			.withBean(TokenCounter.class, FixedTokenCounter::new)
 			.withUserConfiguration(FixedStoryProviderConfiguration.class);
 
 	/**

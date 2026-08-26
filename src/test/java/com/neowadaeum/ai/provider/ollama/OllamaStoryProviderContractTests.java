@@ -13,6 +13,7 @@ import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.GenerationBudgets;
 import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
+import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationFailedException;
@@ -22,6 +23,7 @@ import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.OutputSchemaRejectedException;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import com.neowadaeum.play.port.TurnRequest;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,7 +65,7 @@ class OllamaStoryProviderContractTests {
 		this.server.start();
 
 		OllamaProperties properties = new OllamaProperties("http://localhost:" + this.server.port(),
-				new OllamaProperties.Models("llama3.1", null, "llama-guard3", null));
+				new OllamaProperties.Models("llama3.1", "llama3.2:1b", "llama-guard3", null));
 
 		this.provider = new OllamaStoryProvider(
 				RestClient.builder().baseUrl(properties.baseUrl()).build(), properties,
@@ -190,5 +192,42 @@ class OllamaStoryProviderContractTests {
 
 	private JsonNode sentBody() {
 		return JSON.readTree(this.server.getAllServeEvents().getFirst().getRequest().getBodyAsString());
+	}
+
+	/**
+	 * <b>R3.6 — 요약도 자기 모델로 한다</b> (B-34).
+	 *
+	 * <p>로컬 실행이라 청구서는 없지만 시간과 GPU 는 같은 자원이다. 사용자가 기다리지 않는 호출이
+	 * 턴 생성 모델을 붙들면 <b>다음 턴이 느려진다.</b>
+	 */
+	@Test
+	void R3_6_the_summary_call_uses_the_summary_model() {
+		this.server.stubFor(post(urlEqualTo("/api/chat")).willReturn(aResponse()
+				.withStatus(200)
+				.withHeader("content-type", "application/json")
+				.withBody("{\"message\":{\"content\":\"압축된 줄거리\"}}")));
+
+		String summary = this.provider.summarize(new SummaryRequest("지난 줄거리",
+				List.of(new SummaryRequest.TurnDigest(9, "왼쪽", "아홉째 턴의 요지")), 600));
+
+		assertThat(summary).isEqualTo("압축된 줄거리");
+		String sent = this.server.getAllServeEvents().getFirst().getRequest().getBodyAsString();
+		assertThat(JSON.readTree(sent).path("model").asString(""))
+				.isEqualTo("llama3.2:1b")
+				.isNotEqualTo("llama3.1");
+		assertThat(this.recorded.getFirst().purpose()).isEqualTo("summary");
+	}
+
+	/** 빈 요약을 저장하지 않는다 — 그 세션은 그 뒤로 아무것도 기억하지 못하게 된다. */
+	@Test
+	void R4_5_a_blank_summary_is_a_call_failure() {
+		this.server.stubFor(post(urlEqualTo("/api/chat")).willReturn(aResponse()
+				.withStatus(200)
+				.withHeader("content-type", "application/json")
+				.withBody("{\"message\":{\"content\":\"  \"}}")));
+
+		assertThatThrownBy(() -> this.provider.summarize(new SummaryRequest(null,
+				List.of(new SummaryRequest.TurnDigest(9, null, "요지")), 600)))
+				.isInstanceOf(ProviderCallFailedException.class);
 	}
 }

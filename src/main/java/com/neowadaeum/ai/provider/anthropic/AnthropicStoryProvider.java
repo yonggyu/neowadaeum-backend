@@ -12,6 +12,7 @@ import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.SafetyClassificationFormat;
+import com.neowadaeum.ai.provider.SummaryPrompt;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.prompt.PlatformPrompts;
@@ -376,10 +377,74 @@ public class AnthropicStoryProvider implements StoryProvider {
 		return SafetyClassificationFormat.parse(text.toString());
 	}
 
-	/** <b>요약은 B-34 다.</b> 스텁으로 통과시키지 않는다 (§0.2). */
+	/**
+	 * 오래된 턴을 압축한다 (R4.5, R4.6, B-34).
+	 *
+	 * <p><b>요약용 모델을 부른다</b> (R3.6). 턴 생성 모델로 요약하면 <b>요약 한 번이 턴 생성만큼</b>
+	 * 든다 — 사용자가 기다리지 않는 호출이라 눈에 띄지도 않는다.
+	 *
+	 * <p><b>출력 스키마를 걸지 않는다.</b> 결과가 평문 한 덩어리이므로 맞출 형식이 없고, 그래서
+	 * 재요청 경로도 지나지 않는다 ({@code SchemaRetryingStoryProvider} 는 턴 생성만 감싼다).
+	 *
+	 * <p><b>{@code max_tokens} 는 요청이 정한다.</b> §4.3 의 SUMMARY 예산(600)이 그 값이며,
+	 * 넘으면 재압축하는 것은 호출자의 일이다 (R4.5).
+	 */
 	@Override
 	public String summarize(SummaryRequest request) {
-		throw new UnsupportedOperationException("summarize is B-34");
+		ObjectNode body = summaryBody(request);
+		long startedAt = System.nanoTime();
+
+		JsonNode response;
+		try {
+			response = this.restClient.post()
+					.uri("/v1/messages")
+					.body(body)
+					.retrieve()
+					.body(JsonNode.class);
+		}
+		catch (RestClientException ex) {
+			record(AiPurpose.SUMMARY, body, null, startedAt, null);
+			throw new ProviderCallFailedException("anthropic summary call failed");
+		}
+
+		record(AiPurpose.SUMMARY, body, response, startedAt, null);
+		return summaryText(response);
+	}
+
+	/**
+	 * 요약 요청 본문.
+	 *
+	 * <p><b>지시는 {@code system} 으로 간다</b> (I-7 과 같은 이유). 압축 대상은 <b>AI 가 만든
+	 * 본문</b>이며 UGC 작품의 프롬프트에서 유도됐을 수 있다 — 지시와 같은 평면에 두지 않는다.
+	 */
+	private ObjectNode summaryBody(SummaryRequest request) {
+		ObjectNode body = JSON.createObjectNode();
+		body.put("model", modelFor(AiPurpose.SUMMARY));
+		body.put("max_tokens", request.maxTokens());
+		body.put("system", PlatformPrompts.SUMMARY);
+
+		ObjectNode message = body.putArray("messages").addObject();
+		message.put("role", "user");
+		message.put("content", SummaryPrompt.compose(request));
+		return body;
+	}
+
+	/** 응답에서 요약 평문을 꺼낸다. 형태가 다르면 <b>호출 실패</b>다 — 빈 요약을 저장하지 않는다. */
+	private static String summaryText(JsonNode response) {
+		if (response == null || !response.path("content").isArray()) {
+			throw new ProviderCallFailedException("anthropic summary response has no content array");
+		}
+
+		StringBuilder text = new StringBuilder();
+		for (JsonNode block : response.path("content")) {
+			if ("text".equals(block.path("type").asString(null))) {
+				text.append(block.path("text").asString(""));
+			}
+		}
+		if (text.isEmpty() || text.toString().isBlank()) {
+			throw new ProviderCallFailedException("anthropic summary response has no text block");
+		}
+		return text.toString().strip();
 	}
 
 	/** <b>아웃라인 초안은 B-52 다.</b> 위와 같은 이유다. */

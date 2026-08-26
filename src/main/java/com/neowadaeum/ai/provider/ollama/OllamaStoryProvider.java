@@ -13,6 +13,7 @@ import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.SafetyClassificationFormat;
+import com.neowadaeum.ai.provider.SummaryPrompt;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.schema.TurnOutputParser;
@@ -244,9 +245,58 @@ public class OllamaStoryProvider implements StoryProvider {
 		return content;
 	}
 
+	/**
+	 * 오래된 턴을 압축한다 (R4.5, B-34).
+	 *
+	 * <p><b>요약용 모델을 부른다</b> (R3.6). 로컬 실행이라 청구서는 없지만 <b>시간과 GPU 는 같은
+	 * 자원</b>이며, 사용자가 기다리지 않는 호출이 턴 생성 모델을 붙들면 다음 턴이 느려진다.
+	 *
+	 * <p><b>{@code format: json} 을 걸지 않는다.</b> 결과가 평문이므로 JSON 을 요구하면 오히려
+	 * 형식이 어긋난다.
+	 */
 	@Override
 	public String summarize(SummaryRequest request) {
-		throw new UnsupportedOperationException("summarize is B-34");
+		ObjectNode body = summaryBody(request);
+		long startedAt = System.nanoTime();
+
+		JsonNode response;
+		try {
+			response = this.restClient.post()
+					.uri("/api/chat")
+					.body(body)
+					.retrieve()
+					.body(JsonNode.class);
+		}
+		catch (RestClientException ex) {
+			record(AiPurpose.SUMMARY, body, null, startedAt, null);
+			throw new ProviderCallFailedException("ollama summary call failed");
+		}
+
+		record(AiPurpose.SUMMARY, body, response, startedAt, null);
+
+		String summary = (response != null) ? response.path("message").path("content").asString(null) : null;
+		if (summary == null || summary.isBlank()) {
+			// 빈 요약을 저장하면 그 세션은 그 뒤로 아무것도 기억하지 못한다.
+			throw new ProviderCallFailedException("ollama summary response has no message content");
+		}
+		return summary.strip();
+	}
+
+	/** 요약 요청 본문. 지시는 {@code system} 메시지로 간다 (I-7 과 같은 이유). */
+	private ObjectNode summaryBody(SummaryRequest request) {
+		ObjectNode body = JSON.createObjectNode();
+		body.put("model", modelFor(AiPurpose.SUMMARY));
+		body.put("stream", false);
+
+		var messages = body.putArray("messages");
+		ObjectNode system = messages.addObject();
+		system.put("role", "system");
+		system.put("content", PlatformPrompts.SUMMARY);
+
+		ObjectNode user = messages.addObject();
+		user.put("role", "user");
+		user.put("content", SummaryPrompt.compose(request));
+		return body;
 	}
 
 	@Override

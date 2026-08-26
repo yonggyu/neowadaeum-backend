@@ -7,6 +7,7 @@ import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
+import com.neowadaeum.common.support.TokenCounter;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.TurnRequest;
 import java.util.HashMap;
@@ -49,9 +50,18 @@ public class FixedStoryProvider implements StoryProvider {
 	 */
 	private final Map<String, List<SafetyCategory>> verdicts;
 
-	public FixedStoryProvider(List<FixedStoryScenario> scenarios) {
+	/**
+	 * 요약 예산을 지키려면 세는 수단이 필요하다 (B-34).
+	 *
+	 * <p><b>{@code common} 의 계산기를 그대로 쓴다</b> (#82). 여기서 따로 세면 <b>조립기가 넘는다고
+	 * 보는 요약을 이 Provider 는 안 넘는다고 보는</b> 상태가 생긴다.
+	 */
+	private final TokenCounter tokens;
+
+	public FixedStoryProvider(List<FixedStoryScenario> scenarios, TokenCounter tokens) {
 		this.responses = index(scenarios);
 		this.verdicts = indexVerdicts(scenarios);
+		this.tokens = tokens;
 	}
 
 	@Override
@@ -98,14 +108,36 @@ public class FixedStoryProvider implements StoryProvider {
 	}
 
 	/**
-	 * <b>요약은 이 Provider 의 일이 아니다</b> (B-34).
+	 * 발췌 요약 — <b>모델이 아니라 규칙이 만든다</b> (B-34).
 	 *
-	 * <p>§0.2 — 스텁으로 통과시키지 않는다. 빈 문자열이나 입력을 되돌려주는 구현을 두면 요약
-	 * 파이프라인이 붙기 전에도 초록으로 보이고, 그 지점이 검증되지 않은 채 남는다.
+	 * <p><b>지어내지 않는다.</b> 넘겨받은 직전 요약과 턴 요지를 순서대로 잇고, 예산을 넘으면
+	 * <b>오래된 쪽부터 버린다.</b> 그래서 같은 입력에 언제나 같은 결과가 나온다 (I-15) — E2E 가
+	 * 40턴을 돌려도 프롬프트에 실리는 과거가 흔들리지 않는다.
+	 *
+	 * <p><b>스텁이 아닌 이유가 여기 있다</b> (§0.2). 빈 문자열을 돌려주는 구현은 "요약이 붙었다"고
+	 * 착각하게 만들지만, 이것은 <b>실제로 압축한다</b> — 재압축(R4.5)을 걸면 실제로 짧아진다.
+	 * 모델이 하는 <b>의미 기반</b> 압축이 아니라는 것만 다르다.
 	 */
 	@Override
 	public String summarize(SummaryRequest request) {
-		throw new UnsupportedOperationException("summarize is B-34; the fixed provider does not summarize");
+		List<String> lines = new java.util.ArrayList<>();
+		if (request.previousSummary() != null && !request.previousSummary().isBlank()) {
+			lines.add(request.previousSummary().strip());
+		}
+		request.turns().forEach(turn -> lines.add(line(turn)));
+
+		// 예산을 넘으면 앞(오래된 쪽)부터 버린다. R4.5 의 재압축이 실제로 짧아지게 만드는 규칙이다.
+		while (lines.size() > 1 && this.tokens.count(String.join("\n", lines)) > request.maxTokens()) {
+			lines.removeFirst();
+		}
+		return String.join("\n", lines);
+	}
+
+	private static String line(SummaryRequest.TurnDigest turn) {
+		String chosen = (turn.chosenChoiceText() != null && !turn.chosenChoiceText().isBlank())
+				? " (선택: " + turn.chosenChoiceText().strip() + ")"
+				: "";
+		return turn.turnNo() + "턴" + chosen + ": " + turn.paragraphsDigest().strip();
 	}
 
 	/** <b>아웃라인 초안도 이 Provider 의 일이 아니다</b> (B-52). 위와 같은 이유다. */
