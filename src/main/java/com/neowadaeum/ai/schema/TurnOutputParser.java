@@ -48,6 +48,9 @@ public class TurnOutputParser {
 	/** 선택지 상한 (R5.4). 초과분은 절단한다. */
 	static final int MAX_CHOICES = 4;
 
+	/** 거부 메시지에 받은 값 대신 싣는다 (S-3). */
+	private static final String ALLOWED_TYPES = "dialogue, narration";
+
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
@@ -130,9 +133,10 @@ public class TurnOutputParser {
 			return TurnOutput.ParagraphType.valueOf(node.stringValue().trim().toUpperCase(Locale.ROOT));
 		}
 		catch (IllegalArgumentException ex) {
-			// 이름은 남긴다 — 모델이 만들어 낸 종류가 무엇인지가 프롬프트를 고치는 단서다.
-			// 본문 텍스트가 아니라 열거형 후보이므로 S-3 의 대상이 아니다.
-			throw new TurnOutputSchemaException("unknown paragraph type: " + node.stringValue().trim());
+			// 받은 값을 남기지 않는다 (S-3). 여기는 열거형 자리지만 모델이 무엇을 넣을지는 모르고,
+			// 본문 한 문단이 들어오면 그것이 그대로 로그가 된다. 대신 허용값을 적는다 — 고쳐야 할
+			// 것을 아는 데 필요한 것은 받은 값이 아니라 <b>받아야 하는 값</b>이다.
+			throw new TurnOutputSchemaException("unknown paragraph type: must be one of " + ALLOWED_TYPES);
 		}
 	}
 

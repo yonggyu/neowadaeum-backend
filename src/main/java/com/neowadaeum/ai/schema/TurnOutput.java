@@ -20,7 +20,9 @@ import tools.jackson.databind.JsonNode;
  *
  * @param speakerName             화자. <b>nullable 이다</b> — {@code null} 이면 나레이션으로 렌더한다 (R5.2)
  * @param paragraphs              본문 문단. <b>통 문자열이 아니라 배열이다</b> (R5.1)
- * @param choices                 선택지. 1~4개 (R5.4). 엔딩 턴이면 비어 있을 수 있다 (R7.8)
+ * @param choices                 선택지. 1~4개 (R5.4). <b>엔딩 턴이라고 비어 오지 않는다</b> —
+ *                                종료 선언은 서버가 하므로 (I-10) AI 는 자기 턴이 마지막인지 모른다.
+ *                                {@code choices: []} 로 바꾸는 것은 엔딩 엔진이다 (R7.8)
  * @param stateChanges            상태 변화 제안. <b>원시 JSON 그대로 넘긴다</b> — 수치 델타와 배열
  *                                연산자({@code flags.add}, §13-9)가 섞이므로 타입을 좁히면 표현할 수
  *                                없다. 화이트리스트 · clamp 는 GameState 엔진이 한다 (R4.1, R4.2)

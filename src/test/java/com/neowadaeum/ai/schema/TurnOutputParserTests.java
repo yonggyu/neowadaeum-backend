@@ -92,7 +92,8 @@ class TurnOutputParserTests {
 					 "choices": [{"order": 1, "text": "받는다"}]}
 					"""))
 					.isInstanceOf(TurnOutputSchemaException.class)
-					.hasMessageContaining("unknown paragraph type");
+					.hasMessageContaining("unknown paragraph type")
+					.hasMessageContaining("dialogue, narration");
 		}
 
 		@Test
@@ -315,7 +316,11 @@ class TurnOutputParserTests {
 					messageOf("이것은 JSON 이 아니다: " + secretish),
 					messageOf("{\"paragraphs\": \"%s\", \"choices\": []}".formatted(secretish)),
 					messageOf("{\"paragraphs\": [{\"type\": \"narration\", \"text\": \"%s\"}], \"choices\": []}"
-							.formatted(secretish)));
+							.formatted(secretish)),
+					// 열거형 자리라고 안전하지 않다 — 모델이 무엇을 넣을지 모른다.
+					messageOf("{\"paragraphs\": [{\"type\": \"%s\", \"text\": \"...\"}], \"choices\": []}"
+							.formatted(secretish)),
+					messageOf("{\"speakerName\": \"%s\", \"paragraphs\": [], \"choices\": []}".formatted(secretish)));
 
 			assertThat(messages).allSatisfy(message -> assertThat(message).doesNotContain(secretish));
 		}
