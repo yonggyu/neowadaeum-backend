@@ -1,6 +1,7 @@
 package com.neowadaeum.ai.gateway;
 
 import com.neowadaeum.ai.provider.ProviderProperties;
+import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import java.util.List;
@@ -35,11 +36,23 @@ public class AiGatewayConfiguration {
 	 *
 	 * <p>실행기를 가상 스레드로 둔다. 대기가 대부분인 호출이라 플랫폼 스레드를 붙들 이유가 없다.
 	 */
+	/**
+	 * 조립 순서 — {@code AiGateway( TimeLimited( SchemaRetrying( adapter ) ) )}.
+	 *
+	 * <p><b>재요청이 시간 제한 안쪽이다</b> (B-21, §13-19). §6.1 은 4단계(Provider 호출, 25s)와
+	 * 5단계(파싱 → 실패 시 재요청)를 나란히 두고, §6.3 은 서버 전체 응답 예산을 28s 로 못박는다.
+	 * 재요청을 제한 <b>밖</b>에 두면 두 번의 호출이 최대 50s 가 되어 그 예산을 넘는다. 안쪽에 두면
+	 * 재요청을 포함한 전체가 25s 를 넘는 순간 기존대로 {@code 504 GENERATION_TIMEOUT} 이 되고,
+	 * 취소도 함께 걸린다.
+	 *
+	 * <p><b>페이로드 검증은 가장 바깥이다.</b> 나가는 페이로드는 재요청에도 같으므로 한 번만 보면
+	 * 되고, 검증이 안쪽이면 재요청 횟수만큼 같은 검사를 반복한다 (I-3, B-19).
+	 */
 	@Bean
 	@Primary
 	public StoryProvider aiGateway(List<StoryProvider> adapters, ProviderProperties properties) {
 		StoryProvider selected = new ProviderRegistry(adapters).select(properties.active());
-		return new AiGateway(new TimeLimitedStoryProvider(selected,
+		return new AiGateway(new TimeLimitedStoryProvider(new SchemaRetryingStoryProvider(selected),
 				Executors.newVirtualThreadPerTaskExecutor(), properties.timeoutMs()),
 				PayloadWhitelistValidator.forProviderPayloads());
 	}

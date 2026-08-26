@@ -5,14 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
+import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.ai.provider.TurnRequest;
 import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -128,6 +131,24 @@ class AiGatewayWiringTests {
 	}
 
 	/**
+	 * R5.8 — 어느 어댑터를 골라도 스키마 재요청이 걸린다 (B-21).
+	 *
+	 * <p>시간 제한과 같은 이유로 게이트웨이가 감싼다. 어댑터가 각자 세면 새 어댑터가 그것을 잊고,
+	 * 잊은 사실은 사용자가 502 를 받은 뒤에 알게 된다.
+	 */
+	@Test
+	void R5_8_the_selected_adapter_is_wrapped_with_the_schema_retry() {
+		this.runner.withUserConfiguration(AlwaysViolatingAdapter.class).run(context -> {
+			assertThatThrownBy(() -> context.getBean(StoryProvider.class).generateTurn(request()))
+					.isInstanceOf(SchemaRetryingStoryProvider.OutputSchemaRejectedException.class);
+
+			assertThat(AlwaysViolatingAdapter.calls)
+					.as("R5.8 — 최초 1회 + 재요청 1회. 게이트웨이를 지나며 재요청이 실제로 일어난다")
+					.hasValue(2);
+		});
+	}
+
+	/**
 	 * 아직 구현되지 않은 용도는 게이트웨이를 지나도 예외 그대로다 (§0.2).
 	 *
 	 * <p>앞단이 생겼다는 이유로 {@code summarize} 가 조용히 뭔가를 돌려주기 시작하면 요약
@@ -184,6 +205,25 @@ class AiGatewayWiringTests {
 						Thread.currentThread().interrupt();
 					}
 					return super.generateTurn(request);
+				}
+			};
+		}
+	}
+
+	/** 언제나 스키마를 어기는 어댑터. 재요청이 게이트웨이를 지나며 실제로 걸리는지 센다. */
+	@Configuration(proxyBeanMethods = false)
+	static class AlwaysViolatingAdapter {
+
+		static final AtomicInteger calls = new AtomicInteger();
+
+		@Bean
+		EchoAdapter violating() {
+			calls.set(0);
+			return new EchoAdapter("violating") {
+				@Override
+				public TurnResult generateTurn(TurnRequest request) {
+					calls.incrementAndGet();
+					throw new TurnOutputSchemaException("paragraphs must be an array");
 				}
 			};
 		}
