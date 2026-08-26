@@ -3,7 +3,6 @@ package com.neowadaeum.safety.l2;
 import com.neowadaeum.common.spi.BlocklistEntry;
 import com.neowadaeum.common.spi.BlocklistQuery;
 import com.neowadaeum.common.spi.SafetyCategory;
-import com.neowadaeum.common.spi.SafetyPolicy;
 import com.neowadaeum.common.support.TextNormalizer;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,8 +21,8 @@ import org.slf4j.LoggerFactory;
  * 무검열 로컬 모델을 붙여도 이 판정은 그대로 수행된다.
  *
  * <p><b>R9.2 의 1단이다.</b> 원문은 탐지를 "블록리스트 + 정규화 + 의미 기반 분류의 2단 구성"으로
- * 규정하며, 2단(모델 기반)은 B-30 복귀 시점이다. <b>축소된 실물이지 스텁이 아니다</b> — 규칙
- * 기반 판정기는 실제로 차단한다 (§0.2, ADR-0004).
+ * 규정하며, 2단(의미 기반)은 {@link SafetyL2Judge} 가 이 뒤에 붙인다 (B-30). 그래도 <b>이것 하나로도
+ * 실제로 차단한다</b> — 축소된 실물이지 스텁이 아니다 (§0.2, ADR-0004).
  *
  * <p><b>fail-closed</b> (ADR-0002) — 블록리스트 조회가 실패하면 통과시키지 않고 차단한다.
  * 블록리스트를 못 읽는 상태에서 통과시키면 블록리스트가 존재하지 않는 것과 같다.
@@ -81,28 +80,7 @@ public class RuleBasedSafetyJudge {
 			return SafetyJudgement.pass();
 		}
 
-		return new SafetyJudgement(decide(hits), hits);
-	}
-
-	/**
-	 * 정책이 가장 강한 것을 따른다.
-	 *
-	 * <p>즉시차단이 하나라도 있으면 <b>재생성하지 않는다</b> (§9.2, B-30 DoD). 재생성 대상과 섞였을
-	 * 때 약한 쪽을 따르면 즉시차단이 사실상 사라진다.
-	 */
-	private static SafetyOutcome decide(Set<SafetyCategory> hits) {
-		if (hits.stream().anyMatch(SafetyCategory::blocksImmediately)) {
-			return SafetyOutcome.BLOCK;
-		}
-
-		if (hits.stream().anyMatch(category -> category.policy() == SafetyPolicy.MASK)) {
-			// §9.2 는 마스킹 후 통과를 규정하지만 규칙 기반 대조는 위치(span)를 모른다.
-			// 스텁으로 통과시키지 않는다 (§0.2).
-			throw new UnsupportedOperationException(
-					"masking policy is not implemented — see §9.2 and B-30");
-		}
-
-		return SafetyOutcome.REGENERATE;
+		return new SafetyJudgement(CategoryPolicy.decide(hits), hits);
 	}
 
 	private static String normalizeAll(List<String> texts) {

@@ -23,6 +23,7 @@ import com.neowadaeum.play.engine.GameStateEngine;
 import com.neowadaeum.play.orchestrator.TurnOutcome;
 import com.neowadaeum.play.orchestrator.TurnPipeline;
 import com.neowadaeum.safety.l2.RuleBasedSafetyJudge;
+import com.neowadaeum.safety.l2.SafetyL2Judge;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
@@ -170,8 +171,13 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 			}
 		};
 
-		RuleBasedSafetyJudge judge = new RuleBasedSafetyJudge(new InMemoryBlocklistQuery(
-				List.of(new BlocklistEntry(TextNormalizer.normalize(blocked), SafetyCategory.MINOR_SEXUAL))));
+		// 2단은 부르지 않는다 — 1단이 즉시차단이기 때문이다 (§9.2). 그것을 이 판정기가 못박는다.
+		SafetyL2Judge judge = new SafetyL2Judge(
+				new RuleBasedSafetyJudge(new InMemoryBlocklistQuery(
+						List.of(new BlocklistEntry(TextNormalizer.normalize(blocked), SafetyCategory.MINOR_SEXUAL)))),
+				request -> {
+					throw new AssertionError("즉시차단인데 2단이 불렸다 (§9.2)");
+				});
 
 		UUID sessionId = this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY, SEED_VERSION,
 				"offending", "scenario", false, Instant.now(FIXED))).getId();
