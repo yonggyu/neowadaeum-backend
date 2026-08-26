@@ -1,5 +1,6 @@
 package com.neowadaeum.play.orchestrator;
 
+import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GenerationContext;
 import com.neowadaeum.play.port.GeneratedParagraph;
@@ -69,30 +70,21 @@ public class TurnPipeline {
 	private final TurnRepository turns;
 	private final GameStateSnapshotRepository snapshots;
 	private final StoryVersionFacade storyVersions;
-	/**
-	 * 프롬프트 재료로 읽어 올 최근 턴 수.
-	 *
-	 * <p><b>얼마나 읽을 것인가이지 얼마나 실을 것인가가 아니다.</b> 후자는 {@code ai} 의 예산
-	 * 정책이다 (§13-2 의 {@code in-prompt}). 8 로 둔 것은 §13-2 가 그보다 오래된 턴을 요약에
-	 * 병합한다고 정했기 때문이며 — 병합된 턴을 또 읽을 이유가 없다.
-	 *
-	 * <p><b>두 값이 어긋날 수 있다.</b> {@code ai.prompt.recent-turns.in-prompt} 가 이 수를 넘게
-	 * 설정되면 조립기는 있는 만큼만 받고 그 사실을 알지 못한다. 지금은 8 &gt; 5 라 여유가 있다.
-	 */
-	private static final int RECENT_TURN_WINDOW = 8;
-
 	private final TurnGenerationPort provider;
 	private final RuleBasedSafetyJudge safetyJudge;
 	private final GameStateEngine gameStateEngine;
 	private final ChapterEngine chapterEngine;
 	private final EndingEngine endingEngine;
 	private final TransactionTemplate transactions;
+	private final RecentTurnsProperties recentTurns;
+
 	private final Clock clock;
 
 	public TurnPipeline(PlaySessionRepository sessions, TurnRepository turns,
 			GameStateSnapshotRepository snapshots, StoryVersionFacade storyVersions, TurnGenerationPort provider,
 			RuleBasedSafetyJudge safetyJudge, GameStateEngine gameStateEngine, ChapterEngine chapterEngine,
-			EndingEngine endingEngine, PlatformTransactionManager playTransactionManager, Clock clock) {
+			EndingEngine endingEngine, RecentTurnsProperties recentTurns,
+			PlatformTransactionManager playTransactionManager, Clock clock) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.snapshots = snapshots;
@@ -103,6 +95,7 @@ public class TurnPipeline {
 		this.chapterEngine = chapterEngine;
 		this.endingEngine = endingEngine;
 		this.transactions = new TransactionTemplate(playTransactionManager);
+		this.recentTurns = recentTurns;
 		this.clock = clock;
 	}
 
@@ -189,10 +182,15 @@ public class TurnPipeline {
 	 *
 	 * <p><b>{@code ai} 가 무엇을 실을지는 여기서 정하지 않는다.</b> 몇 턴을 원문으로 쓰고 어디서
 	 * 자를지는 조립기의 예산 판단이다 (§13-2, §4.4). 여기가 정하는 것은 <b>얼마나 읽을 것인가</b>뿐이다.
+	 *
+	 * <p><b>그 수를 {@code summaryMerge} 에서 읽는다</b> (#97). 그보다 오래된 턴은 요약에 병합되므로
+	 * 읽을 이유가 없다. 이전에는 같은 숫자 8 을 상수로 복제했고, 그러면 {@code inPrompt} 를 그보다
+	 * 크게 설정했을 때 <b>조립기가 있는 만큼만 받고 그 사실을 알지 못했다.</b> 세 값은
+	 * {@code RecentTurnsProperties} 가 부팅에서 함께 검증한다 ({@code verbatim ≤ inPrompt ≤ summaryMerge}).
 	 */
 	private GenerationContext generationContext(PipelineContext context, Integer chosenChoiceOrder) {
 		List<Turn> recent = this.turns
-				.findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(context.sessionId(), Limit.of(RECENT_TURN_WINDOW));
+				.findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(context.sessionId(), Limit.of(this.recentTurns.summaryMerge()));
 
 		return new GenerationContext(
 				context.version().worldPrompt(),

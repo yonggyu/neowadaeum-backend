@@ -3,6 +3,7 @@ package com.neowadaeum.ai.provider.anthropic;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ai.prompt.PromptConfiguration;
+import com.neowadaeum.config.SharedPropertiesConfiguration;
 import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.provider.StoryProvider;
 import java.util.List;
@@ -25,7 +26,8 @@ import org.springframework.context.annotation.Configuration;
 class AnthropicRegistrationTests {
 
 	private final ApplicationContextRunner runner = new ApplicationContextRunner()
-			.withUserConfiguration(PromptConfiguration.class, AnthropicProviderConfiguration.class);
+			.withUserConfiguration(SharedPropertiesConfiguration.class, PromptConfiguration.class,
+					AnthropicProviderConfiguration.class);
 
 	/** 둘 다 있으면 등록된다. */
 	@Test

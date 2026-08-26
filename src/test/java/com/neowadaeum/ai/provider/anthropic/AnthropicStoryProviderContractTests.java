@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.neowadaeum.ai.prompt.PromptAssembler;
-import com.neowadaeum.ai.prompt.RecentTurnsProperties;
+import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;

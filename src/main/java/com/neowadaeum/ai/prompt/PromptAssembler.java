@@ -1,5 +1,7 @@
 package com.neowadaeum.ai.prompt;
 
+import com.neowadaeum.common.support.RecentTurnsProperties;
+
 import com.neowadaeum.ai.prompt.PromptLayer.BudgetGroup;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
