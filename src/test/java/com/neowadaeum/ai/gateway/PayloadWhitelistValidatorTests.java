@@ -1,6 +1,7 @@
 package com.neowadaeum.ai.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ai.gateway.PayloadWhitelistValidator.PayloadWhitelistViolationException;
@@ -8,6 +9,7 @@ import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
+import com.neowadaeum.play.port.GenerationContext;
 import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
@@ -169,6 +171,51 @@ class PayloadWhitelistValidatorTests {
 		assertThat(this.validator.declaredFieldsFor(SummaryRequest.class))
 				.containsExactlyInAnyOrderElementsOf(serializedFieldNames(new SummaryRequest("요약",
 						List.of(new SummaryRequest.TurnDigest(1, "선택", "요지")), 600)));
+	}
+
+	// ── gameState 불투명 서브트리 (#96) ───────────────────────
+
+	/**
+	 * <b>안쪽을 안 본다고 아무거나 통과시키지는 않는다</b> (I-3, #96).
+	 *
+	 * <p>{@code gameState} 는 작품이 {@code state_schema} 로 정한 자유 형태라 허용 목록을 만들 수
+	 * 없다. 열거할 수 없는 것은 <b>작품 키</b>이고, 절대 나타나면 안 되는 것은 유한하다.
+	 */
+	@Test
+	void I3_member_identity_inside_the_opaque_subtree_is_rejected() {
+		assertThatThrownBy(() -> this.validator.validate(withGameState(
+				"{\"affinity\":{\"yuna\":18},\"playerRef\":\"11111111-1111-4111-8111-111111111111\"}")))
+				.isInstanceOf(PayloadWhitelistViolationException.class)
+				.hasMessageContaining("playerRef");
+	}
+
+	/** <b>중첩 안쪽에 숨겨도 걸린다.</b> 한 겹만 보면 안쪽에 담아 보내면 그만이다. */
+	@Test
+	void I3_member_identity_nested_deeper_in_the_opaque_subtree_is_rejected() {
+		assertThatThrownBy(() -> this.validator.validate(withGameState(
+				"{\"profile\":{\"inner\":{\"email\":\"a@b.c\"}}}")))
+				.isInstanceOf(PayloadWhitelistViolationException.class)
+				.hasMessageContaining("email");
+	}
+
+	/**
+	 * <b>정상 GameState 는 그대로 통과한다.</b> 방어선이 정상 경로를 막으면 우회가 생긴다.
+	 *
+	 * <p>작품이 정한 키({@code affinity.yuna})는 선언에 없지만 막히지 않아야 한다 — 그것이 이
+	 * 예외가 존재하는 이유다.
+	 */
+	@Test
+	void R4_1_a_normal_game_state_passes_with_work_defined_keys() {
+		assertThatCode(() -> this.validator.validate(withGameState(
+				"{\"chapter\":2,\"turn\":7,\"location\":\"강의실\",\"affinity\":{\"yuna\":18},"
+						+ "\"flags\":[\"met_yuna\"],\"inventory\":[]}")))
+				.doesNotThrowAnyException();
+	}
+
+	private static TurnRequest withGameState(String gameStateJson) {
+		GenerationContext context = new GenerationContext("세계관", java.util.List.of(),
+				JsonMapper.builder().build().readTree(gameStateJson), null, java.util.List.of(), null);
+		return TurnRequest.opening(STORY_VERSION, context);
 	}
 
 	/** 직렬화 결과에 실제로 나타나는 이름. 중첩 안쪽 이름까지 모은다. */
