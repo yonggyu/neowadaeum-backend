@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedTurn;

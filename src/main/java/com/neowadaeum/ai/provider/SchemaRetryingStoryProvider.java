@@ -1,5 +1,6 @@
 package com.neowadaeum.ai.provider;
 
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;

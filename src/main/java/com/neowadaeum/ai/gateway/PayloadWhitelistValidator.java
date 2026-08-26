@@ -1,7 +1,7 @@
 package com.neowadaeum.ai.gateway;
 
 import com.neowadaeum.ai.provider.OutlineRequest;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.TurnRequest;
 import java.util.ArrayList;

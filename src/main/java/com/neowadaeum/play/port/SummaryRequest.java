@@ -1,4 +1,4 @@
-package com.neowadaeum.ai.provider;
+package com.neowadaeum.play.port;
 
 import java.util.List;
 
@@ -18,7 +18,9 @@ public record SummaryRequest(String previousSummary, List<TurnDigest> turns, int
 
 	public SummaryRequest {
 		turns = List.copyOf(turns == null ? List.of() : turns);
-		if (turns.isEmpty()) {
+		if (turns.isEmpty() && (previousSummary == null || previousSummary.isBlank())) {
+			// 둘 다 없으면 압축할 것이 없다. 하나만 있는 것은 정상이다 — 재압축은 <b>요약만</b>
+			// 다시 압축하는 일이고(R4.5), 병합할 새 턴이 없어도 예산은 넘을 수 있다.
 			throw new IllegalArgumentException("nothing to summarize");
 		}
 		if (maxTokens <= 0) {

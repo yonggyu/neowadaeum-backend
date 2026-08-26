@@ -22,6 +22,7 @@ import com.neowadaeum.play.engine.GameState;
 import com.neowadaeum.play.engine.GameStateEngine;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
+import com.neowadaeum.play.repository.StorySummaryRepository;
 import com.neowadaeum.play.repository.TurnRepository;
 import com.neowadaeum.safety.l2.SafetyL2Judge;
 import java.time.Clock;
@@ -75,6 +76,12 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private SafetyL2Judge safetyJudge;
+
+	@Autowired
+	private StorySummaryRepository summaries;
+
+	@Autowired
+	private AsyncSummaryTrigger summaryTrigger;
 
 	@Autowired
 	private GameStateEngine gameStateEngine;
@@ -366,6 +373,6 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 	private TurnPipeline pipelineWith(StoryProvider storyProvider) {
 		return new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions, storyProvider,
 				this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
-				this.playTransactionManager, FIXED);
+				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED);
 	}
 }

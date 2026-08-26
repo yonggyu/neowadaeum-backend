@@ -4,7 +4,7 @@ import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.StoryProvider;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.common.support.TokenCounter;

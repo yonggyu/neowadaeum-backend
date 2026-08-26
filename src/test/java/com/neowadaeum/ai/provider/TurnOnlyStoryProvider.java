@@ -1,5 +1,7 @@
 package com.neowadaeum.ai.provider;
 
+import com.neowadaeum.play.port.SummaryRequest;
+
 /**
  * 턴 생성만 구현한 테스트용 Provider (B-18).
  *

@@ -1,5 +1,7 @@
 package com.neowadaeum.ai.prompt;
 
+import com.neowadaeum.common.support.SummaryBudget;
+
 /**
  * 프롬프트 레이어 (§5.1, R5.0, B-20).
  *
@@ -67,7 +69,7 @@ public enum PromptLayer {
 
 		GAME_STATE(300),
 
-		SUMMARY(600),
+		SUMMARY(SummaryBudget.MAX_TOKENS),
 
 		RECENT_TURNS(1_500),
 

@@ -14,7 +14,7 @@ import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.SafetyClassificationFormat;
 import com.neowadaeum.ai.provider.SummaryPrompt;
 import com.neowadaeum.ai.provider.StoryProvider;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.prompt.PlatformPrompts;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;

@@ -11,7 +11,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.common.support.FixedTokenCounter;
 import com.neowadaeum.common.support.RecentTurnsProperties;

@@ -29,6 +29,17 @@ public interface TurnRepository extends JpaRepository<Turn, UUID> {
 	List<Turn> findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(UUID sessionId, Limit limit);
 
 	/**
+	 * 요약에 병합할 구간의 턴들 (R4.5, B-34).
+	 *
+	 * <p><b>오래된 것이 앞이다.</b> 요약은 시간 순서를 유지해야 하며, 뒤집힌 순서로 압축하면
+	 * 인과가 뒤바뀐 줄거리가 다음 턴들의 전제가 된다.
+	 *
+	 * <p>되돌려진 턴은 제외한다 (R14.4) — 없던 일이 요약에 남으면 <b>롤백해도 이야기에 계속
+	 * 영향을 준다.</b>
+	 */
+	List<Turn> findBySessionIdAndDeletedAtIsNullAndTurnNoBetweenOrderByTurnNoAsc(UUID sessionId, int from, int to);
+
+	/**
 	 * 현재 챕터에서 지난 턴 수 (R7.2).
 	 *
 	 * <p><b>세지 않고 컬럼에 두지 않는다.</b> {@code turn.chapter_no} 로 파생 가능한 값을 저장하면
