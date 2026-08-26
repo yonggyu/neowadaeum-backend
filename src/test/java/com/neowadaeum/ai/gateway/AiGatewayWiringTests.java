@@ -13,6 +13,7 @@ import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
+import com.neowadaeum.config.ClockConfiguration;
 import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
@@ -35,7 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
 class AiGatewayWiringTests {
 
 	private final ApplicationContextRunner runner = new ApplicationContextRunner()
-			.withUserConfiguration(AiGatewayConfiguration.class);
+			.withUserConfiguration(AiGatewayConfiguration.class, ClockConfiguration.class);
 
 	private static TurnRequest request() {
 		return TurnRequest.opening(UUID.randomUUID(), GenerationContexts.sample());

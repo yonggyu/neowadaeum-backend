@@ -9,6 +9,7 @@ import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationTimedOutException;
 import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.TurnRequest;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -75,7 +76,7 @@ class TimeLimitedStoryProviderTests {
 			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				return answer();
 			}
-		}, this.executor, GENEROUS);
+		}, this.executor, GENEROUS, Clock.systemUTC());
 
 		assertThat(provider.generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.providerId()).isEqualTo("prompt");
@@ -85,7 +86,7 @@ class TimeLimitedStoryProviderTests {
 	@Test
 	void R6_4_a_slow_answer_times_out() {
 		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(sleeping(new CountDownLatch(1)),
-				this.executor, SHORT);
+				this.executor, SHORT, Clock.systemUTC());
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
 				.isInstanceOf(GenerationTimedOutException.class);
@@ -120,7 +121,7 @@ class TimeLimitedStoryProviderTests {
 				}
 				return answer();
 			}
-		}, this.executor, SHORT);
+		}, this.executor, SHORT, Clock.systemUTC());
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
 				.isInstanceOf(GenerationTimedOutException.class);
@@ -142,7 +143,7 @@ class TimeLimitedStoryProviderTests {
 			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				throw new IllegalStateException("provider said no");
 			}
-		}, this.executor, GENEROUS);
+		}, this.executor, GENEROUS, Clock.systemUTC());
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
 				.isInstanceOf(IllegalStateException.class)
@@ -153,7 +154,7 @@ class TimeLimitedStoryProviderTests {
 	@Test
 	void S3_timeout_message_carries_no_request_content() {
 		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(sleeping(new CountDownLatch(1)),
-				this.executor, SHORT);
+				this.executor, SHORT, Clock.systemUTC());
 		UUID storyVersion = UUID.randomUUID();
 
 		assertThatThrownBy(() -> provider.generateTurn(TurnRequest.opening(storyVersion, GenerationContexts.sample())))
@@ -170,7 +171,7 @@ class TimeLimitedStoryProviderTests {
 	void R6_4_the_configured_timeout_is_what_is_enforced() {
 		CountDownLatch never = new CountDownLatch(1);
 
-		assertThatThrownBy(() -> new TimeLimitedStoryProvider(sleeping(never), this.executor, SHORT)
+		assertThatThrownBy(() -> new TimeLimitedStoryProvider(sleeping(never), this.executor, SHORT, Clock.systemUTC())
 				.generateTurn(request()))
 				.isInstanceOf(GenerationTimedOutException.class);
 
@@ -184,7 +185,7 @@ class TimeLimitedStoryProviderTests {
 			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				return answer();
 			}
-		}, this.executor, GENEROUS).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
+		}, this.executor, GENEROUS, Clock.systemUTC()).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
 	}
 
 	private static StoryProvider sleeping(CountDownLatch never) {

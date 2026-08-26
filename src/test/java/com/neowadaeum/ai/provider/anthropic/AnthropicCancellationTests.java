@@ -24,6 +24,7 @@ import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.GenerationTimedOutException;
 import com.neowadaeum.play.port.TurnRequest;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -104,7 +105,7 @@ class AnthropicCancellationTests {
 	void R6_4_the_underlying_http_call_actually_ends_when_the_budget_is_cut() throws InterruptedException {
 		CountDownLatch callEnded = new CountDownLatch(1);
 		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(
-				watching(adapter(), callEnded), this.executor, SHORT_BUDGET);
+				watching(adapter(), callEnded), this.executor, SHORT_BUDGET, Clock.systemUTC());
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
 				.isInstanceOf(GenerationTimedOutException.class);
@@ -131,7 +132,7 @@ class AnthropicCancellationTests {
 		// close() 를 부르지 않는다 — 삼켜진 인터럽트 때문에 종료를 기다리며 멈춘다. 스레드는 데몬이다.
 		ExecutorService uninterruptible = Executors.newSingleThreadExecutor(NonInterruptibleThread::new);
 		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(
-				watching(adapter(), callEnded), uninterruptible, SHORT_BUDGET);
+				watching(adapter(), callEnded), uninterruptible, SHORT_BUDGET, Clock.systemUTC());
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
 				.isInstanceOf(GenerationTimedOutException.class);

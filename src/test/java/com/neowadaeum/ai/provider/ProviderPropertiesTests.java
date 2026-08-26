@@ -14,6 +14,10 @@ import org.springframework.context.annotation.Configuration;
  * <p>이 이슈가 요구한 것은 "25 라는 숫자"의 재확인이 아니라 <b>설정된 값이 바인딩되어 쓰이는가</b>
  * 다. 그래야 §10.1-9(타임아웃 초과 시 세션 상태 불변)가 실제로 25초를 기다리지 않고 같은 코드
  * 경로를 검증할 수 있다.
+ *
+ * <p><b>이 값의 의미는 "한 번의 호출"이 아니라 "재요청을 포함한 생성 전체"다</b> (§13-19, B-21-2).
+ * 그것을 지키는지는 여기서 볼 수 없다 — 바인딩만으로는 예산이 어디까지 걸리는지 알 수 없기
+ * 때문이다. {@code SchemaRetryingStoryProviderTests} 의 {@code S13_19_*} 가 그 자리다.
  */
 class ProviderPropertiesTests {
 
