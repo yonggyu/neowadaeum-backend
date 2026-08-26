@@ -13,9 +13,11 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
+import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import com.neowadaeum.common.support.FixedTokenCounter;
+import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.ProviderCallFailedException;
@@ -68,7 +70,7 @@ class AnthropicStoryProviderContractTests {
 		this.server = new WireMockServer(WireMockConfiguration.options().dynamicPort().http2PlainDisabled(true));
 		this.server.start();
 
-		AnthropicProperties properties = new AnthropicProperties("test-key", "claude-opus-5",
+		AnthropicProperties properties = new AnthropicProperties("test-key", turnModel("claude-opus-5"),
 				"http://localhost:" + this.server.port(), 4096);
 
 		this.provider = new AnthropicStoryProvider(
@@ -167,7 +169,7 @@ class AnthropicStoryProviderContractTests {
 				.contains("[WORLD]", "[OUTPUT_SPEC]");
 	}
 
-	/** 모델과 응답 상한이 설정에서 온다 (R3.1, R3.6 의 앞자리). */
+	/** 모델과 응답 상한이 설정에서 온다 (R3.1). */
 	@Test
 	void R3_1_model_and_max_tokens_come_from_configuration() {
 		respondWith(VALID_TURN);
@@ -176,6 +178,33 @@ class AnthropicStoryProviderContractTests {
 
 		assertThat(sentBody().path("model").asString()).isEqualTo("claude-opus-5");
 		assertThat(sentBody().path("max_tokens").asInt()).isEqualTo(4096);
+	}
+
+	/**
+	 * <b>R3.6 — 턴 생성은 {@code turn} 용 모델로 나간다.</b>
+	 *
+	 * <p>네 용도에 서로 다른 값을 넣고 <b>실제로 나가는 것</b>을 본다. 설정이 나뉘어 있다는 확인만으로는
+	 * 부족하다 — 어댑터가 엉뚱한 용도를 고르면 <b>요약용 저비용 모델이 본문을 쓰게 되고</b>, 그 증상은
+	 * 에러가 아니라 이야기 품질로 나타난다.
+	 */
+	@Test
+	void R3_6_the_turn_call_uses_the_turn_model_not_another_purpose() {
+		AnthropicProperties perPurpose = new AnthropicProperties("test-key",
+				new AnthropicProperties.Models("claude-opus-5", "summary-model", "safety-model", "outline-model"),
+				"http://localhost:" + this.server.port(), 4096);
+
+		AnthropicStoryProvider provider = new AnthropicStoryProvider(
+				AnthropicProviderConfiguration.restClient(perPurpose, new ProviderProperties(null, null)),
+				perPurpose,
+				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
+				new TurnOutputParser());
+
+		respondWith(VALID_TURN);
+		provider.generateTurn(request());
+
+		assertThat(sentBody().path("model").asString())
+				.as("턴 생성이 다른 용도의 모델로 나갔다 — 비용과 품질이 함께 어긋난다")
+				.isEqualTo("claude-opus-5");
 	}
 
 	/**
@@ -255,4 +284,9 @@ class AnthropicStoryProviderContractTests {
 	private JsonNode sentBody() {
 		return JSON.readTree(this.server.getAllServeEvents().getFirst().getRequest().getBodyAsString());
 	}
+	/** 턴 생성 모델만 채운 설정. 용도별 분리(B-24) 이후 대부분의 테스트가 필요로 하는 최소 형태다. */
+	private static AnthropicProperties.Models turnModel(String model) {
+		return new AnthropicProperties.Models(model, null, null, null);
+	}
+
 }

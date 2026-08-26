@@ -158,7 +158,7 @@ class AnthropicCancellationTests {
 
 	/** 운영과 같은 방식으로 만든 클라이언트를 쓴다 — 요청 팩토리와 타임아웃이 갈라지면 의미가 없다. */
 	private AnthropicStoryProvider adapter() {
-		AnthropicProperties properties = new AnthropicProperties("test-key", "claude-opus-5",
+		AnthropicProperties properties = new AnthropicProperties("test-key", turnModel("claude-opus-5"),
 				"http://localhost:" + this.server.port(), 4096);
 
 		return new AnthropicStoryProvider(
@@ -207,4 +207,9 @@ class AnthropicCancellationTests {
 	private static TurnRequest request() {
 		return TurnRequest.opening(UUID.randomUUID(), GenerationContexts.populated());
 	}
+	/** 턴 생성 모델만 채운 설정. 용도별 분리(B-24) 이후 대부분의 테스트가 필요로 하는 최소 형태다. */
+	private static AnthropicProperties.Models turnModel(String model) {
+		return new AnthropicProperties.Models(model, null, null, null);
+	}
+
 }
