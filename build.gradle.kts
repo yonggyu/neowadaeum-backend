@@ -48,6 +48,9 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-starter-security-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+	// 계약 테스트용 고정 응답 서버 (.claude/rules/testing.md — "계약 | Provider 어댑터 | WireMock").
+	// standalone 은 의존성을 셰이딩해 Boot 관리 버전과 충돌하지 않는다.
+	testImplementation("org.wiremock:wiremock-standalone:3.13.1")
 	testImplementation("org.springframework.boot:spring-boot-testcontainers")
 	testImplementation("org.springframework.modulith:spring-modulith-starter-test")
 	testImplementation("org.testcontainers:testcontainers-junit-jupiter")
