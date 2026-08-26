@@ -52,8 +52,35 @@ public class PayloadWhitelistValidator {
 	 *
 	 * <p>이름 자체는 여전히 검사한다 — 막는 것은 <b>모르는 이름이 나가는 것</b>이고,
 	 * {@code gameState} 라는 이름은 선언에 있다. 안 보는 것은 그 <b>안쪽</b>뿐이다.
+	 *
+	 * <p><b>그래도 완전히 안 보지는 않는다</b> (#96). 안쪽에는 {@link #FORBIDDEN_IDENTITY_FIELDS}
+	 * 가 걸린다 — 아래 상수의 근거를 보라.
 	 */
 	private static final Set<String> OPAQUE_FIELDS = Set.of("gameState");
+
+	/**
+	 * <b>불투명 서브트리 안쪽에서도 절대 나타나면 안 되는 이름</b> (I-3, #96).
+	 *
+	 * <p><b>왜 거부 목록인가.</b> 이 프로젝트는 금지 목록을 쓰지 않는다 — 처음 보는 이름이 그대로
+	 * 나가기 때문이다. 그런데 {@code gameState} 안쪽에서는 <b>허용 목록을 만들 수가 없다.</b>
+	 * 수치 그룹 이름과 그 안쪽 키는 작품이 {@code state_schema} 로 정하므로(R4.1) 정적으로 열거할
+	 * 대상이 아니다.
+	 *
+	 * <p><b>열거할 수 없는 것은 작품 키이고, 절대 나타나면 안 되는 것은 유한하다.</b> I-3 이
+	 * 지목하는 회원 식별정보가 그것이다. 화이트리스트를 못 쓰는 자리에 <b>거부 목록이라도</b>
+	 * 두는 것이 아무것도 안 보는 것보다 낫다.
+	 *
+	 * <p><b>이것이 I-3 의 일차 방어선이 아니다.</b> 일차 방어선은 GameState 가 엔진 출력만 담는다는
+	 * 성질이며(R4.1, R4.2) 그것은 {@code play} 쪽 테스트가 지킨다. 여기는 그 성질이 깨졌을 때
+	 * <b>어댑터에 닿기 전에</b> 잡는 마지막 자리다.
+	 *
+	 * <p><b>한계 — 이름만 본다.</b> 값 안쪽에 식별정보가 들어간 경우(예: {@code flags} 에 이메일
+	 * 문자열)는 잡지 못한다. 그 경로가 생기려면 {@code state_schema} 가 그것을 허용해야 하므로
+	 * UGC 검수(§13-12)의 소관이다.
+	 */
+	private static final Set<String> FORBIDDEN_IDENTITY_FIELDS = Set.of(
+			"playerRef", "player_ref", "userId", "user_id", "email", "birthDate", "birth_date",
+			"socialId", "social_id", "ip", "ipAddress");
 
 	private final Map<Class<?>, Set<String>> allowedFields;
 
@@ -113,6 +140,27 @@ public class PayloadWhitelistValidator {
 	}
 
 	/**
+	 * 불투명 서브트리 안쪽에서 {@link #FORBIDDEN_IDENTITY_FIELDS} 를 찾는다 (#96).
+	 *
+	 * <p>허용 목록이 아니라 거부 목록인 이유는 그 상수의 주석에 있다.
+	 */
+	private static void collectForbidden(JsonNode node, List<String> offending) {
+		if (node.isObject()) {
+			for (Map.Entry<String, JsonNode> property : node.properties()) {
+				if (FORBIDDEN_IDENTITY_FIELDS.contains(property.getKey())) {
+					offending.add(property.getKey());
+				}
+				collectForbidden(property.getValue(), offending);
+			}
+		}
+		else if (node.isArray()) {
+			for (JsonNode element : node) {
+				collectForbidden(element, offending);
+			}
+		}
+	}
+
+	/**
 	 * 중첩 객체와 배열 안쪽까지 내려간다. 한 겹만 보면 안쪽에 담아 보내면 그만이다.
 	 *
 	 * <p>{@link #OPAQUE_FIELDS} 에 있는 이름은 <b>이름만 보고 값 안쪽은 보지 않는다.</b> 근거는
@@ -125,6 +173,8 @@ public class PayloadWhitelistValidator {
 					offending.add(property.getKey());
 				}
 				if (OPAQUE_FIELDS.contains(property.getKey())) {
+					// 안쪽은 허용 목록으로 덮을 수 없다. 대신 절대 나타나면 안 되는 이름을 본다 (#96).
+					collectForbidden(property.getValue(), offending);
 					continue;
 				}
 				collect(property.getValue(), allowed, offending);
