@@ -154,7 +154,7 @@ class FixedStoryProviderTests {
 	void I15_duplicate_scenario_entry_is_rejected_at_load_time() {
 		FixedStoryScenario.Entry entry = new FixedStoryScenario.Entry(0, null,
 				List.of(GeneratedParagraph.narration("본문")), List.of(new GeneratedChoice(1, "선택")),
-				JsonMapper.builder().build().readTree("{}"), false, null);
+				JsonMapper.builder().build().readTree("{}"), false, null, List.of());
 		FixedStoryScenario scenario = new FixedStoryScenario(FIXTURE_STORY, "중복", List.of(entry, entry));
 
 		assertThatThrownBy(() -> new FixedStoryProvider(List.of(scenario)))

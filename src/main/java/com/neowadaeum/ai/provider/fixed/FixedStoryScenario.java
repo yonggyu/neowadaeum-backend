@@ -1,5 +1,6 @@
 package com.neowadaeum.ai.provider.fixed;
 
+import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
 import com.neowadaeum.play.port.GeneratedTurn;
@@ -43,6 +44,9 @@ public record FixedStoryScenario(UUID storyVersionRef, String description, List<
 	 * @param turnNo            요청 시점의 현재 턴 (§4.3 턴 번호 계약). 첫 턴 생성은 {@code 0}
 	 * @param chosenChoiceOrder 직전 턴에서 고른 선택지 순서. {@code turnNo == 0} 이면 {@code null}
 	 * @param paragraphs        본문 문단. <b>통 문자열이 아니다</b> (R5.1)
+	 * @param safetyCategories  이 응답을 <b>판정기가 무엇으로 보는가</b> (B-30). 비우면 아무것도
+	 *                          걸리지 않는다. 세이프티 경로를 E2E 로 재현하려면 여기에 선언한다 —
+	 *                          결정론 Provider 에게 "모델이 뭐라고 답할지"를 지어내게 하지 않는다
 	 */
 	public record Entry(
 			int turnNo,
@@ -51,7 +55,13 @@ public record FixedStoryScenario(UUID storyVersionRef, String description, List<
 			List<GeneratedChoice> choices,
 			JsonNode proposedStateChanges,
 			boolean chapterAdvanceSuggested,
-			String endingSuggested) {
+			String endingSuggested,
+			List<SafetyCategory> safetyCategories) {
+
+		public Entry {
+			// 선언하지 않은 시나리오 파일이 대부분이다 — 없는 것과 빈 것을 같게 본다.
+			safetyCategories = (safetyCategories != null) ? List.copyOf(safetyCategories) : List.of();
+		}
 
 		GeneratedTurn toGeneratedTurn() {
 			return new GeneratedTurn(paragraphs, choices, proposedStateChanges, chapterAdvanceSuggested,

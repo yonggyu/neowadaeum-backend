@@ -1,5 +1,7 @@
 package com.neowadaeum.common.spi;
 
+import java.util.Locale;
+
 /**
  * 세이프티 카테고리와 그 정책 (§9.2).
  *
@@ -53,5 +55,30 @@ public enum SafetyCategory {
 	/** 즉시차단 카테고리는 <b>재생성 없이</b> 차단한다 (§9.2, B-30 DoD). */
 	public boolean blocksImmediately() {
 		return this.policy == SafetyPolicy.BLOCK_IMMEDIATELY;
+	}
+
+	/**
+	 * 판정기와 주고받는 표기 (B-30).
+	 *
+	 * <p>열거형 이름을 그대로 쓰지 않는 것은 {@code AiPurpose} 와 같은 이유다 — 와이어 표기가
+	 * 코드 이름에 묶여 있으면 이름을 정리하는 순간 계약이 조용히 바뀐다.
+	 */
+	public String wireValue() {
+		return name().toLowerCase(Locale.ROOT);
+	}
+
+	/**
+	 * 표기를 카테고리로 되돌린다.
+	 *
+	 * <p><b>모르는 표기는 실패다.</b> 판정기가 우리가 모르는 이름을 돌려줬다면 <b>무엇을 봤는지
+	 * 모르는 상태</b>이고, 그것을 빈 집합으로 바꾸면 판정 실패가 통과로 둔갑한다 (fail-closed).
+	 */
+	public static SafetyCategory fromWireValue(String value) {
+		for (SafetyCategory category : values()) {
+			if (category.wireValue().equals(value)) {
+				return category;
+			}
+		}
+		throw new SafetyClassificationFailedException("unknown safety category in classifier response");
 	}
 }

@@ -6,10 +6,13 @@ import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.ProviderCallFailedException;
 import com.neowadaeum.play.port.TurnRequest;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,6 +105,38 @@ public class FallbackChain implements StoryProvider {
 	@Override
 	public String summarize(SummaryRequest request) {
 		return this.chain.getFirst().summarize(request);
+	}
+
+	/**
+	 * <b>판정에는 승계를 건다</b> (B-30, ADR-0007 의 같은 조건).
+	 *
+	 * <p>요약·아웃라인과 갈리는 이유는 <b>실패의 결과가 다르기</b> 때문이다. 판정하지 못한 응답은
+	 * 통과하지 못한다 (fail-closed) — 즉 벤더 하나가 죽으면 <b>모든 턴이 차단된다.</b> 그것은
+	 * ADR-0007 이 승계를 허용한 조건("벤더가 죽었을 때") 그 자체이며, 넘기지 않을 이유가 없다.
+	 *
+	 * <p><b>새 결정이 아니라 같은 결정의 적용이다.</b> 인증 실패·4xx 를 구분하지 못하는 한계도
+	 * 그대로 물려받는다 — 구분이 붙으면 두 경로가 함께 좁아진다.
+	 */
+	@Override
+	public Set<SafetyCategory> classifySafety(SafetyClassificationRequest request) {
+		String intended = providerId();
+		RuntimeException lastFailure = null;
+
+		for (int index = 0; index < this.chain.size(); index++) {
+			StoryProvider provider = this.chain.get(index);
+			boolean isFallback = index > 0;
+			try {
+				return isFallback
+						? AiCallFallback.within(intended, () -> provider.classifySafety(request))
+						: provider.classifySafety(request);
+			}
+			catch (ProviderCallFailedException ex) {
+				log.warn("provider {} failed to classify; falling back", provider.providerId());
+				lastFailure = ex;
+			}
+		}
+
+		throw (lastFailure != null) ? lastFailure : new ProviderCallFailedException("no provider classified");
 	}
 
 	@Override

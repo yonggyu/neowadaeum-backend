@@ -199,6 +199,12 @@ class AnthropicCancellationTests {
 			}
 
 			@Override
+			public java.util.Set<com.neowadaeum.common.spi.SafetyCategory> classifySafety(
+					com.neowadaeum.common.spi.SafetyClassificationRequest request) {
+				return delegate.classifySafety(request);
+			}
+
+			@Override
 			public String summarize(SummaryRequest request) {
 				return delegate.summarize(request);
 			}

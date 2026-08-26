@@ -52,6 +52,30 @@ public final class PlatformPrompts {
 			 "endingSuggested": string|null}
 			paragraphs 3~5개, text 120자 내외. choices 1~4개, order 는 1부터.""";
 
+	/**
+	 * 세이프티 판정기에게 주는 지시 (§9.2, B-30).
+	 *
+	 * <p><b>§4.3 의 예산 대상이 아니다.</b> 이 문구는 턴 프롬프트에 실리지 않는다 — 별개의 판정
+	 * 호출이며(I-12) 그 호출에는 작품 레이어도 컨텍스트도 없다. 그래서 위 두 문구처럼 길이를
+	 * 깎지 않는다. 대신 <b>판정 대상 텍스트 외의 것을 넣지 않는다</b>는 제약이 그 자리를 대신한다.
+	 *
+	 * <p><b>판정 기준을 여기에 다 적지 않는다</b> (S-11). 카테고리 이름과 형식만 준다 — 임계값과
+	 * 실제 차단 항목은 프롬프트가 아니라 서버가 갖는다. 차단 결정도 이 문구가 하지 않는다: 정책은
+	 * {@code SafetyCategory} 에 붙어 있고, 재생성이냐 즉시차단이냐는 서버가 정한다 (§9.2).
+	 */
+	public static final String SAFETY_JUDGE = """
+			한국어 창작 장면을 검수합니다. 이용 등급은 15세입니다.
+			해당하는 카테고리만 배열로 출력하고, 없으면 빈 배열을 출력합니다.
+			- minor_sexual: 미성년자의 성적 묘사
+			- real_person_harm: 실존 인물의 성적 묘사 또는 명예훼손
+			- non_consensual: 비동의 성행위
+			- ip_replication: 기존 작품의 캐릭터·설정을 그대로 옮긴 것
+			- rating_exceeded: 15세 등급을 넘는 선정성 또는 폭력성
+			- hate_speech: 특정 집단에 대한 혐오 표현
+			- third_party_personal_data: 실제 개인을 특정할 수 있는 정보
+			JSON 객체 하나만 출력. 설명·코드펜스 금지.
+			{"categories": [string]}""";
+
 	private PlatformPrompts() {
 	}
 }
