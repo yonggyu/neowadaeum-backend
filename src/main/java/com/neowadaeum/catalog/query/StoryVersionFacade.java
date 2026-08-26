@@ -37,10 +37,11 @@ public class StoryVersionFacade {
 	 */
 	public Optional<StoryVersionView> findByVersionId(UUID storyVersionId) {
 		Optional<Object[]> version = this.jdbc.sql("""
-						SELECT state_schema, choice_policy FROM story_version WHERE id = ?
+						SELECT world_prompt, state_schema, choice_policy FROM story_version WHERE id = ?
 						""")
 				.param(storyVersionId)
-				.query((rs, rowNum) -> new Object[] { rs.getString("state_schema"), rs.getString("choice_policy") })
+				.query((rs, rowNum) -> new Object[] { rs.getString("world_prompt"), rs.getString("state_schema"),
+						rs.getString("choice_policy") })
 				.optional();
 
 		if (version.isEmpty()) {
@@ -49,10 +50,30 @@ public class StoryVersionFacade {
 
 		return Optional.of(new StoryVersionView(
 				storyVersionId,
-				readJson((String) version.get()[0]),
+				(String) version.get()[0],
 				readJson((String) version.get()[1]),
+				readJson((String) version.get()[2]),
+				characters(storyVersionId),
 				chapters(storyVersionId),
 				endings(storyVersionId)));
+	}
+
+	/**
+	 * 프롬프트의 CHARACTER 레이어 (§5.1, §4.4).
+	 *
+	 * <p><b>{@code display_order} 로 정렬한다.</b> 순서가 흔들리면 프롬프트가 매 턴 달라지고,
+	 * 골든 파일이 그것을 잡되 <b>원인이 프롬프트 변경인지 조회 순서인지 구분되지 않는다.</b>
+	 * 컬럼에 유니크 제약이 있으므로 정렬은 결정론이다.
+	 */
+	private List<StoryVersionView.CharacterView> characters(UUID storyVersionId) {
+		return this.jdbc.sql("""
+						SELECT name, persona_prompt FROM character
+						WHERE story_version_id = ? ORDER BY display_order
+						""")
+				.param(storyVersionId)
+				.query((rs, rowNum) -> new StoryVersionView.CharacterView(
+						rs.getString("name"), rs.getString("persona_prompt")))
+				.list();
 	}
 
 	/**

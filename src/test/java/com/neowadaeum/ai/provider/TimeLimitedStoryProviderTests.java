@@ -7,6 +7,7 @@ import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationTimedOutException;
+import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.TurnRequest;
 import java.time.Duration;
 import java.util.List;
@@ -52,7 +53,7 @@ class TimeLimitedStoryProviderTests {
 	}
 
 	private static TurnRequest request() {
-		return TurnRequest.opening(UUID.randomUUID());
+		return TurnRequest.opening(UUID.randomUUID(), GenerationContexts.sample());
 	}
 
 	private static GeneratedTurn answer() {
@@ -155,7 +156,7 @@ class TimeLimitedStoryProviderTests {
 				this.executor, SHORT);
 		UUID storyVersion = UUID.randomUUID();
 
-		assertThatThrownBy(() -> provider.generateTurn(TurnRequest.opening(storyVersion)))
+		assertThatThrownBy(() -> provider.generateTurn(TurnRequest.opening(storyVersion, GenerationContexts.sample())))
 				.hasMessageNotContaining(storyVersion.toString());
 	}
 

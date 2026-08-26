@@ -51,9 +51,17 @@ class GeneratedTurnContractTests {
 	void I3_request_has_no_component_that_could_carry_member_identity() {
 		List<String> components = componentNames(TurnRequest.class);
 
-		assertThat(components).containsExactly("storyVersionRef", "turnNo", "chosenChoiceOrder");
-		assertThat(components).doesNotContain("playerRef", "player_ref", "userId", "email", "name",
+		assertThat(components).containsExactly("storyVersionRef", "turnNo", "chosenChoiceOrder", "context");
+		assertThat(components).doesNotContain("playerRef", "player_ref", "userId", "email",
 				"birthDate", "ip", "socialId");
+
+		// B-22 로 context 가 늘었다. 안쪽도 같은 성질을 지켜야 한다 — 회원 식별정보를 담을 자리는
+		// 바깥이든 안쪽이든 없다. 중첩이 생겼다는 이유로 검사가 얕아지면 보장이 사라진다.
+		assertThat(componentNames(GenerationContext.class))
+				.containsExactly("worldPrompt", "characters", "gameState", "summary", "recentTurns", "userAction");
+		assertThat(componentNames(GenerationContext.Character.class)).containsExactly("name", "persona");
+		assertThat(componentNames(GenerationContext.RecentTurn.class))
+				.containsExactly("turnNo", "chosenChoiceText", "paragraphs", "paragraphsDigest");
 	}
 
 

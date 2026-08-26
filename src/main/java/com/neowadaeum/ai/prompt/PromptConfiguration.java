@@ -25,4 +25,15 @@ public class PromptConfiguration {
 	public PromptAssembler promptAssembler(TokenCounter tokenCounter, RecentTurnsProperties recentTurns) {
 		return new PromptAssembler(tokenCounter, recentTurns);
 	}
+
+	/**
+	 * 포트 계약 → 프롬프트 매핑 (B-22).
+	 *
+	 * <p>어댑터가 주입받는다. 어댑터마다 자기 매핑을 갖게 하면 <b>한쪽만 필드를 빠뜨렸을 때 그
+	 * 사실이 "프롬프트가 이상하다"로만 나타난다.</b>
+	 */
+	@Bean
+	public TurnPromptFactory turnPromptFactory(PromptAssembler assembler) {
+		return new TurnPromptFactory(assembler);
+	}
 }
