@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.OutputSchemaRejectedException;
+import com.neowadaeum.play.port.TurnRequest;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -24,8 +29,9 @@ class SchemaRetryingStoryProviderTests {
 		return TurnRequest.opening(UUID.randomUUID());
 	}
 
-	private static TurnResult answer() {
-		return new TurnResult("본문", List.of(new TurnResult.ProposedChoice(1, "선택")),
+	private static GeneratedTurn answer() {
+		return new GeneratedTurn(List.of(GeneratedParagraph.narration("본문")),
+				List.of(new GeneratedChoice(1, "선택")),
 				JsonMapper.builder().build().readTree("{}"), false, null);
 	}
 
@@ -34,7 +40,7 @@ class SchemaRetryingStoryProviderTests {
 	void R5_8_a_valid_answer_is_not_requested_twice() {
 		CountingProvider provider = CountingProvider.structured();
 
-		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).narrative()).isEqualTo("본문");
+		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.calls()).isEqualTo(1);
 	}
 
@@ -43,7 +49,7 @@ class SchemaRetryingStoryProviderTests {
 	void R5_8_one_schema_violation_is_retried_once_and_succeeds() {
 		CountingProvider provider = CountingProvider.structured().thenViolate(1);
 
-		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).narrative()).isEqualTo("본문");
+		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.calls()).isEqualTo(2);
 	}
 
@@ -59,7 +65,7 @@ class SchemaRetryingStoryProviderTests {
 		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(provider);
 
 		assertThatThrownBy(() -> retrying.generateTurn(request()))
-				.isInstanceOf(SchemaRetryingStoryProvider.OutputSchemaRejectedException.class);
+				.isInstanceOf(OutputSchemaRejectedException.class);
 
 		assertThat(provider.calls()).as("R5.8 — 최초 1회 + 재요청 1회").isEqualTo(2);
 	}
@@ -75,7 +81,7 @@ class SchemaRetryingStoryProviderTests {
 		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(provider);
 
 		assertThatThrownBy(() -> retrying.generateTurn(request()))
-				.isInstanceOf(SchemaRetryingStoryProvider.OutputSchemaRejectedException.class);
+				.isInstanceOf(OutputSchemaRejectedException.class);
 
 		assertThat(provider.calls()).as("R3.3 — 최초 1회 + 재요청 2회").isEqualTo(3);
 	}
@@ -85,7 +91,7 @@ class SchemaRetryingStoryProviderTests {
 	void R3_3_an_unstructured_provider_succeeds_on_the_third_attempt() {
 		CountingProvider provider = CountingProvider.unstructured().thenViolate(2);
 
-		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).narrative()).isEqualTo("본문");
+		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.calls()).isEqualTo(3);
 	}
 
@@ -126,7 +132,7 @@ class SchemaRetryingStoryProviderTests {
 		CountingProvider provider = CountingProvider.structured().thenViolate(Integer.MAX_VALUE);
 
 		assertThatThrownBy(() -> new SchemaRetryingStoryProvider(provider).generateTurn(request()))
-				.isInstanceOf(SchemaRetryingStoryProvider.OutputSchemaRejectedException.class)
+				.isInstanceOf(OutputSchemaRejectedException.class)
 				.hasMessageContaining("did not match the turn schema")
 				.hasMessageNotContaining(secretish)
 				.rootCause()
@@ -195,7 +201,7 @@ class SchemaRetryingStoryProviderTests {
 		}
 
 		@Override
-		public TurnResult generateTurn(TurnRequest ignored) {
+		public GeneratedTurn generateTurn(TurnRequest ignored) {
 			this.calls.incrementAndGet();
 			RuntimeException failure = this.failures.poll();
 			if (failure != null) {

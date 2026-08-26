@@ -5,7 +5,23 @@
     {
       "turnNo": 0,
       "chosenChoiceOrder": null,
-      "narrative": "전학 첫날. 복도 창으로 들어온 빛이 교실 번호판 위에 걸려 있다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "전학 첫날. 복도 창으로 들어온 빛이 교실 번호판 위에 걸려 있다."
+        },
+        {
+          "type": "DIALOGUE",
+          "speakerName": "유나",
+          "text": "거기 서 있으면 문 못 열어."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "목소리가 뒤에서 왔다. 돌아보기 전에 발소리가 먼저 지나갔다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -23,7 +39,13 @@
     {
       "turnNo": 1,
       "chosenChoiceOrder": 1,
-      "narrative": "문을 열자 창가 자리의 유나가 먼저 눈을 맞추고 짧게 고개를 끄덕인다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "문을 열자 창가 자리의 유나가 먼저 눈을 맞추고 짧게 고개를 끄덕인다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -46,7 +68,13 @@
     {
       "turnNo": 2,
       "chosenChoiceOrder": 1,
-      "narrative": "\"자리 비었어.\" 유나가 옆 의자를 당겨 준다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "\"자리 비었어.\" 유나가 옆 의자를 당겨 준다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -66,7 +94,13 @@
     {
       "turnNo": 3,
       "chosenChoiceOrder": 1,
-      "narrative": "점심시간. 도시락 뚜껑을 여는 소리가 겹친다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "점심시간. 도시락 뚜껑을 여는 소리가 겹친다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -89,7 +123,13 @@
     {
       "turnNo": 4,
       "chosenChoiceOrder": 1,
-      "narrative": "\"내일도.\" 유나가 웃으며 대답한다. 하교길 그림자가 길어진다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "\"내일도.\" 유나가 웃으며 대답한다. 하교길 그림자가 길어진다."
+        }
+      ],
       "choices": [],
       "proposedStateChanges": {
         "affinity.yuna": 5
@@ -100,7 +140,13 @@
     {
       "turnNo": 1,
       "chosenChoiceOrder": 2,
-      "narrative": "종이 울리고 나서야 문을 연다. 시선은 짧게 스치고 지나간다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "종이 울리고 나서야 문을 연다. 시선은 짧게 스치고 지나간다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -120,7 +166,13 @@
     {
       "turnNo": 2,
       "chosenChoiceOrder": 2,
-      "narrative": "맨 뒷줄에 앉는다. 아무도 말을 걸지 않았고 그건 생각보다 편했다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "맨 뒷줄에 앉는다. 아무도 말을 걸지 않았고 그건 생각보다 편했다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -138,7 +190,13 @@
     {
       "turnNo": 3,
       "chosenChoiceOrder": 2,
-      "narrative": "복도 창가에서 혼자 점심을 먹는다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "복도 창가에서 혼자 점심을 먹는다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -156,7 +214,13 @@
     {
       "turnNo": 4,
       "chosenChoiceOrder": 2,
-      "narrative": "오후 수업이 길게 늘어진다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "오후 수업이 길게 늘어진다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -174,7 +238,13 @@
     {
       "turnNo": 5,
       "chosenChoiceOrder": 2,
-      "narrative": "청소 당번 명단에서 이름을 확인한다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "청소 당번 명단에서 이름을 확인한다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -192,7 +262,13 @@
     {
       "turnNo": 6,
       "chosenChoiceOrder": 2,
-      "narrative": "교실이 비어 간다. 창을 닫고 나선다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실이 비어 간다. 창을 닫고 나선다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -210,7 +286,13 @@
     {
       "turnNo": 7,
       "chosenChoiceOrder": 2,
-      "narrative": "신발장 앞에서 잠깐 멈춘다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "신발장 앞에서 잠깐 멈춘다."
+        }
+      ],
       "choices": [
         {
           "order": 1,
@@ -228,7 +310,13 @@
     {
       "turnNo": 8,
       "chosenChoiceOrder": 2,
-      "narrative": "가방을 메고 먼저 교문을 나선다. 이름을 세 개쯤 외웠다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "가방을 메고 먼저 교문을 나선다. 이름을 세 개쯤 외웠다."
+        }
+      ],
       "choices": [],
       "proposedStateChanges": {},
       "chapterAdvanceSuggested": false,

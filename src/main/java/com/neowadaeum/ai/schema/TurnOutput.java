@@ -1,15 +1,22 @@
 package com.neowadaeum.ai.schema;
 
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.ParagraphType;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
 
 /**
  * Provider 가 돌려준 턴 출력 JSON 의 형태 (§5.2, B-21).
  *
- * <p><b>{@code ai} 모듈 내부 DTO 다.</b> 다른 모듈이 이것을 보지 않는다 (§5.4) — 밖으로 나가는
- * 것은 {@link com.neowadaeum.ai.provider.TurnResult} 이고, 이것은 <b>와이어에서 읽은 그대로</b>다.
- * 둘을 하나로 합치지 않는 이유는 <b>읽은 것과 서버가 인정한 것을 구분해야</b> 하기 때문이다 —
- * 합치면 "AI 가 보낸 값"과 "서버가 판정한 값"이 같은 필드에 앉는다.
+ * <p><b>{@code ai} 모듈 내부 DTO 다. 밖으로 나가지 않는다</b> (§5.4). 이것은 <b>와이어에서 읽은
+ * 그대로</b>이고, 모듈 경계를 넘는 것은 {@link GeneratedTurn} 이다. 둘을 하나로 합치지 않는 이유는
+ * <b>읽은 것과 서버가 인정한 것을 구분해야</b> 하기 때문이다 — 합치면 "AI 가 보낸 값"과 "서버가
+ * 판정한 값"이 같은 필드에 앉는다.
+ *
+ * <p><b>{@code speakerName} 이 여기서는 턴 단위다.</b> §5.2 · R5.2 의 와이어 형식이 그렇기 때문이며,
+ * {@link #toGeneratedTurn()} 이 그것을 각 대사 문단에 복사해 넣는다 (#84 결정).
  *
  * <p><b>I-9 — {@code chapter} · {@code turn} 을 받을 자리가 없다.</b> 응답에 그 이름이 실려 와도
  * 여기에 담기지 않으므로 서버가 읽을 방법이 없다. 값을 무시하는 코드를 두는 것이 아니라 <b>애초에
@@ -43,27 +50,34 @@ public record TurnOutput(
 	}
 
 	/**
+	 * 모듈 경계를 넘는 형태로 바꾼다 (#84).
+	 *
+	 * <p><b>턴 단위 화자를 대사 문단에 복사한다.</b> 와이어는 §5.2 대로 화자가 턴에 하나지만,
+	 * 내부 계약은 문단마다 갖는다 — 한 턴에 두 인물의 대사가 섞이는 장면을 턴 단위 모델은 표현할
+	 * 수 없기 때문이다. 나레이션에는 화자를 넣지 않는다 (R5.2).
+	 *
+	 * <p><b>이 메서드가 있는 자리가 요점이다.</b> 변환이 {@code play} 쪽에 있으면 {@code play} 가
+	 * 와이어 DTO 를 알아야 하고, 그 순간 "외부 응답 DTO 가 도메인까지 흐르는" 형태가 된다.
+	 */
+	public GeneratedTurn toGeneratedTurn() {
+		List<GeneratedParagraph> converted = this.paragraphs.stream()
+				.map(paragraph -> new GeneratedParagraph(paragraph.type(),
+						(paragraph.type() == ParagraphType.DIALOGUE) ? this.speakerName : null,
+						paragraph.text()))
+				.toList();
+
+		return new GeneratedTurn(converted,
+				this.choices.stream().map(choice -> new GeneratedChoice(choice.order(), choice.text())).toList(),
+				this.stateChanges, this.chapterAdvanceSuggested, this.endingSuggested);
+	}
+
+	/**
 	 * 본문 한 문단.
 	 *
 	 * @param type 문단 종류. {@link ParagraphType} 밖의 값은 파서가 거부한다
 	 * @param text 문단 본문
 	 */
 	public record Paragraph(ParagraphType type, String text) {
-	}
-
-	/**
-	 * 문단 종류 (§5.2).
-	 *
-	 * <p><b>열거형인 것이 검증이다.</b> 문자열로 두면 모델이 만들어 낸 종류가 그대로 저장되고,
-	 * 렌더링은 그것을 만나는 시점에 깨진다.
-	 */
-	public enum ParagraphType {
-
-		/** 인물의 대사. {@code speakerName} 과 함께 렌더한다. */
-		DIALOGUE,
-
-		/** 나레이션. */
-		NARRATION
 	}
 
 	/**

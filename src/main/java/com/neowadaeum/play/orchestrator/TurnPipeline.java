@@ -1,8 +1,10 @@
 package com.neowadaeum.play.orchestrator;
 
-import com.neowadaeum.ai.provider.StoryProvider;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.TurnGenerationPort;
+import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
 import com.neowadaeum.play.domain.GameStateSnapshot;
@@ -64,7 +66,7 @@ public class TurnPipeline {
 	private final TurnRepository turns;
 	private final GameStateSnapshotRepository snapshots;
 	private final StoryVersionFacade storyVersions;
-	private final StoryProvider provider;
+	private final TurnGenerationPort provider;
 	private final RuleBasedSafetyJudge safetyJudge;
 	private final GameStateEngine gameStateEngine;
 	private final ChapterEngine chapterEngine;
@@ -73,7 +75,7 @@ public class TurnPipeline {
 	private final Clock clock;
 
 	public TurnPipeline(PlaySessionRepository sessions, TurnRepository turns,
-			GameStateSnapshotRepository snapshots, StoryVersionFacade storyVersions, StoryProvider provider,
+			GameStateSnapshotRepository snapshots, StoryVersionFacade storyVersions, TurnGenerationPort provider,
 			RuleBasedSafetyJudge safetyJudge, GameStateEngine gameStateEngine, ChapterEngine chapterEngine,
 			EndingEngine endingEngine, PlatformTransactionManager playTransactionManager, Clock clock) {
 		this.sessions = sessions;
@@ -146,7 +148,7 @@ public class TurnPipeline {
 	private Generated generateAndScreen(PipelineContext context, Integer chosenChoiceOrder) {
 		TurnRequest request = new TurnRequest(context.storyVersionId(), context.turnNo(), chosenChoiceOrder);
 
-		TurnResult result = this.provider.generateTurn(request);
+		GeneratedTurn result = this.provider.generateTurn(request);
 		SafetyJudgement judgement = screen(result);
 
 		if (judgement.outcome() == SafetyOutcome.PASS) {
@@ -156,7 +158,7 @@ public class TurnPipeline {
 			return null;
 		}
 
-		TurnResult regenerated = this.provider.generateTurn(request);
+		GeneratedTurn regenerated = this.provider.generateTurn(request);
 		SafetyJudgement second = screen(regenerated);
 		if (second.outcome() != SafetyOutcome.PASS) {
 			return null;
@@ -164,10 +166,16 @@ public class TurnPipeline {
 		return new Generated(regenerated, SafetyVerdict.REVISED, second);
 	}
 
-	/** L2 대상은 본문과 선택지 둘 다다 (§9.1). */
-	private SafetyJudgement screen(TurnResult result) {
-		List<String> choiceTexts = result.choices().stream().map(TurnResult.ProposedChoice::text).toList();
-		return this.safetyJudge.judge(List.of(result.narrative()), choiceTexts);
+	/**
+	 * L2 대상은 본문과 선택지 둘 다다 (§9.1).
+	 *
+	 * <p><b>문단 하나하나가 검수 대상이다</b> (#84). 이전에는 통 문자열 하나를 넘겼고, 그것이
+	 * 실제로는 문단 여럿을 이어 붙인 값이었다면 <b>경계에 걸친 표현을 판정기가 놓칠 수 있었다.</b>
+	 */
+	private SafetyJudgement screen(GeneratedTurn result) {
+		List<String> choiceTexts = result.choices().stream().map(GeneratedChoice::text).toList();
+		List<String> paragraphTexts = result.paragraphs().stream().map(GeneratedParagraph::text).toList();
+		return this.safetyJudge.judge(paragraphTexts, choiceTexts);
 	}
 
 	// ── 3) 짧은 TX — 판정과 저장 ─────────────────────────────
@@ -212,10 +220,13 @@ public class TurnPipeline {
 				? "[]"
 				: issuedChoices(context.sessionId(), newTurnNo, generated.result());
 
+		// R5.1 — 문단 배열을 그대로 직렬화한다. 통 문자열을 List.of(...) 로 감싸던 자리다 (#84).
+		// speaker_name 은 파생값이다 — 진실의 원천은 paragraphs 다.
 		Turn turn = this.turns.save(Turn.create(new Turn.TurnDraft(
 				context.sessionId(), newTurnNo, chapterDecision.chapterNo(),
-				JSON.writeValueAsString(List.of(generated.result().narrative())),
-				choicesJson, null, chapterDecision.changed(), ended, endingId,
+				JSON.writeValueAsString(generated.result().paragraphs()),
+				choicesJson, generated.result().leadSpeakerName(),
+				chapterDecision.changed(), ended, endingId,
 				generated.verdict()), now));
 
 		// I-5 — append. 덮어쓰지 않는다.
@@ -248,7 +259,7 @@ public class TurnPipeline {
 	 * <p>다음 요청은 이 값과 대조된다. AI 가 준 것은 {@code order} 와 {@code text} 뿐이다 (§13-3).
 	 * {@code disabled} 는 P0 채택안대로 항상 {@code false} 다 (I-11, §13-3).
 	 */
-	private static String issuedChoices(UUID sessionId, int turnNo, TurnResult result) {
+	private static String issuedChoices(UUID sessionId, int turnNo, GeneratedTurn result) {
 		var array = JSON.createArrayNode();
 		result.choices().forEach(choice -> {
 			var node = array.addObject();
@@ -307,6 +318,6 @@ public class TurnPipeline {
 	}
 
 	/** L2 를 통과한 생성 결과. 통과하지 못한 것은 이 타입으로 존재하지 않는다 (I-2). */
-	private record Generated(TurnResult result, SafetyVerdict verdict, SafetyJudgement judgement) {
+	private record Generated(GeneratedTurn result, SafetyVerdict verdict, SafetyJudgement judgement) {
 	}
 }

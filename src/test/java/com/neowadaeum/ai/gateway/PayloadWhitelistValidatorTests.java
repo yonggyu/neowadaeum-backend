@@ -8,9 +8,11 @@ import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.TurnRequest;
+import com.neowadaeum.play.port.GeneratedTurn;
 import java.time.LocalDate;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -66,9 +68,10 @@ class PayloadWhitelistValidatorTests {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest request) {
+			public GeneratedTurn generateTurn(TurnRequest request) {
 				calls.incrementAndGet();
-				return new TurnResult("본문", List.of(new TurnResult.ProposedChoice(1, "선택")),
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration("본문")),
+					List.of(new GeneratedChoice(1, "선택")),
 						JsonMapper.builder().build().readTree("{}"), false, null);
 			}
 		};

@@ -3,6 +3,11 @@ package com.neowadaeum.ai.provider;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.GenerationTimedOutException;
+import com.neowadaeum.play.port.TurnRequest;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -50,8 +55,9 @@ class TimeLimitedStoryProviderTests {
 		return TurnRequest.opening(UUID.randomUUID());
 	}
 
-	private static TurnResult answer() {
-		return new TurnResult("본문", List.of(new TurnResult.ProposedChoice(1, "선택")),
+	private static GeneratedTurn answer() {
+		return new GeneratedTurn(List.of(GeneratedParagraph.narration("본문")),
+				List.of(new GeneratedChoice(1, "선택")),
 				JsonMapper.builder().build().readTree("{}"), false, null);
 	}
 
@@ -65,12 +71,12 @@ class TimeLimitedStoryProviderTests {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest ignored) {
+			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				return answer();
 			}
 		}, this.executor, GENEROUS);
 
-		assertThat(provider.generateTurn(request()).narrative()).isEqualTo("본문");
+		assertThat(provider.generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.providerId()).isEqualTo("prompt");
 	}
 
@@ -81,7 +87,7 @@ class TimeLimitedStoryProviderTests {
 				this.executor, SHORT);
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
-				.isInstanceOf(TimeLimitedStoryProvider.GenerationTimedOutException.class);
+				.isInstanceOf(GenerationTimedOutException.class);
 	}
 
 	/**
@@ -102,7 +108,7 @@ class TimeLimitedStoryProviderTests {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest ignored) {
+			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				try {
 					Thread.sleep(Duration.ofSeconds(30));
 				}
@@ -116,7 +122,7 @@ class TimeLimitedStoryProviderTests {
 		}, this.executor, SHORT);
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
-				.isInstanceOf(TimeLimitedStoryProvider.GenerationTimedOutException.class);
+				.isInstanceOf(GenerationTimedOutException.class);
 
 		assertThat(interrupted.await(5, TimeUnit.SECONDS)).as("취소가 호출에 닿지 않았다").isTrue();
 		assertThat(sawInterrupt).isTrue();
@@ -132,7 +138,7 @@ class TimeLimitedStoryProviderTests {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest ignored) {
+			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				throw new IllegalStateException("provider said no");
 			}
 		}, this.executor, GENEROUS);
@@ -165,7 +171,7 @@ class TimeLimitedStoryProviderTests {
 
 		assertThatThrownBy(() -> new TimeLimitedStoryProvider(sleeping(never), this.executor, SHORT)
 				.generateTurn(request()))
-				.isInstanceOf(TimeLimitedStoryProvider.GenerationTimedOutException.class);
+				.isInstanceOf(GenerationTimedOutException.class);
 
 		assertThat(new TimeLimitedStoryProvider(new TurnOnlyStoryProvider() {
 			@Override
@@ -174,10 +180,10 @@ class TimeLimitedStoryProviderTests {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest ignored) {
+			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				return answer();
 			}
-		}, this.executor, GENEROUS).generateTurn(request()).narrative()).isEqualTo("본문");
+		}, this.executor, GENEROUS).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
 	}
 
 	private static StoryProvider sleeping(CountDownLatch never) {
@@ -188,7 +194,7 @@ class TimeLimitedStoryProviderTests {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest ignored) {
+			public GeneratedTurn generateTurn(TurnRequest ignored) {
 				try {
 					never.await();
 				}

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.neowadaeum.play.port.ParagraphType;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class TurnOutputParserTests {
 
 		assertThat(output.speakerName()).isEqualTo("유나");
 		assertThat(output.paragraphs()).extracting(TurnOutput.Paragraph::type)
-				.containsExactly(TurnOutput.ParagraphType.DIALOGUE, TurnOutput.ParagraphType.NARRATION);
+				.containsExactly(ParagraphType.DIALOGUE, ParagraphType.NARRATION);
 		assertThat(output.choices()).extracting(TurnOutput.Choice::order).containsExactly(1, 2, 3);
 		assertThat(output.stateChanges().get("affinity.yuna").intValue()).isEqualTo(2);
 		assertThat(output.chapterAdvanceSuggested()).isFalse();

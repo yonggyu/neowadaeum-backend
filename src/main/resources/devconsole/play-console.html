@@ -24,6 +24,7 @@
   .meta { color: var(--dim); font-size: .8rem; }
   .interstitial { background: #f2f6fa; border-left: 3px solid var(--accent); padding: .4rem .8rem; margin: .5rem 0; }
   .speaker { font-weight: bold; }
+  .dialogue { margin-left: 0.75rem; }
   .choices button { display: block; width: 100%; text-align: left; margin: .3rem 0; }
   .ending { background: #faf4ec; border: 1px solid #e0cfae; border-radius: 6px; padding: .8rem; margin-top: 1rem; }
   .error { color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: .6rem .8rem; margin: .8rem 0; }
@@ -117,10 +118,16 @@ function renderTurn(turn) {
   if (turn.chapterChanged) {
     box.append(el('div', 'interstitial', `— Chapter ${turn.chapterNo}. ${turn.chapterTitle ?? ''} —`));
   }
-  if (turn.speakerName !== null && turn.speakerName !== undefined) {
-    box.append(el('div', 'speaker', turn.speakerName));
+  // #84 — 문단마다 종류와 화자가 온다. 대사는 화자를 앞에 붙이고 나레이션은 그대로 쓴다 (R5.2).
+  let lastSpeaker = null;
+  for (const p of turn.paragraphs || []) {
+    if (p.type === 'dialogue' && p.speakerName && p.speakerName !== lastSpeaker) {
+      box.append(el('div', 'speaker', p.speakerName));
+      lastSpeaker = p.speakerName;
+    }
+    if (p.type !== 'dialogue') lastSpeaker = null;
+    box.append(el('p', p.type === 'dialogue' ? 'dialogue' : null, p.text));
   }
-  for (const p of turn.paragraphs || []) box.append(el('p', null, p));
 
   const raw = el('details', 'raw');
   raw.append(el('summary', null, '응답 JSON'));

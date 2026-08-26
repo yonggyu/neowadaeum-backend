@@ -5,8 +5,8 @@ import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.TurnRequest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +34,7 @@ public class FixedStoryProvider implements StoryProvider {
 
 	public static final String PROVIDER_ID = "fixed";
 
-	private final Map<ScenarioKey, TurnResult> responses;
+	private final Map<ScenarioKey, GeneratedTurn> responses;
 
 	public FixedStoryProvider(List<FixedStoryScenario> scenarios) {
 		this.responses = index(scenarios);
@@ -55,9 +55,9 @@ public class FixedStoryProvider implements StoryProvider {
 	}
 
 	@Override
-	public TurnResult generateTurn(TurnRequest request) {
+	public GeneratedTurn generateTurn(TurnRequest request) {
 		ScenarioKey key = ScenarioKey.of(request);
-		TurnResult result = responses.get(key);
+		GeneratedTurn result = responses.get(key);
 
 		if (result == null) {
 			// 요청의 좌표만 남긴다. 본문·선택지 텍스트는 애플리케이션 로그로 흘려보내지 않는다 (S-3).
@@ -83,18 +83,18 @@ public class FixedStoryProvider implements StoryProvider {
 		throw new UnsupportedOperationException("draftOutline is B-52; the fixed provider does not draft outlines");
 	}
 
-	private static Map<ScenarioKey, TurnResult> index(List<FixedStoryScenario> scenarios) {
+	private static Map<ScenarioKey, GeneratedTurn> index(List<FixedStoryScenario> scenarios) {
 		if (scenarios == null || scenarios.isEmpty()) {
 			throw new IllegalArgumentException("FixedStoryProvider needs at least one scenario");
 		}
 
-		Map<ScenarioKey, TurnResult> indexed = new HashMap<>();
+		Map<ScenarioKey, GeneratedTurn> indexed = new HashMap<>();
 		for (FixedStoryScenario scenario : scenarios) {
 			for (FixedStoryScenario.Entry entry : scenario.entries()) {
 				ScenarioKey key = new ScenarioKey(scenario.storyVersionRef(), entry.turnNo(),
 						entry.chosenChoiceOrder());
 
-				TurnResult previous = indexed.put(key, entry.toResult());
+				GeneratedTurn previous = indexed.put(key, entry.toGeneratedTurn());
 				if (previous != null) {
 					// 중복 키는 "어느 쪽이 이기는가"를 파일 순서에 맡기게 된다. 결정론이 무너지는 지점이다.
 					throw new IllegalArgumentException("duplicate scenario entry for " + key);

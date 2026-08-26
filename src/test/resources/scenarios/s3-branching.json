@@ -5,29 +5,77 @@
     {
       "turnNo": 0,
       "chosenChoiceOrder": null,
-      "narrative": "테스트 시나리오의 첫 턴이다.",
-      "choices": [
-        { "order": 1, "text": "왼쪽 길" },
-        { "order": 2, "text": "오른쪽 길" }
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "테스트 시나리오의 첫 턴이다."
+        },
+        {
+          "type": "DIALOGUE",
+          "speakerName": "유나",
+          "text": "어느 쪽으로 갈래?"
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "갈림길 앞에서 걸음이 멈췄다."
+        }
       ],
-      "proposedStateChanges": { "affinity.yuna": 1 },
+      "choices": [
+        {
+          "order": 1,
+          "text": "왼쪽 길"
+        },
+        {
+          "order": 2,
+          "text": "오른쪽 길"
+        }
+      ],
+      "proposedStateChanges": {
+        "affinity.yuna": 1
+      },
       "chapterAdvanceSuggested": false,
       "endingSuggested": null
     },
     {
       "turnNo": 1,
       "chosenChoiceOrder": 1,
-      "narrative": "왼쪽 길을 골랐다.",
-      "choices": [ { "order": 1, "text": "계속 간다" } ],
-      "proposedStateChanges": { "affinity.yuna": 2 },
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "왼쪽 길을 골랐다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "계속 간다"
+        }
+      ],
+      "proposedStateChanges": {
+        "affinity.yuna": 2
+      },
       "chapterAdvanceSuggested": true,
       "endingSuggested": null
     },
     {
       "turnNo": 1,
       "chosenChoiceOrder": 2,
-      "narrative": "오른쪽 길을 골랐다.",
-      "choices": [ { "order": 1, "text": "계속 간다" } ],
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "오른쪽 길을 골랐다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "계속 간다"
+        }
+      ],
       "proposedStateChanges": {},
       "chapterAdvanceSuggested": false,
       "endingSuggested": null
@@ -35,9 +83,17 @@
     {
       "turnNo": 2,
       "chosenChoiceOrder": 1,
-      "narrative": "길이 끝났다.",
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "길이 끝났다."
+        }
+      ],
       "choices": [],
-      "proposedStateChanges": { "affinity.yuna": 3 },
+      "proposedStateChanges": {
+        "affinity.yuna": 3
+      },
       "chapterAdvanceSuggested": false,
       "endingSuggested": "ending-test"
     }

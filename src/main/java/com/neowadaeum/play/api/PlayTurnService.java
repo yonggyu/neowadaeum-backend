@@ -2,8 +2,6 @@ package com.neowadaeum.play.api;
 
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
-import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
-import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.domain.PlaySession;
@@ -11,12 +9,15 @@ import com.neowadaeum.play.domain.SessionStatus;
 import com.neowadaeum.play.domain.Turn;
 import com.neowadaeum.play.orchestrator.TurnOutcome;
 import com.neowadaeum.play.orchestrator.TurnPipeline;
+import com.neowadaeum.play.port.GenerationTimedOutException;
+import com.neowadaeum.play.port.OutputSchemaRejectedException;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.common.web.IdempotencyStore;
 import com.neowadaeum.play.repository.TurnRepository;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -109,12 +110,12 @@ public class PlayTurnService {
 			this.guards.recordSuccess(sessionId);
 			return view;
 		}
-		catch (TimeLimitedStoryProvider.GenerationTimedOutException ex) {
+		catch (GenerationTimedOutException ex) {
 			// R6.4 — 세션은 직전 턴 상태 그대로다. §4.3 의 8단계 이전에서 끊겼다.
 			failed(sessionId, key);
 			throw new ApiException(ErrorCode.GENERATION_TIMEOUT);
 		}
-		catch (SchemaRetryingStoryProvider.OutputSchemaRejectedException ex) {
+		catch (OutputSchemaRejectedException ex) {
 			// R5.8 — 재요청까지 스키마를 못 맞췄다. 시간 초과와 같은 자리에서 끊기므로 상태는 그대로다.
 			failed(sessionId, key);
 			throw new ApiException(ErrorCode.PROVIDER_ERROR);
@@ -168,7 +169,7 @@ public class PlayTurnService {
 				turn.isChapterChanged(),
 				progressHint(version, turn.getChapterNo()),
 				turn.getSpeakerName(),
-				readStrings(turn.getParagraphs()),
+				readParagraphs(turn.getParagraphs()),
 				readChoices(turn.getChoices()),
 				turn.isEnding(),
 				turn.getEndingId(),
@@ -246,10 +247,20 @@ public class PlayTurnService {
 		return "Chapter %d / 전체 %d장".formatted(chapterNo, version.chapters().size());
 	}
 
-	private static List<String> readStrings(String json) {
-		List<String> values = new ArrayList<>();
-		JSON.readTree(json).forEach(node -> values.add(node.asString()));
-		return values;
+	/**
+	 * 저장된 문단 배열을 응답 형태로 읽는다 (#84).
+	 *
+	 * <p><b>{@code type} 을 소문자로 내보낸다.</b> 저장은 열거형 이름({@code NARRATION})이고 응답
+	 * 계약은 §5.2 표기({@code "narration"})다 — 둘을 같은 값으로 두면 저장 형식을 바꿀 때 응답이
+	 * 함께 바뀐다.
+	 */
+	private static List<TurnView.Paragraph> readParagraphs(String json) {
+		List<TurnView.Paragraph> paragraphs = new ArrayList<>();
+		JSON.readTree(json).forEach(node -> paragraphs.add(new TurnView.Paragraph(
+				node.path("type").asString("NARRATION").toLowerCase(Locale.ROOT),
+				node.path("speakerName").asString(null),
+				node.path("text").asString(null))));
+		return paragraphs;
 	}
 
 	private static List<TurnView.Choice> readChoices(String json) {

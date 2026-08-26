@@ -10,9 +10,13 @@ import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.TurnRequest;
+import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GenerationTimedOutException;
+import com.neowadaeum.play.port.OutputSchemaRejectedException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -127,7 +131,7 @@ class AiGatewayWiringTests {
 		this.runner.withUserConfiguration(SleepingAdapter.class)
 				.withPropertyValues("ai.provider.timeout-ms=200")
 				.run(context -> assertThatThrownBy(() -> context.getBean(StoryProvider.class).generateTurn(request()))
-						.isInstanceOf(TimeLimitedStoryProvider.GenerationTimedOutException.class));
+						.isInstanceOf(GenerationTimedOutException.class));
 	}
 
 	/**
@@ -140,7 +144,7 @@ class AiGatewayWiringTests {
 	void R5_8_the_selected_adapter_is_wrapped_with_the_schema_retry() {
 		this.runner.withUserConfiguration(AlwaysViolatingAdapter.class).run(context -> {
 			assertThatThrownBy(() -> context.getBean(StoryProvider.class).generateTurn(request()))
-					.isInstanceOf(SchemaRetryingStoryProvider.OutputSchemaRejectedException.class);
+					.isInstanceOf(OutputSchemaRejectedException.class);
 
 			assertThat(AlwaysViolatingAdapter.calls)
 					.as("R5.8 — 최초 1회 + 재요청 1회. 게이트웨이를 지나며 재요청이 실제로 일어난다")
@@ -197,7 +201,7 @@ class AiGatewayWiringTests {
 		EchoAdapter slow() {
 			return new EchoAdapter("slow") {
 				@Override
-				public TurnResult generateTurn(TurnRequest request) {
+				public GeneratedTurn generateTurn(TurnRequest request) {
 					try {
 						Thread.sleep(5_000);
 					}
@@ -221,7 +225,7 @@ class AiGatewayWiringTests {
 			calls.set(0);
 			return new EchoAdapter("violating") {
 				@Override
-				public TurnResult generateTurn(TurnRequest request) {
+				public GeneratedTurn generateTurn(TurnRequest request) {
 					calls.incrementAndGet();
 					throw new TurnOutputSchemaException("paragraphs must be an array");
 				}
@@ -244,8 +248,9 @@ class AiGatewayWiringTests {
 		}
 
 		@Override
-		public TurnResult generateTurn(TurnRequest request) {
-			return new TurnResult("본문", List.of(new TurnResult.ProposedChoice(1, "선택")),
+		public GeneratedTurn generateTurn(TurnRequest request) {
+			return new GeneratedTurn(List.of(GeneratedParagraph.narration("본문")),
+					List.of(new GeneratedChoice(1, "선택")),
 					JsonMapper.builder().build().readTree("{}"), false, null);
 		}
 	}

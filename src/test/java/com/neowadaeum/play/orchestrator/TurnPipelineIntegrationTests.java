@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.TurnRequest;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
 import com.neowadaeum.play.domain.PlaySession;
@@ -217,7 +219,7 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest request) {
+			public GeneratedTurn generateTurn(TurnRequest request) {
 				assertThat(TransactionSynchronizationManager.isActualTransactionActive())
 						.as("Provider 호출이 트랜잭션 안에서 일어났다 (§9.2, §13-14-a)")
 						.isFalse();
@@ -250,9 +252,9 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest request) {
-				return new TurnResult("아무 일도 일어나지 않았다.",
-						List.of(new TurnResult.ProposedChoice(1, "계속한다")),
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration("아무 일도 일어나지 않았다.")),
+						List.of(new GeneratedChoice(1, "계속한다")),
 						JSON.readTree("{}"), true, "ending-first-light");
 			}
 		};

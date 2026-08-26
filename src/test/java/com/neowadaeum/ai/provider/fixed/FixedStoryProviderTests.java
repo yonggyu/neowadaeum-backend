@@ -6,10 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.SummaryRequest;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.TurnRequest;
+import com.neowadaeum.play.port.GeneratedTurn;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -40,9 +42,9 @@ class FixedStoryProviderTests {
 		FixedStoryProvider provider = provider();
 		TurnRequest request = new TurnRequest(FIXTURE_STORY, 1, 1);
 
-		TurnResult first = provider.generateTurn(request);
-		TurnResult second = provider.generateTurn(request);
-		TurnResult third = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1));
+		GeneratedTurn first = provider.generateTurn(request);
+		GeneratedTurn second = provider.generateTurn(request);
+		GeneratedTurn third = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1));
 
 		assertThat(first).isEqualTo(second).isEqualTo(third);
 	}
@@ -52,10 +54,10 @@ class FixedStoryProviderTests {
 	void I15_branching_is_decided_only_by_the_chosen_choice() {
 		FixedStoryProvider provider = provider();
 
-		TurnResult left = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1));
-		TurnResult right = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 2));
+		GeneratedTurn left = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1));
+		GeneratedTurn right = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 2));
 
-		assertThat(left.narrative()).isNotEqualTo(right.narrative());
+		assertThat(left.paragraphs()).isNotEqualTo(right.paragraphs());
 	}
 
 	/** B-44 선행 — 시작부터 엔딩까지 실제 AI 없이 재현된다. */
@@ -63,14 +65,14 @@ class FixedStoryProviderTests {
 	void B44_scenario_replays_from_opening_to_ending() {
 		FixedStoryProvider provider = provider();
 
-		TurnResult opening = provider.generateTurn(TurnRequest.opening(FIXTURE_STORY));
+		GeneratedTurn opening = provider.generateTurn(TurnRequest.opening(FIXTURE_STORY));
 		assertThat(opening.choices()).hasSize(2);
 		assertThat(opening.endingSuggested()).isNull();
 
-		TurnResult middle = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1));
+		GeneratedTurn middle = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1));
 		assertThat(middle.choices()).hasSize(1);
 
-		TurnResult ending = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 2, 1));
+		GeneratedTurn ending = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 2, 1));
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-test");
 	}
@@ -91,7 +93,7 @@ class FixedStoryProviderTests {
 		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 2, 1)).chapterAdvanceSuggested()).isTrue();
 		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 3, 1)).endingSuggested()).isNull();
 
-		TurnResult ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 4, 1));
+		GeneratedTurn ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 4, 1));
 
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-first-light");
@@ -113,7 +115,7 @@ class FixedStoryProviderTests {
 					.isNull();
 		}
 
-		TurnResult ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 8, 2));
+		GeneratedTurn ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 8, 2));
 
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-quiet-exit");
@@ -149,8 +151,9 @@ class FixedStoryProviderTests {
 	/** I-15 — 중복 키는 결과를 파일 순서에 맡기게 된다. 적재 시점에 거부한다. */
 	@Test
 	void I15_duplicate_scenario_entry_is_rejected_at_load_time() {
-		FixedStoryScenario.Entry entry = new FixedStoryScenario.Entry(0, null, "본문",
-				List.of(new FixedStoryScenario.Entry.Choice(1, "선택")), JsonMapper.builder().build().readTree("{}"), false, null);
+		FixedStoryScenario.Entry entry = new FixedStoryScenario.Entry(0, null,
+				List.of(GeneratedParagraph.narration("본문")), List.of(new GeneratedChoice(1, "선택")),
+				JsonMapper.builder().build().readTree("{}"), false, null);
 		FixedStoryScenario scenario = new FixedStoryScenario(FIXTURE_STORY, "중복", List.of(entry, entry));
 
 		assertThatThrownBy(() -> new FixedStoryProvider(List.of(scenario)))
@@ -164,7 +167,7 @@ class FixedStoryProviderTests {
 	 */
 	@Test
 	void I9_result_has_no_server_owned_chapter_or_turn_component() {
-		List<String> components = componentNames(TurnResult.class);
+		List<String> components = componentNames(GeneratedTurn.class);
 
 		assertThat(components).doesNotContain("chapter", "chapterNo", "turn", "turnNo");
 	}
@@ -172,7 +175,7 @@ class FixedStoryProviderTests {
 	/** I-1 · I-11 — choiceId 발급과 disabled 판정은 서버 몫이다. 제안 선택지는 order · text 뿐이다. */
 	@Test
 	void I1_I11_proposed_choice_carries_only_order_and_text() {
-		assertThat(componentNames(TurnResult.ProposedChoice.class)).containsExactly("order", "text");
+		assertThat(componentNames(GeneratedChoice.class)).containsExactly("order", "text");
 	}
 
 	/**
