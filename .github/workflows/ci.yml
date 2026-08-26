@@ -85,12 +85,21 @@ jobs:
       - name: 테스트
         run: ./gradlew test integrationTest --no-daemon
 
-      - name: 테스트 리포트 (실패 시에만)
-        if: failure()
+      # 초록일 때도 올린다 (#89). 실패 시에만 올리면 "몇 개가 돌았는가"를 사후에 확인할 방법이
+      # 없고, 0개를 돌린 태스크는 실패하지 않으므로 그 사실이 아무 데도 남지 않는다.
+      #
+      # integrationTest 리포트도 함께 올린다 — 이전에는 test 것만 올렸다. 컨테이너 테스트가
+      # 실패해도 그 리포트는 어디에도 남지 않았다.
+      - name: 테스트 리포트
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-report
-          path: build/reports/tests/test
+          path: |
+            build/reports/tests/test
+            build/reports/tests/integrationTest
+            build/test-results/test
+            build/test-results/integrationTest
           retention-days: 7
 
   gitleaks:
