@@ -150,8 +150,15 @@ ai:
       #   outline: claude-haiku-4-5
     openai:
       api-key: ${OPENAI_API_KEY}
+    # R3.2 — 로컬 LLM. API 키가 없으므로 base-url 이 등록 조건이다.
+    # structuredOutput=false 로 보고하므로 스키마 위반 시 재요청이 2회다 (R3.3).
+    #
+    # 등록되면 fallback 체인에 자동으로 들어간다 (R3.7, ADR-0007) — 지목된 provider 가
+    # 죽었을 때만 쓰이며, 세션의 provider 고정은 바뀌지 않는다 (I-4).
     ollama:
       base-url: ${OLLAMA_BASE_URL}
+      # models:
+      #   turn: llama3.1
 
 # ── 관리자 (§7.5 S-4) ────────────────────────────────────────
 admin:
