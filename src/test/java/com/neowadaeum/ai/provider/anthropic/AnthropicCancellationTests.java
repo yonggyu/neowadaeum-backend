@@ -50,6 +50,10 @@ import org.junit.jupiter.api.Test;
  */
 class AnthropicCancellationTests {
 
+	/** 기록된 호출. B-25 이후 어댑터가 필수로 요구한다 — 무엇이 남는지도 함께 본다. */
+	private final java.util.List<com.neowadaeum.ai.log.AiCallLog.Draft> recorded =
+			java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
 	private static final Duration SHORT_BUDGET = Duration.ofMillis(300);
 
 	/** 예산보다 훨씬 길게 끈다. 인터럽트가 무시되면 아래쪽 호출이 이만큼 살아 있다. */
@@ -166,7 +170,8 @@ class AnthropicCancellationTests {
 						new ProviderProperties(FAR_CEILING_BUDGET, null)),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
-				new TurnOutputParser());
+				new TurnOutputParser(),
+				this.recorded::add);
 	}
 
 	/** 아래쪽 호출이 <b>언제 끝나는지</b>를 기록한다. 성공이든 실패든 {@code finally} 가 내린다. */

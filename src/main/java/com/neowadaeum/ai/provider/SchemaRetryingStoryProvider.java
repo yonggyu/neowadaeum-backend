@@ -67,7 +67,10 @@ public class SchemaRetryingStoryProvider implements StoryProvider {
 		TurnOutputSchemaException lastViolation = null;
 		for (int attempt = 0; attempt <= allowedRetries; attempt++) {
 			try {
-				return this.delegate.generateTurn(request);
+				// 재요청은 같은 턴의 별도 호출이다. 기록이 그것을 별개 행으로 남기려면
+				// 어댑터가 지금이 몇 번째인지 알아야 한다 (B-25, R5.8 · R3.3).
+				int attemptNo = attempt + 1;
+				return AiCallAttempt.within(attemptNo, () -> this.delegate.generateTurn(request));
 			}
 			catch (TurnOutputSchemaException ex) {
 				lastViolation = ex;

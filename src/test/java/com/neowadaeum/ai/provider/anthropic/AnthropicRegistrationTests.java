@@ -2,6 +2,7 @@ package com.neowadaeum.ai.provider.anthropic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.neowadaeum.ai.log.AiCallRecorder;
 import com.neowadaeum.ai.prompt.PromptConfiguration;
 import com.neowadaeum.config.SharedPropertiesConfiguration;
 import com.neowadaeum.ai.provider.AiPurpose;
@@ -28,7 +29,7 @@ class AnthropicRegistrationTests {
 
 	private final ApplicationContextRunner runner = new ApplicationContextRunner()
 			.withUserConfiguration(SharedPropertiesConfiguration.class, PromptConfiguration.class,
-					AnthropicProviderConfiguration.class);
+					RecorderConfiguration.class, AnthropicProviderConfiguration.class);
 
 	/** 둘 다 있으면 등록된다. */
 	@Test
@@ -109,6 +110,22 @@ class AnthropicRegistrationTests {
 							.as("null 원소가 섞이면 첫 턴 요청에서 NPE 가 된다")
 							.isEmpty();
 				});
+	}
+
+	/**
+	 * 기록기는 이 테스트의 관심사가 아니다 (B-25).
+	 *
+	 * <p>실제 구현은 {@code promptlog} 리포지토리를 요구하고, 그것을 띄우면 <b>등록 경계를 보는
+	 * 테스트가 JPA 배선까지 끌고 온다.</b> 여기서는 자리만 채운다.
+	 */
+	@Configuration(proxyBeanMethods = false)
+	static class RecorderConfiguration {
+
+		@Bean
+		AiCallRecorder aiCallRecorder() {
+			return draft -> {
+			};
+		}
 	}
 
 	/** 컬렉션 주입 지점을 흉내 낸다 — {@code ProviderRegistry} 가 이 형태로 받는다. */
