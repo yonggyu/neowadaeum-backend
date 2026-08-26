@@ -23,7 +23,7 @@ import com.neowadaeum.play.engine.GameStateEngine;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.TurnRepository;
-import com.neowadaeum.safety.l2.RuleBasedSafetyJudge;
+import com.neowadaeum.safety.l2.SafetyL2Judge;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -74,7 +74,7 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 	private StoryProvider provider;
 
 	@Autowired
-	private RuleBasedSafetyJudge safetyJudge;
+	private SafetyL2Judge safetyJudge;
 
 	@Autowired
 	private GameStateEngine gameStateEngine;

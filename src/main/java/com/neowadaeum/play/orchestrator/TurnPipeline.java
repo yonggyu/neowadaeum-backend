@@ -26,7 +26,7 @@ import com.neowadaeum.play.engine.StateSchema;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.TurnRepository;
-import com.neowadaeum.safety.l2.RuleBasedSafetyJudge;
+import com.neowadaeum.safety.l2.SafetyL2Judge;
 import com.neowadaeum.safety.l2.SafetyJudgement;
 import com.neowadaeum.safety.l2.SafetyOutcome;
 import java.time.Clock;
@@ -71,7 +71,7 @@ public class TurnPipeline {
 	private final GameStateSnapshotRepository snapshots;
 	private final StoryVersionFacade storyVersions;
 	private final TurnGenerationPort provider;
-	private final RuleBasedSafetyJudge safetyJudge;
+	private final SafetyL2Judge safetyJudge;
 	private final GameStateEngine gameStateEngine;
 	private final ChapterEngine chapterEngine;
 	private final EndingEngine endingEngine;
@@ -82,7 +82,7 @@ public class TurnPipeline {
 
 	public TurnPipeline(PlaySessionRepository sessions, TurnRepository turns,
 			GameStateSnapshotRepository snapshots, StoryVersionFacade storyVersions, TurnGenerationPort provider,
-			RuleBasedSafetyJudge safetyJudge, GameStateEngine gameStateEngine, ChapterEngine chapterEngine,
+			SafetyL2Judge safetyJudge, GameStateEngine gameStateEngine, ChapterEngine chapterEngine,
 			EndingEngine endingEngine, RecentTurnsProperties recentTurns,
 			PlatformTransactionManager playTransactionManager, Clock clock) {
 		this.sessions = sessions;
@@ -250,7 +250,7 @@ public class TurnPipeline {
 	/**
 	 * L2 대상은 본문과 선택지 둘 다다 (§9.1).
 	 *
-	 * <p><b>판정 강도는 달라지지 않는다</b> (#84). {@code RuleBasedSafetyJudge} 는 받은 것을 전부
+	 * <p><b>판정 강도는 달라지지 않는다</b> (#84). {@code SafetyL2Judge} 는 받은 것을 전부
 	 * 이어 붙여 정규화하므로, 문단 하나를 넘기든 셋을 넘기든 대조 대상 문자열이 같다 — 문단 경계에
 	 * 걸친 표현도 그대로 걸린다. 바뀐 것은 <b>{@code paragraphs} 라는 파라미터 이름이 드디어
 	 * 사실이 됐다</b>는 점이다. 이전에는 통 문자열 하나를 담은 1개짜리 목록이었다.
