@@ -117,3 +117,43 @@ val nightlyTest by tasks.registering(Test::class) {
 	failOnNoDiscoveredTests = false
 	shouldRunAfter(tasks.test, integrationTest)
 }
+
+
+// ── 빈 실행을 실패로 만든다 (#89) ──────────────────────────────
+//
+// Test 태스크는 **테스트를 하나도 돌리지 않아도 성공한다.** 태그 필터가 아무것도 고르지 못하면
+// 조용히 초록이 되고, 그 초록은 "전부 통과했다"와 로그에서 구분되지 않는다.
+//
+// Gradle 의 failOnNoDiscoveredTests 는 이 경우를 잡지 못한다 — 실측으로 확인했다. 값을 true 로
+// 명시해도 태그 필터가 0개를 만든 실행은 그대로 BUILD SUCCESSFUL 이다. 그래서 직접 센다.
+//
+// 세는 값의 출처는 JUnit XML 리포트다. 리스너로 세면 configuration cache 와 충돌하고, 리포트는
+// 어차피 태스크가 남기는 산출물이라 새로 만드는 것이 없다.
+//
+// nightlyTest 처럼 0건이 정상인 태스크는 failOnNoDiscoveredTests = false 로 빠져나간다.
+// 그 선언이 지금까지는 아무 일도 하지 않았는데, 이 가드가 그것을 실제 스위치로 만든다.
+tasks.withType<Test>().configureEach {
+	val guardEnabled = failOnNoDiscoveredTests
+	val xmlDir = reports.junitXml.outputLocation
+	val taskPath = path
+
+	doLast {
+		val executed = xmlDir.get().asFile.listFiles()
+			.orEmpty()
+			.filter { it.name.startsWith("TEST-") && it.extension == "xml" }
+			.sumOf { file ->
+				Regex("""<testsuite[^>]*\stests="(\d+)"""")
+					.find(file.readText())
+					?.groupValues?.get(1)?.toLong() ?: 0L
+			}
+
+		logger.lifecycle("$taskPath — 실행된 테스트 $executed 개")
+
+		if (executed == 0L && guardEnabled.get()) {
+			throw GradleException(
+				"$taskPath 가 테스트를 하나도 돌리지 않았다. 태그 필터가 아무것도 고르지 못했거나 " +
+					"테스트 클래스가 클래스패스에 없다. 0건이 정상인 태스크라면 " +
+					"failOnNoDiscoveredTests = false 로 그 사실을 선언한다 (#89).")
+		}
+	}
+}
