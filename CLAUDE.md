@@ -187,7 +187,7 @@ inspect → minimal change → targeted test → fast test → (필요 시) inte
 
 이슈 → 브랜치(`<타입>/#<번호>-<슬러그>`) → 커밋(컴파일 통과 시점마다) → PR.
 **`backend` / `dev` / `main`에 직접 푸시하지 않는다.** 커밋은 Conventional Commits + `Refs:` + 이슈 번호.
-PR 400줄 · 브랜치 수명 3일. 상세는 `docs/git-workflow.md`.
+**PR 400줄 — `src/main/**` 프로덕션 소스 기준이다.** 테스트·문서·픽스처는 세지 않는다. 브랜치 수명 3일. 상세는 `docs/git-workflow.md`.
 
 ## 문서 index — 필요할 때 해당 절만 읽는다
 
