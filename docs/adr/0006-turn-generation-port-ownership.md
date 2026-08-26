@@ -72,6 +72,15 @@ ADR-0005 가 지키려 한 성질은 *"`ai` 가 `play` 의 도메인을 알지 �
 
 `ModuleStructureTests.ADR0006_turn_generation_is_owned_by_play_and_implemented_by_ai()` 가 두 선언을 문자열로 못박는다. `ApplicationModules.verify()` 는 **실제 참조**를 보고, 이 테스트는 **선언이 조용히 넓어지는 것**을 본다.
 
+### 계약 패키지의 경계도 빌드가 지킨다 (#95)
+
+위 문단의 *"열린 것은 DTO 와 인터페이스뿐인 계약 패키지 하나"* 는 **결정 당시의 사실이었을 뿐 보장이 아니었다.** Modulith 의 검사는 **모듈 단위**라 `play/port` 에 무엇을 더 넣든 `ai` 에 자동으로 보인다. 두 가지가 조용히 무너질 수 있었다.
+
+1. **계약이 도메인을 물고 오는 것** — `play/port` 의 타입이 시그니처에 `play.domain` 을 노출하면 `ai` 가 엔티티에 **컴파일 타임으로 닿는다.** `ai` 가 계약만 보고 있어도 소용없다
+2. **계약 패키지가 계약이 아닌 것을 담는 것** — 서비스가 하나 들어오면 그때부터 그것은 계약이 아니라 API 다
+
+`PortBoundaryTests` 가 세 규칙을 강제한다 — 계약은 `play` 내부를 참조하지 않는다 · `ai` 는 `play.port` 만 본다 · 계약 패키지에는 record · interface · enum · 예외만 둔다. **규칙이 실제로 무는지 위반 코드를 넣어 확인했다.** ArchUnit 은 `spring-modulith-starter-test` 를 통해 이미 있으므로 새 의존성이 아니다.
+
 ## 고려한 대안
 
 ADR-0005 가 이미 비교한 A · B 에 이번 C 를 더한다.
@@ -115,5 +124,6 @@ A 로 돌아가려면 `play/port` 의 타입을 `ai :: provider` 로 옮기고 �
 - [x] `play/package-info.java` · `ai/package-info.java` 수정
 - [x] `ModuleStructureTests` 단언 수정
 - [x] `play → ai` 잔여 참조 제거
+- [x] 계약 패키지의 경계를 테스트로 강제한다 (#95)
 - [ ] 요약(B-34) 착수 시 포트 확장 여부를 정한다
 - [ ] `ai` 에 세 번째 허용 의존이 필요해지면 이 ADR 을 재검토한다
