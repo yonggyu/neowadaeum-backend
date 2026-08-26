@@ -142,7 +142,7 @@ class SessionMappingTests extends ContainerTestBase {
 						.as("%s 가 play 모듈 밖의 엔티티다", entity.getJavaType().getName())
 						.startsWith("com.neowadaeum.play"))
 				.extracting(EntityType::getName)
-				.containsExactlyInAnyOrder("PlaySession", "Turn", "GameStateSnapshot");
+				.containsExactlyInAnyOrder("PlaySession", "Turn", "GameStateSnapshot", "StorySummary");
 	}
 
 	private static PlaySession newSession(UUID playerRef) {
