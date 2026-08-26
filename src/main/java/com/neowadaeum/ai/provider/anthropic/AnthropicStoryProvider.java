@@ -6,6 +6,7 @@ import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.log.AiCallRecorder;
 import com.neowadaeum.ai.provider.AiCallAttempt;
+import com.neowadaeum.ai.provider.AiCallFallback;
 import com.neowadaeum.ai.provider.AiPurpose;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
@@ -178,7 +179,7 @@ public class AnthropicStoryProvider implements StoryProvider {
 				AiPurpose.TURN.wireValue(),
 				PROVIDER_ID,
 				body.path("model").asString(""),
-				null,
+				AiCallFallback.intendedProviderId(),
 				body.toString(),
 				(response != null) ? response.toString() : null,
 				(response != null) ? intOrNull(response.path("usage").path("input_tokens")) : null,
