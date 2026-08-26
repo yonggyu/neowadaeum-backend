@@ -23,7 +23,9 @@ import com.neowadaeum.play.engine.GameState;
 import com.neowadaeum.play.engine.GameStateEngine;
 import com.neowadaeum.play.engine.StateChanges;
 import com.neowadaeum.play.engine.StateSchema;
+import com.neowadaeum.play.domain.StorySummary;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
+import com.neowadaeum.play.repository.StorySummaryRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.TurnRepository;
 import com.neowadaeum.safety.l2.SafetyL2Judge;
@@ -78,13 +80,17 @@ public class TurnPipeline {
 	private final TransactionTemplate transactions;
 	private final RecentTurnsProperties recentTurns;
 
+	private final StorySummaryRepository summaries;
+
+	private final AsyncSummaryTrigger summaryTrigger;
+
 	private final Clock clock;
 
 	public TurnPipeline(PlaySessionRepository sessions, TurnRepository turns,
 			GameStateSnapshotRepository snapshots, StoryVersionFacade storyVersions, TurnGenerationPort provider,
 			SafetyL2Judge safetyJudge, GameStateEngine gameStateEngine, ChapterEngine chapterEngine,
-			EndingEngine endingEngine, RecentTurnsProperties recentTurns,
-			PlatformTransactionManager playTransactionManager, Clock clock) {
+			EndingEngine endingEngine, RecentTurnsProperties recentTurns, StorySummaryRepository summaries,
+			AsyncSummaryTrigger summaryTrigger, PlatformTransactionManager playTransactionManager, Clock clock) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.snapshots = snapshots;
@@ -96,6 +102,8 @@ public class TurnPipeline {
 		this.endingEngine = endingEngine;
 		this.transactions = new TransactionTemplate(playTransactionManager);
 		this.recentTurns = recentTurns;
+		this.summaries = summaries;
+		this.summaryTrigger = summaryTrigger;
 		this.clock = clock;
 	}
 
@@ -115,7 +123,11 @@ public class TurnPipeline {
 			return blocked(context);
 		}
 
-		return this.transactions.execute(status -> commit(context, generated));
+		TurnOutcome outcome = this.transactions.execute(status -> commit(context, generated));
+
+		// R4.6 — 여기서부터는 사용자 대기 시간이 아니다. 요약은 응답이 나간 뒤에 갱신된다.
+		this.summaryTrigger.afterTurn(context.sessionId(), outcome.turnNo());
+		return outcome;
 	}
 
 	// ── 1) 짧은 TX — 읽기 ────────────────────────────────────
@@ -198,8 +210,9 @@ public class TurnPipeline {
 						.map(character -> new GenerationContext.Character(character.name(), character.persona()))
 						.toList(),
 				context.state().toJson(),
-				// R4.5 — 요약은 B-34 가 만든다. 그전까지 없다.
-				null,
+				// R4.5 — 요약 파이프라인이 남긴 현재 요약. 아직 없으면 null 이다 (첫 8턴이 그렇다).
+				this.summaries.findFirstBySessionIdAndDeletedAtIsNullOrderByUptoTurnNoDescCreatedAtDesc(
+						context.sessionId()).map(StorySummary::getSummaryText).orElse(null),
 				recent.reversed().stream().map(TurnPipeline::toRecentTurn).toList(),
 				userAction(recent, chosenChoiceOrder));
 	}

@@ -21,6 +21,7 @@ import com.neowadaeum.play.engine.ChapterEngine;
 import com.neowadaeum.play.engine.EndingEngine;
 import com.neowadaeum.play.engine.GameStateEngine;
 import com.neowadaeum.play.orchestrator.TurnOutcome;
+import com.neowadaeum.play.orchestrator.AsyncSummaryTrigger;
 import com.neowadaeum.play.orchestrator.TurnPipeline;
 import com.neowadaeum.safety.l2.RuleBasedSafetyJudge;
 import com.neowadaeum.safety.l2.SafetyL2Judge;
@@ -28,6 +29,7 @@ import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
+import com.neowadaeum.play.repository.StorySummaryRepository;
 import com.neowadaeum.play.repository.TurnRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -62,6 +64,12 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private StoryVersionFacade storyVersions;
+
+	@Autowired
+	private StorySummaryRepository summaries;
+
+	@Autowired
+	private AsyncSummaryTrigger summaryTrigger;
 
 	@Autowired
 	private GameStateEngine gameStateEngine;
@@ -184,7 +192,7 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 
 		TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
 				offending, judge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
-				this.playTransactionManager, FIXED);
+				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED);
 
 		TurnOutcome outcome = pipeline.advance(sessionId, null);
 

@@ -1,5 +1,6 @@
 package com.neowadaeum.ai.provider;
 
+import com.neowadaeum.play.port.SummaryRequest;
 import java.util.stream.Collectors;
 
 /**

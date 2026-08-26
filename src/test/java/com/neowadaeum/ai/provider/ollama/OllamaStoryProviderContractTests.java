@@ -13,7 +13,7 @@ import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.GenerationBudgets;
 import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationFailedException;

@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.neowadaeum.ai.gateway.PayloadWhitelistValidator.PayloadWhitelistViolationException;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.StoryProvider;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.play.port.GenerationContext;
 import com.neowadaeum.play.port.GenerationContexts;

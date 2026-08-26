@@ -2,15 +2,17 @@ package com.neowadaeum.ai.provider;
 
 import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
+import com.neowadaeum.play.port.SummarizationPort;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.play.port.TurnGenerationPort;
 import java.util.Set;
 
 /**
  * AI 벤더 추상화 (§3, B-18).
  *
- * <p><b>{@code play} 가 소유한 턴 생성 계약을 확장한다</b> (ADR-0006). 벤더 seam 은
- * {@link TurnGenerationPort} 가 요구하는 것에 <b>AI 고유의 것</b>(능력 조회 · 요약 · 아웃라인)을
- * 더한 것이다. 이 관계 덕분에 어느 어댑터든 그대로 포트 구현이 되고, <b>변환 어댑터가 따로 필요
+ * <p><b>{@code play} 가 소유한 두 계약을 확장한다</b> (ADR-0006) — 턴 생성{@link TurnGenerationPort}
+ * 과 요약{@link SummarizationPort}. 벤더 seam 은 그 둘이 요구하는 것에 <b>AI 고유의 것</b>(능력
+ * 조회 · 판정 · 아웃라인)을 더한 것이다. 이 관계 덕분에 어느 어댑터든 그대로 포트 구현이 되고, <b>변환 어댑터가 따로 필요
  * 없다.</b>
  *
  * <p><b>순수 DTO 만 주고받는다.</b> {@code ai} 모듈은 도메인 엔티티를 알지 못하며, 이것이 I-3 의
@@ -29,7 +31,7 @@ import java.util.Set;
  * 조용히 그것을 물려받고, 지원하지 않는 용도가 지원되는 것처럼 보인다. 어댑터마다 명시적으로
  * 답하게 하고, 아직 못 하는 것은 {@link UnsupportedOperationException} 을 던진다 (§0.2).
  */
-public interface StoryProvider extends TurnGenerationPort {
+public interface StoryProvider extends TurnGenerationPort, SummarizationPort {
 
 	/**
 	 * 이 구현이 무엇을 할 수 있는지 (§3).
@@ -38,15 +40,6 @@ public interface StoryProvider extends TurnGenerationPort {
 	 * 전달 방식이 여기서 갈린다.
 	 */
 	ProviderCapabilities capabilities();
-
-	/**
-	 * 오래된 턴을 요약으로 압축한다 (R4.5, R4.6).
-	 *
-	 * <p>턴 응답을 돌려준 <b>이후</b> 비동기로 수행한다. 사용자 대기 시간에 넣지 않는다.
-	 *
-	 * @throws UnsupportedOperationException 아직 이 용도를 구현하지 않은 어댑터 (B-34)
-	 */
-	String summarize(SummaryRequest request);
 
 	/**
 	 * 응답 텍스트를 세이프티 카테고리로 분류한다 (R9.2 의 2단, B-30).

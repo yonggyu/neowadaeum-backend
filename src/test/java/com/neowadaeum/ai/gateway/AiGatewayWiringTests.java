@@ -7,7 +7,7 @@ import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.ai.provider.StoryProvider;
-import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.play.port.TurnRequest;

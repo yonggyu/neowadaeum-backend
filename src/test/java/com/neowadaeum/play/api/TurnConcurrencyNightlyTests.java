@@ -14,9 +14,11 @@ import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.engine.ChapterEngine;
 import com.neowadaeum.play.engine.EndingEngine;
 import com.neowadaeum.play.engine.GameStateEngine;
+import com.neowadaeum.play.orchestrator.AsyncSummaryTrigger;
 import com.neowadaeum.play.orchestrator.TurnPipeline;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
+import com.neowadaeum.play.repository.StorySummaryRepository;
 import com.neowadaeum.play.repository.TurnRepository;
 import com.neowadaeum.safety.l2.SafetyL2Judge;
 import java.time.Clock;
@@ -74,6 +76,12 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 
 	@Autowired
 	private SafetyL2Judge safetyJudge;
+
+	@Autowired
+	private StorySummaryRepository summaries;
+
+	@Autowired
+	private AsyncSummaryTrigger summaryTrigger;
 
 	@Autowired
 	private GameStateEngine gameStateEngine;
@@ -198,7 +206,7 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 
 		TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
 				counting, this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
-				this.playTransactionManager, FIXED);
+				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED);
 		PlayTurnService service = new PlayTurnService(this.sessions, this.turns, this.storyVersions, pipeline,
 				this.guards, this.idempotency);
 
