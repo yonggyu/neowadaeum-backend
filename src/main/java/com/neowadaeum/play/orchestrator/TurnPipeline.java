@@ -1,6 +1,7 @@
 package com.neowadaeum.play.orchestrator;
 
 import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GenerationContext;
 import com.neowadaeum.play.port.GeneratedParagraph;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.TurnGenerationPort;
@@ -11,6 +12,8 @@ import com.neowadaeum.play.domain.GameStateSnapshot;
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SafetyVerdict;
 import com.neowadaeum.play.domain.Turn;
+import org.springframework.data.domain.Limit;
+import tools.jackson.databind.JsonNode;
 import com.neowadaeum.play.engine.ChapterDefinition;
 import com.neowadaeum.play.engine.ChapterEngine;
 import com.neowadaeum.play.engine.EndingDefinition;
@@ -66,6 +69,18 @@ public class TurnPipeline {
 	private final TurnRepository turns;
 	private final GameStateSnapshotRepository snapshots;
 	private final StoryVersionFacade storyVersions;
+	/**
+	 * 프롬프트 재료로 읽어 올 최근 턴 수.
+	 *
+	 * <p><b>얼마나 읽을 것인가이지 얼마나 실을 것인가가 아니다.</b> 후자는 {@code ai} 의 예산
+	 * 정책이다 (§13-2 의 {@code in-prompt}). 8 로 둔 것은 §13-2 가 그보다 오래된 턴을 요약에
+	 * 병합한다고 정했기 때문이며 — 병합된 턴을 또 읽을 이유가 없다.
+	 *
+	 * <p><b>두 값이 어긋날 수 있다.</b> {@code ai.prompt.recent-turns.in-prompt} 가 이 수를 넘게
+	 * 설정되면 조립기는 있는 만큼만 받고 그 사실을 알지 못한다. 지금은 8 &gt; 5 라 여유가 있다.
+	 */
+	private static final int RECENT_TURN_WINDOW = 8;
+
 	private final TurnGenerationPort provider;
 	private final RuleBasedSafetyJudge safetyJudge;
 	private final GameStateEngine gameStateEngine;
@@ -146,7 +161,8 @@ public class TurnPipeline {
 	 * @return 통과한 결과. 차단이면 {@code null}
 	 */
 	private Generated generateAndScreen(PipelineContext context, Integer chosenChoiceOrder) {
-		TurnRequest request = new TurnRequest(context.storyVersionId(), context.turnNo(), chosenChoiceOrder);
+		TurnRequest request = new TurnRequest(context.storyVersionId(), context.turnNo(), chosenChoiceOrder,
+				generationContext(context, chosenChoiceOrder));
 
 		GeneratedTurn result = this.provider.generateTurn(request);
 		SafetyJudgement judgement = screen(result);
@@ -164,6 +180,73 @@ public class TurnPipeline {
 			return null;
 		}
 		return new Generated(regenerated, SafetyVerdict.REVISED, second);
+	}
+
+	/**
+	 * 프롬프트의 재료를 모은다 (§5.1, B-22).
+	 *
+	 * <p><b>트랜잭션 밖에서 부른다.</b> Provider 호출을 트랜잭션 안에 들이지 않는다는 규칙은 그대로다.
+	 *
+	 * <p><b>{@code ai} 가 무엇을 실을지는 여기서 정하지 않는다.</b> 몇 턴을 원문으로 쓰고 어디서
+	 * 자를지는 조립기의 예산 판단이다 (§13-2, §4.4). 여기가 정하는 것은 <b>얼마나 읽을 것인가</b>뿐이다.
+	 */
+	private GenerationContext generationContext(PipelineContext context, Integer chosenChoiceOrder) {
+		List<Turn> recent = this.turns
+				.findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(context.sessionId(), Limit.of(RECENT_TURN_WINDOW));
+
+		return new GenerationContext(
+				context.version().worldPrompt(),
+				context.version().characters().stream()
+						.map(character -> new GenerationContext.Character(character.name(), character.persona()))
+						.toList(),
+				context.state().toJson(),
+				// R4.5 — 요약은 B-34 가 만든다. 그전까지 없다.
+				null,
+				recent.reversed().stream().map(TurnPipeline::toRecentTurn).toList(),
+				userAction(recent, chosenChoiceOrder));
+	}
+
+	/**
+	 * I-1 — 이번 턴의 사용자 행동은 <b>서버가 저장해 둔 선택지 본문</b>이다.
+	 *
+	 * <p>클라이언트가 보낸 텍스트를 쓰지 않는다. 요청이 나른 것은 {@code choiceId} 뿐이고, 그것에서
+	 * 되찾은 {@code order} 로 직전 턴의 저장된 선택지를 찾는다.
+	 */
+	private static String userAction(List<Turn> recent, Integer chosenChoiceOrder) {
+		if (chosenChoiceOrder == null || recent.isEmpty()) {
+			return null;
+		}
+		for (JsonNode choice : JSON.readTree(recent.getFirst().getChoices())) {
+			if (choice.path("order").asInt() == chosenChoiceOrder) {
+				return choice.path("text").asString(null);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * 저장된 턴 하나를 프롬프트 재료로 바꾼다.
+	 *
+	 * <p><b>문단을 줄바꿈으로 잇는다.</b> 저장 형태는 객체 배열이고(#84) 프롬프트에 실리는 것은
+	 * 본문이다 — 종류와 화자는 렌더링의 것이지 다음 턴을 쓰는 데 필요한 정보가 아니다.
+	 */
+	private static GenerationContext.RecentTurn toRecentTurn(Turn turn) {
+		StringBuilder body = new StringBuilder();
+		for (JsonNode paragraph : JSON.readTree(turn.getParagraphs())) {
+			body.append(body.isEmpty() ? "" : "\n").append(paragraph.path("text").asString(""));
+		}
+
+		String chosenText = null;
+		if (turn.getChosenChoiceId() != null) {
+			for (JsonNode choice : JSON.readTree(turn.getChoices())) {
+				if (turn.getChosenChoiceId().equals(choice.path("choiceId").asString(null))) {
+					chosenText = choice.path("text").asString(null);
+				}
+			}
+		}
+
+		// paragraphsDigest 는 B-34 가 만든다. 없으면 조립기가 원문을 쓴다 (TurnPromptFactory).
+		return new GenerationContext.RecentTurn(turn.getTurnNo(), chosenText, body.toString(), null);
 	}
 
 	/**

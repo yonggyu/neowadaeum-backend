@@ -8,6 +8,7 @@ import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
+import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import java.time.LocalDate;
@@ -80,7 +81,7 @@ class PayloadWhitelistValidatorTests {
 		AiGateway gateway = new AiGateway(counting,
 				new PayloadWhitelistValidator(Map.of(TurnRequest.class, Set.of("storyVersionRef"))));
 
-		assertThatThrownBy(() -> gateway.generateTurn(TurnRequest.opening(STORY_VERSION)))
+		assertThatThrownBy(() -> gateway.generateTurn(TurnRequest.opening(STORY_VERSION, GenerationContexts.sample())))
 				.isInstanceOf(PayloadWhitelistViolationException.class);
 		assertThat(calls).hasValue(0);
 	}
@@ -143,8 +144,8 @@ class PayloadWhitelistValidatorTests {
 	/** 실제로 나가는 세 페이로드는 그대로 통과한다. 방어선이 정상 경로를 막으면 우회가 생긴다. */
 	@Test
 	void I3_the_real_payloads_pass() {
-		this.validator.validate(TurnRequest.opening(STORY_VERSION));
-		this.validator.validate(new TurnRequest(STORY_VERSION, 3, 2));
+		this.validator.validate(TurnRequest.opening(STORY_VERSION, GenerationContexts.sample()));
+		this.validator.validate(new TurnRequest(STORY_VERSION, 3, 2, GenerationContexts.sample()));
 		this.validator.validate(new SummaryRequest("직전 요약",
 				List.of(new SummaryRequest.TurnDigest(1, "선택", "요지")), 600));
 		this.validator.validate(new OutlineRequest("세계관", 5, 3));
@@ -158,8 +159,11 @@ class PayloadWhitelistValidatorTests {
 	 */
 	@Test
 	void I3_the_declaration_does_not_drift_from_the_payload_records() {
+		// populated() 다 — 목록이 비어 있으면 중첩 안쪽 이름이 직렬화 결과에 나타나지 않고,
+		// 그러면 이 검사가 그 이름들을 그냥 지나친다 (B-22).
 		assertThat(this.validator.declaredFieldsFor(TurnRequest.class))
-				.containsExactlyInAnyOrderElementsOf(serializedFieldNames(TurnRequest.opening(STORY_VERSION)));
+				.containsExactlyInAnyOrderElementsOf(serializedFieldNames(
+						TurnRequest.opening(STORY_VERSION, GenerationContexts.populated())));
 		assertThat(this.validator.declaredFieldsFor(OutlineRequest.class))
 				.containsExactlyInAnyOrderElementsOf(serializedFieldNames(new OutlineRequest("세계관", 5, 3)));
 		assertThat(this.validator.declaredFieldsFor(SummaryRequest.class))
@@ -178,7 +182,11 @@ class PayloadWhitelistValidatorTests {
 		if (node.isObject()) {
 			node.properties().forEach(property -> {
 				names.add(property.getKey());
-				collect(property.getValue(), names);
+				// 검증기가 안 내려가는 자리는 여기서도 안 내려간다 — 안 그러면 GameState 의
+				// 데이터 키(작품마다 다르다)가 "선언되어야 할 이름"으로 잡힌다 (B-22).
+				if (!"gameState".equals(property.getKey())) {
+					collect(property.getValue(), names);
+				}
 			});
 		}
 		else if (node.isArray()) {

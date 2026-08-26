@@ -38,6 +38,23 @@ public class PayloadWhitelistValidator {
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
+	/**
+	 * <b>값 안쪽으로 내려가지 않는 필드</b> (B-22).
+	 *
+	 * <p>{@code gameState} 는 작품이 정한 {@code state_schema} 대로 만들어진 자유 형태 JSON 이다
+	 * (R4.1). 키가 작품마다 다르므로 <b>정적 선언으로 열거할 수 없고</b>, 그렇다고 통과시키면
+	 * 화이트리스트가 아니라 통과표가 된다.
+	 *
+	 * <p><b>여기에 이름을 넣는 것은 예외를 선언하는 일이다.</b> 정당화는 하나뿐이다 — 그 값이
+	 * <b>서버가 만든 것</b>이고 <b>이미 다른 화이트리스트를 통과했다</b>는 것. GameState 는 AI 가
+	 * 준 델타를 {@code state_schema} 로 거르고 clamp 한 결과이며 (R4.1, R4.2), 회원 식별정보가
+	 * 들어갈 경로가 없다. 그 성질이 깨지면 이 예외도 깨진다.
+	 *
+	 * <p>이름 자체는 여전히 검사한다 — 막는 것은 <b>모르는 이름이 나가는 것</b>이고,
+	 * {@code gameState} 라는 이름은 선언에 있다. 안 보는 것은 그 <b>안쪽</b>뿐이다.
+	 */
+	private static final Set<String> OPAQUE_FIELDS = Set.of("gameState");
+
 	private final Map<Class<?>, Set<String>> allowedFields;
 
 	public PayloadWhitelistValidator(Map<Class<?>, Set<String>> allowedFields) {
@@ -53,7 +70,11 @@ public class PayloadWhitelistValidator {
 	 */
 	public static PayloadWhitelistValidator forProviderPayloads() {
 		return new PayloadWhitelistValidator(Map.of(
-				TurnRequest.class, Set.of("storyVersionRef", "turnNo", "chosenChoiceOrder"),
+				// B-22 로 늘어난 이름들이 여기 있다. TurnRequest 가 참조만 나르던 시절에는 셋이었다.
+				// 늘어난 것은 전부 작품 데이터와 서버가 만든 상태다 — 회원 식별정보는 없다 (I-3).
+				TurnRequest.class, Set.of("storyVersionRef", "turnNo", "chosenChoiceOrder", "context",
+						"worldPrompt", "characters", "name", "persona", "gameState", "summary",
+						"recentTurns", "chosenChoiceText", "paragraphs", "paragraphsDigest", "userAction"),
 				SummaryRequest.class, Set.of("previousSummary", "turns", "maxTokens",
 						"turnNo", "chosenChoiceText", "paragraphsDigest"),
 				OutlineRequest.class, Set.of("worldPrompt", "chapterCount", "endingCount")));
@@ -91,12 +112,20 @@ public class PayloadWhitelistValidator {
 		return this.allowedFields.getOrDefault(type, Set.of());
 	}
 
-	/** 중첩 객체와 배열 안쪽까지 내려간다. 한 겹만 보면 안쪽에 담아 보내면 그만이다. */
+	/**
+	 * 중첩 객체와 배열 안쪽까지 내려간다. 한 겹만 보면 안쪽에 담아 보내면 그만이다.
+	 *
+	 * <p>{@link #OPAQUE_FIELDS} 에 있는 이름은 <b>이름만 보고 값 안쪽은 보지 않는다.</b> 근거는
+	 * 그 상수의 주석에 있다.
+	 */
 	private static void collect(JsonNode node, Set<String> allowed, List<String> offending) {
 		if (node.isObject()) {
 			for (Map.Entry<String, JsonNode> property : node.properties()) {
 				if (!allowed.contains(property.getKey())) {
 					offending.add(property.getKey());
+				}
+				if (OPAQUE_FIELDS.contains(property.getKey())) {
+					continue;
 				}
 				collect(property.getValue(), allowed, offending);
 			}

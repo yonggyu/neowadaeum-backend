@@ -13,6 +13,7 @@ import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
+import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
 import com.neowadaeum.play.port.GenerationTimedOutException;
@@ -37,7 +38,7 @@ class AiGatewayWiringTests {
 			.withUserConfiguration(AiGatewayConfiguration.class);
 
 	private static TurnRequest request() {
-		return TurnRequest.opening(UUID.randomUUID());
+		return TurnRequest.opening(UUID.randomUUID(), GenerationContexts.sample());
 	}
 
 	/**

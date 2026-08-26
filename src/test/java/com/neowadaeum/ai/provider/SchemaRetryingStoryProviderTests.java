@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
+import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
 import com.neowadaeum.play.port.GeneratedTurn;
@@ -26,7 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
 class SchemaRetryingStoryProviderTests {
 
 	private static TurnRequest request() {
-		return TurnRequest.opening(UUID.randomUUID());
+		return TurnRequest.opening(UUID.randomUUID(), GenerationContexts.sample());
 	}
 
 	private static GeneratedTurn answer() {
