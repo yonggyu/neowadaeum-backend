@@ -12,6 +12,7 @@ import com.neowadaeum.play.port.GeneratedTurn;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
 import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.support.FixedTokenCounter;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
@@ -36,7 +37,7 @@ class FixedStoryProviderTests {
 		FixedStoryScenarioLoader loader = new FixedStoryScenarioLoader(JsonMapper.builder().build(),
 				new org.springframework.core.io.support.PathMatchingResourcePatternResolver(),
 				"classpath*:scenarios/s3-branching.json");
-		return new FixedStoryProvider(loader.load());
+		return new FixedStoryProvider(loader.load(), new FixedTokenCounter());
 	}
 
 	/** I-15 — 같은 입력은 언제나 같은 출력. 난수가 개입할 자리가 없다. */
@@ -128,7 +129,7 @@ class FixedStoryProviderTests {
 		FixedStoryScenarioLoader loader = new FixedStoryScenarioLoader(JsonMapper.builder().build(),
 				new org.springframework.core.io.support.PathMatchingResourcePatternResolver(),
 				"classpath*:scenarios/demo-first-day.json");
-		return new FixedStoryProvider(loader.load());
+		return new FixedStoryProvider(loader.load(), new FixedTokenCounter());
 	}
 
 	/** §0.2 — 미구현 경로를 스텁으로 통과시키지 않는다. 없는 턴은 지어내지 않고 던진다. */
@@ -159,7 +160,7 @@ class FixedStoryProviderTests {
 				JsonMapper.builder().build().readTree("{}"), false, null, List.of());
 		FixedStoryScenario scenario = new FixedStoryScenario(FIXTURE_STORY, "중복", List.of(entry, entry));
 
-		assertThatThrownBy(() -> new FixedStoryProvider(List.of(scenario)))
+		assertThatThrownBy(() -> new FixedStoryProvider(List.of(scenario), new FixedTokenCounter()))
 				.isInstanceOf(IllegalArgumentException.class)
 				.hasMessageContaining("duplicate");
 	}
@@ -194,13 +195,44 @@ class FixedStoryProviderTests {
 	 */
 	@Test
 	void B18_unimplemented_uses_throw_instead_of_returning_something_plausible() {
-		FixedStoryProvider provider = provider();
+		// 요약은 B-34 에서 발췌 요약으로 구현됐다 — 아래 R4_5_* 가 그 성질을 본다.
+		assertThatThrownBy(() -> provider().draftOutline(new OutlineRequest("세계관", 5, 3)))
+				.isInstanceOf(UnsupportedOperationException.class);
+	}
 
-		assertThatThrownBy(() -> provider.summarize(
-				new SummaryRequest(null, List.of(new SummaryRequest.TurnDigest(1, null, "요지")), 600)))
-				.isInstanceOf(UnsupportedOperationException.class);
-		assertThatThrownBy(() -> provider.draftOutline(new OutlineRequest("세계관", 5, 3)))
-				.isInstanceOf(UnsupportedOperationException.class);
+	/**
+	 * <b>R4.5 — 예산을 넘으면 실제로 짧아진다.</b>
+	 *
+	 * <p>재압축이 의미를 가지려면 압축이 실제로 일어나야 한다. 빈 문자열을 돌려주는 스텁이었다면
+	 * 이 테스트를 쓸 수 없다 (§0.2).
+	 */
+	@Test
+	void R4_5_the_extractive_summary_drops_the_oldest_lines_to_fit_the_budget() {
+		FixedStoryProvider provider = provider();
+		List<SummaryRequest.TurnDigest> turns = List.of(
+				new SummaryRequest.TurnDigest(1, null, "첫 턴의 요지"),
+				new SummaryRequest.TurnDigest(2, "왼쪽", "둘째 턴의 요지"),
+				new SummaryRequest.TurnDigest(3, "오른쪽", "셋째 턴의 요지"));
+
+		String generous = provider.summarize(new SummaryRequest(null, turns, 600));
+		String tight = provider.summarize(new SummaryRequest(null, turns, 8));
+
+		assertThat(generous).contains("첫 턴의 요지").contains("셋째 턴의 요지");
+		assertThat(tight)
+				.as("예산이 좁으면 오래된 쪽부터 버린다")
+				.doesNotContain("첫 턴의 요지")
+				.contains("셋째 턴의 요지");
+	}
+
+	/** I-15 — 같은 입력에 같은 요약이다. 지어내는 부분이 없다. */
+	@Test
+	void I15_the_extractive_summary_is_deterministic() {
+		FixedStoryProvider provider = provider();
+		SummaryRequest request = new SummaryRequest("지난 줄거리",
+				List.of(new SummaryRequest.TurnDigest(4, "선택", "넷째 턴의 요지")), 600);
+
+		assertThat(provider.summarize(request)).isEqualTo(provider.summarize(request));
+		assertThat(provider.summarize(request)).contains("지난 줄거리").contains("넷째 턴의 요지");
 	}
 
 	private static List<String> componentNames(Class<?> type) {
@@ -221,7 +253,7 @@ class FixedStoryProviderTests {
 				JsonMapper.builder().build().readTree("{}"), false, null,
 				List.of(SafetyCategory.RATING_EXCEEDED));
 		FixedStoryProvider provider = new FixedStoryProvider(
-				List.of(new FixedStoryScenario(FIXTURE_STORY, "판정 선언", List.of(flagged))));
+				List.of(new FixedStoryScenario(FIXTURE_STORY, "판정 선언", List.of(flagged))), new FixedTokenCounter());
 
 		assertThat(provider.classifySafety(new SafetyClassificationRequest(List.of("걸리는 문단"))))
 				.containsExactly(SafetyCategory.RATING_EXCEEDED);
@@ -237,7 +269,7 @@ class FixedStoryProviderTests {
 				List.of(GeneratedParagraph.narration("평범한 문단")), List.of(new GeneratedChoice(1, "선택")),
 				JsonMapper.builder().build().readTree("{}"), false, null, List.of());
 		FixedStoryProvider provider = new FixedStoryProvider(
-				List.of(new FixedStoryScenario(FIXTURE_STORY, "선언 없음", List.of(plain))));
+				List.of(new FixedStoryScenario(FIXTURE_STORY, "선언 없음", List.of(plain))), new FixedTokenCounter());
 
 		assertThat(provider.classifySafety(new SafetyClassificationRequest(List.of("평범한 문단")))).isEmpty();
 	}

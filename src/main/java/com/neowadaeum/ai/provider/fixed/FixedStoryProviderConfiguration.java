@@ -1,6 +1,7 @@
 package com.neowadaeum.ai.provider.fixed;
 
 import tools.jackson.databind.ObjectMapper;
+import com.neowadaeum.common.support.TokenCounter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -40,7 +41,7 @@ public class FixedStoryProviderConfiguration {
 	}
 
 	@Bean
-	public FixedStoryProvider fixedStoryProvider(FixedStoryScenarioLoader loader) {
-		return new FixedStoryProvider(loader.load());
+	public FixedStoryProvider fixedStoryProvider(FixedStoryScenarioLoader loader, TokenCounter tokenCounter) {
+		return new FixedStoryProvider(loader.load(), tokenCounter);
 	}
 }

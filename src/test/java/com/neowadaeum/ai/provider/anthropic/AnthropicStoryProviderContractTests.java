@@ -369,8 +369,7 @@ class AnthropicStoryProviderContractTests {
 	/** §0.2 — 아직 구현하지 않은 용도는 예외 그대로다. 스텁으로 통과시키지 않는다. */
 	@Test
 	void S0_2_unimplemented_uses_stay_unimplemented() {
-		assertThatThrownBy(() -> this.provider.summarize(null))
-				.isInstanceOf(UnsupportedOperationException.class);
+		// 요약은 B-34 에서 구현됐다. 남은 미구현은 아웃라인 하나다 (B-52).
 		assertThatThrownBy(() -> this.provider.draftOutline(null))
 				.isInstanceOf(UnsupportedOperationException.class);
 	}
