@@ -3,6 +3,7 @@ package com.neowadaeum.play.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
@@ -176,7 +177,7 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 				"offending", "scenario", false, Instant.now(FIXED))).getId();
 
 		TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
-				offending, judge, this.gameStateEngine, this.chapterEngine, this.endingEngine,
+				offending, judge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
 				this.playTransactionManager, FIXED);
 
 		TurnOutcome outcome = pipeline.advance(sessionId, null);

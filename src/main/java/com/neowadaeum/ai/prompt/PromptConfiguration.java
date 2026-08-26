@@ -1,8 +1,9 @@
 package com.neowadaeum.ai.prompt;
 
+import com.neowadaeum.common.support.RecentTurnsProperties;
+
 import com.neowadaeum.common.support.ApproximateTokenCounter;
 import com.neowadaeum.common.support.TokenCounter;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -11,9 +12,12 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p><b>토큰 계산기는 {@code common} 이 소유하고 여기서 고른다</b> (#82, §5.4). 운영에서는 보수적
  * 근사 하나뿐이며, 테스트가 고정 계산기로 갈아끼운다.
+ *
+ * <p><b>{@code RecentTurnsProperties} 도 {@code common} 이 소유한다</b> (#97). 활성화는
+ * {@code config} 가 한다 — {@code play} 도 같은 값을 읽으므로, 이 구성이 조건부가 되는 날
+ * {@code play} 가 함께 무너지면 안 된다.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(RecentTurnsProperties.class)
 public class PromptConfiguration {
 
 	@Bean

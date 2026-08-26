@@ -9,8 +9,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.neowadaeum.ai.prompt.PromptAssembler;
-import com.neowadaeum.ai.prompt.RecentTurnsProperties;
+import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
+import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.common.support.FixedTokenCounter;
@@ -25,7 +26,6 @@ import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 
 /**
  * <b>느린 어댑터가 실제로 끊기는가</b> (B-22 DoD, R6.4).
@@ -103,7 +103,8 @@ class AnthropicTimeoutContractTests {
 				"http://localhost:" + this.server.port(), 4096);
 
 		return new AnthropicStoryProvider(
-				RestClient.builder().baseUrl(properties.baseUrl()).build(),
+				AnthropicProviderConfiguration.restClient(properties,
+						new ProviderProperties(Duration.ofSeconds(30), null)),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
 				new TurnOutputParser());

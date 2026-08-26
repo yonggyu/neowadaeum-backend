@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.neowadaeum.ai.prompt.PromptAssembler;
-import com.neowadaeum.ai.prompt.RecentTurnsProperties;
+import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
@@ -54,6 +54,15 @@ class AnthropicCancellationTests {
 
 	/** 예산보다 훨씬 길게 끈다. 인터럽트가 무시되면 아래쪽 호출이 이만큼 살아 있다. */
 	private static final int SERVER_DELAY_MS = 30_000;
+
+	/**
+	 * <b>어댑터의 읽기 상한을 멀리 둔다.</b>
+	 *
+	 * <p>이 값이 짧으면 <b>취소와 무관하게 상한이 호출을 끝내고</b>, 그러면 이 파일의 테스트는
+	 * 전부 잘못된 이유로 통과한다 — 실제로 그랬다 (#97). 상한은 예산의 2배이므로 여기에 넉넉한
+	 * 값을 넣어 <b>인터럽트만이 호출을 빨리 끝낼 수 있는 상태</b>를 만든다.
+	 */
+	private static final Duration FAR_CEILING_BUDGET = Duration.ofSeconds(30);
 
 	/**
 	 * 아래쪽 호출이 끝나기를 기다리는 상한.
@@ -102,13 +111,59 @@ class AnthropicCancellationTests {
 				.isTrue();
 	}
 
+	/**
+	 * <b>음성 대조군</b> — 취소 전달이 사라지면 위 테스트가 실제로 실패하는가 (#97).
+	 *
+	 * <p>통과하는 테스트가 무엇을 지키는지 모르는 상태로 두지 않는다. 여기서는 <b>인터럽트를
+	 * 삼키는 실행기</b>로 같은 시나리오를 돌린다 — {@code Future.cancel(true)} 가 스레드에 닿지
+	 * 않으므로 아래쪽 호출은 서버 지연이 끝날 때까지 살아 있어야 한다.
+	 *
+	 * <p>이 테스트가 <b>실패하면</b> 위 테스트도 의미가 없다는 뜻이다 — 취소와 무관하게 래치가
+	 * 내려온다는 말이기 때문이다.
+	 */
+	@Test
+	void S97_the_cancellation_test_would_fail_if_cancellation_stopped_propagating() throws InterruptedException {
+		CountDownLatch callEnded = new CountDownLatch(1);
+		// close() 를 부르지 않는다 — 삼켜진 인터럽트 때문에 종료를 기다리며 멈춘다. 스레드는 데몬이다.
+		ExecutorService uninterruptible = Executors.newSingleThreadExecutor(NonInterruptibleThread::new);
+		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(
+				watching(adapter(), callEnded), uninterruptible, SHORT_BUDGET);
+
+		assertThatThrownBy(() -> provider.generateTurn(request()))
+				.isInstanceOf(GenerationTimedOutException.class);
+
+		assertThat(callEnded.await(2, TimeUnit.SECONDS))
+				.as("인터럽트가 삼켜졌는데도 호출이 끝났다면, 위 테스트는 취소가 아니라 다른 것을 보고 있다")
+				.isFalse();
+	}
+
+	/**
+	 * 인터럽트를 삼키는 스레드.
+	 *
+	 * <p>{@code Thread.interrupt()} 를 무시하므로 블로킹 읽기가 깨어나지 않는다 — 취소가 닿지
+	 * 않는 런타임을 흉내 낸다.
+	 */
+	private static final class NonInterruptibleThread extends Thread {
+
+		private NonInterruptibleThread(Runnable task) {
+			super(task);
+			setDaemon(true);
+		}
+
+		@Override
+		public void interrupt() {
+			// 삼킨다. 이것이 이 대조군의 전부다.
+		}
+	}
+
 	/** 운영과 같은 방식으로 만든 클라이언트를 쓴다 — 요청 팩토리와 타임아웃이 갈라지면 의미가 없다. */
 	private AnthropicStoryProvider adapter() {
 		AnthropicProperties properties = new AnthropicProperties("test-key", "claude-opus-5",
 				"http://localhost:" + this.server.port(), 4096);
 
 		return new AnthropicStoryProvider(
-				AnthropicProviderConfiguration.restClient(properties, new ProviderProperties(SHORT_BUDGET, null)),
+				AnthropicProviderConfiguration.restClient(properties,
+						new ProviderProperties(FAR_CEILING_BUDGET, null)),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
 				new TurnOutputParser());

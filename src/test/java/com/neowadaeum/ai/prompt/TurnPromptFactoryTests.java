@@ -1,5 +1,7 @@
 package com.neowadaeum.ai.prompt;
 
+import com.neowadaeum.common.support.RecentTurnsProperties;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.common.support.FixedTokenCounter;

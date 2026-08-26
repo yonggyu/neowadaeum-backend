@@ -1,4 +1,4 @@
-package com.neowadaeum.ai.prompt;
+package com.neowadaeum.common.support;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -26,7 +26,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p><b>설정으로 둔 이유.</b> §13-2 는 완충 구간(8)과 원문/압축 경계(2)를 <b>`[결정 필요]` 로 남기고
  * B-46 실측 후 조정</b>한다고 적었다. 코드 상수로 박아 두면 그 조정이 배포가 된다.
  *
- * <p>{@code summaryMerge} 는 이 패키지가 읽지 않는다. 그럼에도 여기 함께 두는 것은 <b>셋이 한
+ * <p><b>{@code common} 이 소유한다</b> (#97, §5.4). 이전에는 {@code ai/prompt} 에 있었고
+ * {@code summaryMerge} 는 그 패키지가 읽지 않았다 — <b>읽어야 할 쪽이 {@code play} 였다.</b>
+ * {@code play} 는 {@code ai} 를 참조할 수 없어(ADR-0006) 같은 숫자 8 을 상수로 복제했고, 그러면
+ * {@code inPrompt} 를 그보다 크게 설정했을 때 <b>조립기가 있는 만큼만 받고 그 사실을 알지
+ * 못한다.</b> {@code TokenCounter} 를 옮긴 것과 같은 근거다 (#82) — 두 모듈이 같은 답을 받아야
+ * 하는 순수 값이다.
+ *
+ * <p>설정 접두어는 {@code ai.prompt.recent-turns} 그대로다. §13-2 가 그 이름으로 부르며, 값이
+ * 사는 모듈이 바뀌었다고 배포 설정 키를 바꿀 이유는 없다.
+ *
+ * <p>{@code summaryMerge} 는 프롬프트 조립이 읽지 않는다. 그럼에도 여기 함께 두는 것은 <b>셋이 한
  * 규칙의 세 부분</b>이기 때문이다 — 따로 두면 B-46 이 하나만 고치고 관계가 깨진다.
  */
 @ConfigurationProperties("ai.prompt.recent-turns")
