@@ -4,6 +4,7 @@ import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
+import java.time.Clock;
 import java.util.List;
 import java.util.concurrent.Executors;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -47,13 +48,17 @@ public class AiGatewayConfiguration {
 	 *
 	 * <p><b>페이로드 검증은 가장 바깥이다.</b> 나가는 페이로드는 재요청에도 같으므로 한 번만 보면
 	 * 되고, 검증이 안쪽이면 재요청 횟수만큼 같은 검사를 반복한다 (I-3, B-19).
+	 *
+	 * <p><b>이 순서가 뒤집혀도 예산은 두 배가 되지 않는다</b> (B-21-2). 예산을 지키는 것은 순서가
+	 * 아니라 {@code GenerationBudget} 이라는 값이며, 재요청이 시간 제한 밖으로 나가면 그 자리에서
+	 * 실패한다 — 조용히 두 배가 되는 대신 즉시 드러난다.
 	 */
 	@Bean
 	@Primary
-	public StoryProvider aiGateway(List<StoryProvider> adapters, ProviderProperties properties) {
+	public StoryProvider aiGateway(List<StoryProvider> adapters, ProviderProperties properties, Clock clock) {
 		StoryProvider selected = new ProviderRegistry(adapters).select(properties.active());
 		return new AiGateway(new TimeLimitedStoryProvider(new SchemaRetryingStoryProvider(chain(selected, adapters)),
-				Executors.newVirtualThreadPerTaskExecutor(), properties.timeoutMs()),
+				Executors.newVirtualThreadPerTaskExecutor(), properties.timeoutMs(), clock),
 				PayloadWhitelistValidator.forProviderPayloads());
 	}
 

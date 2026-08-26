@@ -8,8 +8,12 @@ import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
 import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.ai.provider.GenerationBudgets.TickingClock;
+import com.neowadaeum.play.port.GenerationTimedOutException;
 import com.neowadaeum.play.port.OutputSchemaRejectedException;
 import com.neowadaeum.play.port.TurnRequest;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -26,6 +30,22 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class SchemaRetryingStoryProviderTests {
 
+	/** §13-19 의 계약값과 같은 크기. 시계를 손으로 미므로 테스트가 이만큼 걸리지 않는다. */
+	private static final Duration BUDGET = Duration.ofSeconds(25);
+
+	/**
+	 * 운영에서는 {@link TimeLimitedStoryProvider} 가 예산을 연다 (§13-19). 단위 테스트에서 그 자리를
+	 * 대신한다 — <b>예산 없이 도는 재요청은 이제 존재하지 않는다</b> (B-21-2).
+	 */
+	private static GeneratedTurn generateWithinBudget(StoryProvider delegate) {
+		return generateWithinBudget(delegate, new TickingClock());
+	}
+
+	private static GeneratedTurn generateWithinBudget(StoryProvider delegate, Clock clock) {
+		return GenerationBudgets.within(GenerationBudget.startingNow(clock, BUDGET),
+				() -> new SchemaRetryingStoryProvider(delegate).generateTurn(request()));
+	}
+
 	private static TurnRequest request() {
 		return TurnRequest.opening(UUID.randomUUID(), GenerationContexts.sample());
 	}
@@ -41,7 +61,7 @@ class SchemaRetryingStoryProviderTests {
 	void R5_8_a_valid_answer_is_not_requested_twice() {
 		CountingProvider provider = CountingProvider.structured();
 
-		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
+		assertThat(generateWithinBudget(provider).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.calls()).isEqualTo(1);
 	}
 
@@ -50,7 +70,7 @@ class SchemaRetryingStoryProviderTests {
 	void R5_8_one_schema_violation_is_retried_once_and_succeeds() {
 		CountingProvider provider = CountingProvider.structured().thenViolate(1);
 
-		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
+		assertThat(generateWithinBudget(provider).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.calls()).isEqualTo(2);
 	}
 
@@ -63,9 +83,8 @@ class SchemaRetryingStoryProviderTests {
 	@Test
 	void R5_8_a_structured_provider_stops_after_one_retry() {
 		CountingProvider provider = CountingProvider.structured().thenViolate(Integer.MAX_VALUE);
-		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(provider);
 
-		assertThatThrownBy(() -> retrying.generateTurn(request()))
+		assertThatThrownBy(() -> generateWithinBudget(provider))
 				.isInstanceOf(OutputSchemaRejectedException.class);
 
 		assertThat(provider.calls()).as("R5.8 — 최초 1회 + 재요청 1회").isEqualTo(2);
@@ -79,9 +98,8 @@ class SchemaRetryingStoryProviderTests {
 	@Test
 	void R3_3_an_unstructured_provider_retries_twice() {
 		CountingProvider provider = CountingProvider.unstructured().thenViolate(Integer.MAX_VALUE);
-		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(provider);
 
-		assertThatThrownBy(() -> retrying.generateTurn(request()))
+		assertThatThrownBy(() -> generateWithinBudget(provider))
 				.isInstanceOf(OutputSchemaRejectedException.class);
 
 		assertThat(provider.calls()).as("R3.3 — 최초 1회 + 재요청 2회").isEqualTo(3);
@@ -92,21 +110,20 @@ class SchemaRetryingStoryProviderTests {
 	void R3_3_an_unstructured_provider_succeeds_on_the_third_attempt() {
 		CountingProvider provider = CountingProvider.unstructured().thenViolate(2);
 
-		assertThat(new SchemaRetryingStoryProvider(provider).generateTurn(request()).paragraphs().getFirst().text()).isEqualTo("본문");
+		assertThat(generateWithinBudget(provider).paragraphs().getFirst().text()).isEqualTo("본문");
 		assertThat(provider.calls()).isEqualTo(3);
 	}
 
 	/**
 	 * <b>스키마 위반만 다시 요청한다.</b> 시간 초과·연결 실패는 같은 요청을 다시 보내 나아지는
-	 * 종류의 실패가 아니고, 시간 초과는 이미 25s 를 쓴 뒤다 (R6.4).
+	 * 종류의 실패가 아니고, 시간 초과는 이미 예산을 다 쓴 뒤다 (R6.4).
 	 */
 	@Test
 	void R6_4_a_non_schema_failure_is_not_retried() {
 		CountingProvider provider = CountingProvider.structured().thenFailWith(
 				new IllegalStateException("connection reset"));
-		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(provider);
 
-		assertThatThrownBy(() -> retrying.generateTurn(request()))
+		assertThatThrownBy(() -> generateWithinBudget(provider))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessage("connection reset");
 
@@ -132,7 +149,7 @@ class SchemaRetryingStoryProviderTests {
 		String secretish = "유나의 연락처는 010-0000-0000 이다";
 		CountingProvider provider = CountingProvider.structured().thenViolate(Integer.MAX_VALUE);
 
-		assertThatThrownBy(() -> new SchemaRetryingStoryProvider(provider).generateTurn(request()))
+		assertThatThrownBy(() -> generateWithinBudget(provider))
 				.isInstanceOf(OutputSchemaRejectedException.class)
 				.hasMessageContaining("did not match the turn schema")
 				.hasMessageNotContaining(secretish)
@@ -152,6 +169,101 @@ class SchemaRetryingStoryProviderTests {
 
 		assertThatThrownBy(() -> retrying.summarize(null)).isInstanceOf(UnsupportedOperationException.class);
 		assertThatThrownBy(() -> retrying.draftOutline(null)).isInstanceOf(UnsupportedOperationException.class);
+	}
+
+	/**
+	 * <b>B-21-2 — 첫 호출이 쓴 만큼 재요청에 남는 시간이 줄어든다</b> (§13-19).
+	 *
+	 * <p>예산이 값이 되기 전에는 이것을 볼 방법이 없었다. 재요청은 자기 앞의 호출이 얼마를 썼는지
+	 * 모른 채 다시 걸렸고, 전체가 25초를 넘지 않는다는 것은 <b>데코레이터 중첩 순서</b>가 지켰다.
+	 *
+	 * <p>시계를 20초 앞으로 밀어 확인한다 — {@code sleep} 이 없다 (ADR-0001).
+	 */
+	@Test
+	void S13_19_the_retry_sees_what_the_first_call_spent() {
+		TickingClock clock = new TickingClock();
+		SpendingProvider provider = new SpendingProvider(clock, Duration.ofSeconds(20));
+
+		assertThat(generateWithinBudget(provider, clock).paragraphs().getFirst().text()).isEqualTo("본문");
+
+		assertThat(provider.remainingSeen())
+				.as("첫 호출은 예산 전부를, 재요청은 첫 호출이 쓰고 남은 것을 본다")
+				.containsExactly(BUDGET, Duration.ofSeconds(5));
+	}
+
+	/**
+	 * <b>B-21-2 — 남은 예산이 없으면 재요청을 걸지 않는다.</b>
+	 *
+	 * <p>이미 끝난 예산으로 호출을 걸어 놓고 취소하는 것보다 걸지 않는 편이 싸다. <b>세는 것은 호출
+	 * 횟수다</b> — 걸었다가 취소해도 그 호출의 비용은 청구된다.
+	 *
+	 * <p>표시는 {@code 504} 다 (R6.4). 원인은 스키마인데 시간 초과로 나가는 오분류는 §13-19 가 이미
+	 * 받아들인 대가이며, 세션 상태는 그대로다 (R6.6).
+	 */
+	@Test
+	void S13_19_an_exhausted_budget_does_not_start_a_retry() {
+		TickingClock clock = new TickingClock();
+		SpendingProvider provider = new SpendingProvider(clock, BUDGET);
+
+		assertThatThrownBy(() -> generateWithinBudget(provider, clock))
+				.isInstanceOf(GenerationTimedOutException.class);
+
+		assertThat(provider.calls()).as("예산이 없는데도 걸린 호출이 있다").isEqualTo(1);
+	}
+
+	/**
+	 * <b>B-21-2 — 배선이 뒤집히면 첫 호출에서 드러난다.</b>
+	 *
+	 * <p>{@code SchemaRetrying(TimeLimited(adapter))} 는 재요청을 시간 제한 <b>밖</b>에 두어 예산을
+	 * 두 배로 만든다. 이전에는 두 배선이 타입도 같고 증상도 같아(느린 어댑터는 양쪽 다 504) 그 사고를
+	 * 잡을 방법이 없었다. 이제는 예산이 열려 있지 않다는 사실이 곧 오배선이다 — <b>밀리초를 재지
+	 * 않는다.</b>
+	 */
+	@Test
+	void S13_19_the_retry_decorator_refuses_to_run_outside_the_time_limit() {
+		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(CountingProvider.structured());
+
+		assertThatThrownBy(() -> retrying.generateTurn(request()))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("no generation budget");
+	}
+
+	/** 부를 때마다 시계를 밀고, 그 시점에 남아 있던 예산을 기록하는 어댑터. */
+	private static final class SpendingProvider extends TurnOnlyStoryProvider {
+
+		private final TickingClock clock;
+		private final Duration spendPerCall;
+		private final List<Duration> remainingSeen = new java.util.ArrayList<>();
+
+		private SpendingProvider(TickingClock clock, Duration spendPerCall) {
+			this.clock = clock;
+			this.spendPerCall = spendPerCall;
+		}
+
+		List<Duration> remainingSeen() {
+			return List.copyOf(this.remainingSeen);
+		}
+
+		int calls() {
+			return this.remainingSeen.size();
+		}
+
+		@Override
+		public String providerId() {
+			return "spending";
+		}
+
+		@Override
+		public GeneratedTurn generateTurn(TurnRequest ignored) {
+			this.remainingSeen.add(GenerationBudget.current().remaining());
+			this.clock.advance(this.spendPerCall);
+
+			// 첫 호출만 어긋난다. 재요청이 실제로 걸리는지가 이 어댑터의 관심사다.
+			if (this.remainingSeen.size() == 1) {
+				throw new TurnOutputSchemaException("paragraphs must be an array");
+			}
+			return answer();
+		}
 	}
 
 	/** 호출 횟수를 세고, 정해진 횟수만큼 미리 실패시키는 어댑터. */

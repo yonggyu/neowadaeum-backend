@@ -23,8 +23,10 @@ import org.springframework.boot.convert.DurationUnit;
  * 정한다. 스위치를 하나만 두는 것이 요점이다 — 어댑터마다 별도의 on/off 를 또 두면 "등록됐지만
  * 꺼져 있고 활성으로 지목된" 조합이 생기고, 그때 무엇이 이기는지는 아무도 모른다 (#47 이 남긴 교훈).
  *
- * @param timeoutMs Provider 한 번 호출의 상한 (R6.4, §6.3). 이름의 {@code -ms} 는 <b>설정에 적는
- *                  숫자의 단위</b>를 가리킨다 — 타입은 {@link Duration} 이다
+ * @param timeoutMs <b>재요청을 포함한 생성 전체</b>의 상한 (R6.4, §6.3, §13-19). 한 번의 호출이
+ *                  아니다 — 스키마 재요청은 이 예산 안쪽에서 돌고, 남은 예산이 없으면 걸리지도
+ *                  않는다 (B-21-2). 이름의 {@code -ms} 는 <b>설정에 적는 숫자의 단위</b>를
+ *                  가리킨다 — 타입은 {@link Duration} 이다
  * @param active    활성 Provider 의 {@code providerId} (R3.1). 비우면 <b>등록된 어댑터가 정확히
  *                  하나일 때만</b> 부팅된다 — 둘 이상이면 모호함을 임의로 해소하지 않고 실패한다
  */

@@ -11,6 +11,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
+import com.neowadaeum.ai.provider.GenerationBudgets;
 import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.common.support.FixedTokenCounter;
@@ -106,7 +107,9 @@ class OllamaStoryProviderContractTests {
 
 		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(this.provider);
 
-		assertThatThrownBy(() -> retrying.generateTurn(request()))
+		// 재요청은 생성 예산 안쪽에서만 돈다 (§13-19, B-21-2). 운영에서 그 예산을 여는 것은
+		// TimeLimitedStoryProvider 이고, 여기서는 같은 크기의 예산을 열어 같은 경로를 지난다.
+		assertThatThrownBy(() -> GenerationBudgets.withinContractBudget(() -> retrying.generateTurn(request())))
 				.isInstanceOf(OutputSchemaRejectedException.class);
 
 		assertThat(this.server.getAllServeEvents())

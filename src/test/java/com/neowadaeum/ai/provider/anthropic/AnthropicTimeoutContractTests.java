@@ -19,6 +19,7 @@ import com.neowadaeum.play.port.GenerationContexts;
 import com.neowadaeum.play.port.ProviderCallFailedException;
 import com.neowadaeum.play.port.GenerationTimedOutException;
 import com.neowadaeum.play.port.TurnRequest;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -74,7 +75,7 @@ class AnthropicTimeoutContractTests {
 	 */
 	@Test
 	void R6_4_a_slow_provider_is_cut_off_and_does_not_wait_for_the_server() {
-		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(adapter(), this.executor, SHORT_BUDGET);
+		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(adapter(), this.executor, SHORT_BUDGET, Clock.systemUTC());
 
 		long startedAt = System.nanoTime();
 		assertThatThrownBy(() -> provider.generateTurn(request()))
@@ -94,7 +95,7 @@ class AnthropicTimeoutContractTests {
 	 */
 	@Test
 	void R6_6_the_timeout_is_reported_as_a_timeout_not_as_a_call_failure() {
-		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(adapter(), this.executor, SHORT_BUDGET);
+		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(adapter(), this.executor, SHORT_BUDGET, Clock.systemUTC());
 
 		assertThatThrownBy(() -> provider.generateTurn(request()))
 				.as("호출 실패로 뭉뚱그리면 504 가 502 가 된다")
