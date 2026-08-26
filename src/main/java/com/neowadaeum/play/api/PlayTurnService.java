@@ -11,6 +11,7 @@ import com.neowadaeum.play.orchestrator.TurnOutcome;
 import com.neowadaeum.play.orchestrator.TurnPipeline;
 import com.neowadaeum.play.port.GenerationTimedOutException;
 import com.neowadaeum.play.port.OutputSchemaRejectedException;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.common.web.IdempotencyStore;
 import com.neowadaeum.play.repository.TurnRepository;
@@ -115,8 +116,9 @@ public class PlayTurnService {
 			failed(sessionId, key);
 			throw new ApiException(ErrorCode.GENERATION_TIMEOUT);
 		}
-		catch (OutputSchemaRejectedException ex) {
-			// R5.8 — 재요청까지 스키마를 못 맞췄다. 시간 초과와 같은 자리에서 끊기므로 상태는 그대로다.
+		catch (OutputSchemaRejectedException | ProviderCallFailedException ex) {
+			// R5.8 — 재요청까지 스키마를 못 맞췄거나(전자) 호출 자체가 실패했다(후자, B-22).
+			// 둘 다 시간 초과와 같은 자리에서 끊기므로 상태는 그대로다 (R6.6).
 			failed(sessionId, key);
 			throw new ApiException(ErrorCode.PROVIDER_ERROR);
 		}
