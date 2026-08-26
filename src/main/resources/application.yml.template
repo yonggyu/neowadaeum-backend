@@ -114,6 +114,17 @@ ai:
     # 결정론 Provider 하나뿐이라 지목할 것이 없다. 없는 id 를 적으면 부팅이 멈춘다.
     # active: anthropic
 
+  # 최근 턴의 세 경계 (§13-2, B-20). 서로 다른 것을 가리키므로 한 값으로 합칠 수 없다.
+  #   verbatim      — 가장 최근 몇 턴을 본문 원문으로 싣는가. 나머지는 압축본
+  #   in-prompt     — 프롬프트에 싣는 턴 수 (R4.7)
+  #   summary-merge — 이보다 오래된 턴이 요약에 병합된다 (R4.5). 그 사이는 완충지대
+  # §13-2 가 8 과 2 를 `[결정 필요]` 로 남기고 B-46 실측 후 조정한다고 적었다 — 그래서 설정이다.
+  prompt:
+    recent-turns:
+      verbatim: 2
+      in-prompt: 5
+      summary-merge: 8
+
   # 어댑터별 접속 정보 (B-22, B-23).
   providers:
     anthropic:
