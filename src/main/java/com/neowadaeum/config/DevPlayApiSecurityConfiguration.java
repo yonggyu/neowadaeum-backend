@@ -58,10 +58,24 @@ public class DevPlayApiSecurityConfiguration {
 	 */
 	static final String DEV_CONSOLE_PATH = "/dev/console";
 
+	/**
+	 * 계약 문서 경로가 함께 묶여 있다 (B-06). <b>같은 체인에 두는 이유는 콘솔과 같다</b> —
+	 * 빠지면 기본 보안 체인이 로그인 폼으로 닫는다.
+	 *
+	 * <p>{@code OpenApiContractController} 와 springdoc 은 <b>둘 다 {@code dev & !prod} 에서만
+	 * 존재한다.</b> 여기에 경로가 있어도 운영에는 매핑이 없다 — 이 체인 자체가 운영에 없고,
+	 * springdoc 은 {@code springdoc.api-docs.enabled} 가 기본 {@code false} 라 빈이 만들어지지 않는다.
+	 *
+	 * <p>{@code /v3/api-docs/**} 가 있는 것은 <b>swagger-ui 가 부팅할 때
+	 * {@code /v3/api-docs/swagger-config} 를 읽기 때문</b>이다. 그 경로가 막히면 UI 가 뜨지 않는다.
+	 * <b>UI 가 보여 주는 문서는 여전히 계약 파일이다</b> — {@code springdoc.swagger-ui.url} 이
+	 * {@code /openapi.yaml} 을 가리킨다. 생성본은 dev 안에 남을 뿐 계약이 아니다.
+	 */
 	@Bean
 	public SecurityFilterChain devPlayApiSecurityFilterChain(HttpSecurity http) throws Exception {
 		return http
-				.securityMatcher("/api/v1/**", DEV_CONSOLE_PATH)
+				.securityMatcher("/api/v1/**", DEV_CONSOLE_PATH, "/openapi.yaml", "/swagger-ui.html",
+						"/swagger-ui/**", "/v3/api-docs/**")
 				.csrf(csrf -> csrf
 						.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
 						.csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler()))
