@@ -2,6 +2,7 @@ package com.neowadaeum.play.api;
 
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
+import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
@@ -112,6 +113,11 @@ public class PlayTurnService {
 			// R6.4 — 세션은 직전 턴 상태 그대로다. §4.3 의 8단계 이전에서 끊겼다.
 			failed(sessionId, key);
 			throw new ApiException(ErrorCode.GENERATION_TIMEOUT);
+		}
+		catch (SchemaRetryingStoryProvider.OutputSchemaRejectedException ex) {
+			// R5.8 — 재요청까지 스키마를 못 맞췄다. 시간 초과와 같은 자리에서 끊기므로 상태는 그대로다.
+			failed(sessionId, key);
+			throw new ApiException(ErrorCode.PROVIDER_ERROR);
 		}
 		catch (RuntimeException ex) {
 			failed(sessionId, key);
