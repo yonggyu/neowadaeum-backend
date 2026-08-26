@@ -114,14 +114,92 @@ class CatalogSeedTests extends ContainerTestBase {
 
 	// ── 시드 ─────────────────────────────────────────────────
 
-	/** S-4 — 작품 1 / 챕터 3 / 엔딩 2 / 캐릭터 1. B-45 의 축소판이다. */
+	/** B-45 — 작품 1 / 챕터 6 / 엔딩 5 / 캐릭터 3. 축소판(S-4)에서 정식 분량으로 늘렸다. */
 	@Test
-	void S4_seed_provides_one_story_three_chapters_two_endings_one_character() throws SQLException {
+	void B45_seed_provides_one_story_six_chapters_five_endings_three_characters() throws SQLException {
 		assertThat(count("story")).isEqualTo(1);
 		assertThat(count("story_version")).isEqualTo(1);
-		assertThat(count("chapter_def")).isEqualTo(3);
-		assertThat(count("ending_def")).isEqualTo(2);
-		assertThat(count("character")).isEqualTo(1);
+		assertThat(count("chapter_def")).isEqualTo(6);
+		assertThat(count("ending_def")).isEqualTo(5);
+		assertThat(count("character")).isEqualTo(3);
+	}
+
+	/**
+	 * <b>B-44 가 요구하는 분량이 나오는가</b> (R7.2).
+	 *
+	 * <p>E2E 는 "시작→40턴→엔딩"을 재현한다. 챕터별 {@code max_turns} 합계가 40 에 못 미치면
+	 * <b>재현할 대상 자체가 없다</b> — 축소판이 그랬다 (최대 9턴).
+	 */
+	@Test
+	void B45_the_seed_can_carry_a_forty_turn_play() throws SQLException {
+		assertThat(((Number) scalarObject("SELECT SUM(max_turns) FROM chapter_def")).intValue())
+				.isGreaterThanOrEqualTo(40);
+		assertThat(((Number) scalarObject("SELECT SUM(min_turns) FROM chapter_def")).intValue())
+				.as("최소 진행으로도 끝나면 40턴 플레이가 조건에 걸려 조기 종료된다")
+				.isLessThanOrEqualTo(40);
+	}
+
+	/**
+	 * <b>R7.7 — 기본 엔딩은 정확히 하나이고 시크릿이 아니다.</b>
+	 *
+	 * <p>0개면 마지막 챕터에서 세션이 끝나지 못하고, 감춰진 기본 엔딩은 {@code totalEndings} 표기를
+	 * 어긋나게 한다 (R7.11).
+	 */
+	@Test
+	void R7_7_exactly_one_visible_default_ending() throws SQLException {
+		assertThat(((Number) scalarObject("SELECT COUNT(*) FROM ending_def WHERE is_default")).intValue())
+				.isEqualTo(1);
+		assertThat(((Number) scalarObject(
+				"SELECT COUNT(*) FROM ending_def WHERE is_default AND is_secret")).intValue()).isZero();
+	}
+
+	/**
+	 * <b>넓은 조건이 좁은 조건을 가리지 않는다</b> (R7.6).
+	 *
+	 * <p>엔딩은 {@code ending_no} 순 최초 매칭이다. 시크릿 엔딩은 셋 모두를 요구하는 가장 좁은
+	 * 조건이므로 <b>앞 번호</b>여야 한다 — 뒤에 두면 하나만 높아도 잡히는 엔딩이 먼저 매칭되어
+	 * 아무도 그 엔딩을 보지 못한다. 그 사고는 에러가 아니라 침묵으로 나타난다.
+	 */
+	@Test
+	void R7_6_the_narrowest_ending_is_evaluated_first() throws SQLException {
+		assertThat(((Number) scalarObject(
+				"SELECT MIN(ending_no) FROM ending_def WHERE condition IS NOT NULL")).intValue())
+				.isEqualTo(((Number) scalarObject(
+						"SELECT ending_no FROM ending_def WHERE is_secret")).intValue());
+	}
+
+	/**
+	 * <b>조건이 참조하는 키가 전부 {@code state_schema} 에 선언돼 있다</b> (R4.1).
+	 *
+	 * <p>미정의 키 참조는 조건 평가기에서 {@code false} + 경고다 (S-6). 그러면 그 챕터·엔딩은
+	 * <b>조용히 도달 불가능</b>해진다 — 시드에서 그것은 "플레이는 되는데 그 결말만 안 나온다"로
+	 * 나타난다.
+	 */
+	@Test
+	void R4_1_every_condition_key_is_declared_in_the_state_schema() throws SQLException {
+		JsonNode schema = json("SELECT state_schema FROM story_version");
+		java.util.Set<String> declared = new java.util.HashSet<>();
+		schema.get("affinity").propertyNames().forEach(name -> declared.add("affinity." + name));
+		schema.get("flags").forEach(flag -> declared.add("flags:" + flag.asString()));
+
+		java.util.List<String> conditions = new java.util.ArrayList<>();
+		conditions.addAll(queryStrings("SELECT entry_condition::TEXT FROM chapter_def WHERE entry_condition IS NOT NULL"));
+		conditions.addAll(queryStrings("SELECT condition::TEXT FROM ending_def WHERE condition IS NOT NULL"));
+
+		assertThat(conditions).isNotEmpty();
+		for (String condition : conditions) {
+			java.util.regex.Matcher numeric = java.util.regex.Pattern
+					.compile("\"(affinity\\.[a-z_]+)\"").matcher(condition);
+			while (numeric.find()) {
+				assertThat(declared).as("%s 가 state_schema 에 없다", numeric.group(1)).contains(numeric.group(1));
+			}
+			java.util.regex.Matcher flags = java.util.regex.Pattern
+					.compile("\"has\"\\s*:\\s*\\[\\s*\"flags\"\\s*,\\s*\"([a-z_]+)\"").matcher(condition);
+			while (flags.find()) {
+				assertThat(declared).as("flags.%s 가 state_schema 에 없다", flags.group(1))
+						.contains("flags:" + flags.group(1));
+			}
+		}
 	}
 
 	/**
