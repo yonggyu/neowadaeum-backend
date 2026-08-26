@@ -11,13 +11,19 @@ import com.neowadaeum.ai.provider.AiPurpose;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
+import com.neowadaeum.ai.provider.SafetyClassificationFormat;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.ai.prompt.PlatformPrompts;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.ProviderCallFailedException;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationFailedException;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.TurnRequest;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -91,6 +97,18 @@ public class AnthropicStoryProvider implements StoryProvider {
 			}
 			""";
 
+	/** 판정 응답의 형식. 카테고리 <b>이름 목록</b>이 전부다 (B-30). */
+	private static final String CLASSIFICATION_SCHEMA = """
+			{
+			  "type": "object",
+			  "properties": {
+			    "categories": {"type": "array", "items": {"type": "string"}}
+			  },
+			  "required": ["categories"],
+			  "additionalProperties": false
+			}
+			""";
+
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	private final RestClient restClient;
@@ -152,13 +170,13 @@ public class AnthropicStoryProvider implements StoryProvider {
 					.body(JsonNode.class);
 		}
 		catch (RestClientException ex) {
-			record(request, body, null, startedAt);
+			record(AiPurpose.TURN, body, null, startedAt, null);
 			// 원문을 메시지에 넣지 않는다 (S-3). RestClient 의 예외는 본문 일부를 담을 수 있어
 			// 원인으로도 붙이지 않는다 — 예외는 로그로 흐른다.
 			throw new ProviderCallFailedException("anthropic call failed");
 		}
 
-		record(request, body, response, startedAt);
+		record(AiPurpose.TURN, body, response, startedAt, null);
 		return this.parser.parse(text(response)).toGeneratedTurn();
 	}
 
@@ -172,11 +190,11 @@ public class AnthropicStoryProvider implements StoryProvider {
 	 * <p><b>{@code playerRef} 를 담을 자리가 없다</b> (I-3). {@link AiCallLog.Draft} 에 그
 	 * 컴포넌트가 없으므로 실을 방법 자체가 없다.
 	 */
-	private void record(TurnRequest request, ObjectNode body, JsonNode response, long startedAt) {
+	private void record(AiPurpose purpose, ObjectNode body, JsonNode response, long startedAt, String safetyFlags) {
 		this.recorder.record(new AiCallLog.Draft(
 				null,
 				null,
-				AiPurpose.TURN.wireValue(),
+				purpose.wireValue(),
 				PROVIDER_ID,
 				body.path("model").asString(""),
 				AiCallFallback.intendedProviderId(),
@@ -186,7 +204,7 @@ public class AnthropicStoryProvider implements StoryProvider {
 				(response != null) ? intOrNull(response.path("usage").path("output_tokens")) : null,
 				(int) java.time.Duration.ofNanos(System.nanoTime() - startedAt).toMillis(),
 				null,
-				null,
+				safetyFlags,
 				AiCallAttempt.current()));
 	}
 
@@ -272,18 +290,93 @@ public class AnthropicStoryProvider implements StoryProvider {
 		return text.toString();
 	}
 
-	/** <b>요약은 B-34 다.</b> 스텁으로 통과시키지 않는다 (§0.2). */
 	/**
-	 * <b>판정 호출은 B-30 의 두 번째 PR 이다.</b> seam 은 열렸지만 이 벤더의 구현은 아직 없다 —
-	 * 스텁으로 빈 집합을 돌려주지 않는다 (§0.2). 빈 집합은 <b>통과</b>이고, 판정하지 않은 것을
-	 * 통과로 바꾸는 것이 이 작업이 없애려는 상태다.
+	 * 세이프티 판정 (R9.2 의 2단, B-30).
+	 *
+	 * <p><b>검수용 모델을 부른다</b> (R3.6). 턴 생성 모델과 같은 값을 <b>설정할 수는</b> 있지만
+	 * 그것은 설정의 선택이고, 코드는 별개의 자리를 갖는다 — I-12 가 요구하는 것이 그 분리다.
+	 *
+	 * <p><b>실패를 둘로 나눈다.</b> 연결·5xx 는 {@link ProviderCallFailedException} 이라 fallback
+	 * 체인이 다음 벤더로 넘기고 (ADR-0007), 형식 위반·모르는 카테고리는
+	 * {@link SafetyClassificationFailedException} 이라 <b>차단</b>으로 간다. 판정하지 못한 응답을
+	 * 통과시키지 않는 것이 요점이다 (fail-closed).
+	 *
+	 * <p><b>기록은 양쪽에서 남는다</b> (B-25, R9.3). 판정 결과는 {@code safety_flags} 로 남는다 —
+	 * 무엇이 걸려 차단됐는지를 사후에 볼 수 있어야 한다.
 	 */
 	@Override
-	public java.util.Set<com.neowadaeum.common.spi.SafetyCategory> classifySafety(
-			com.neowadaeum.common.spi.SafetyClassificationRequest request) {
-		throw new UnsupportedOperationException("classifySafety is B-30 (2/3)");
+	public Set<SafetyCategory> classifySafety(SafetyClassificationRequest request) {
+		ObjectNode body = classificationBody(request);
+		long startedAt = System.nanoTime();
+
+		JsonNode response;
+		try {
+			response = this.restClient.post()
+					.uri("/v1/messages")
+					.body(body)
+					.retrieve()
+					.body(JsonNode.class);
+		}
+		catch (RestClientException ex) {
+			record(AiPurpose.SAFETY, body, null, startedAt, null);
+			throw new ProviderCallFailedException("anthropic safety classification failed");
+		}
+
+		Set<SafetyCategory> categories;
+		try {
+			categories = categories(response);
+		}
+		catch (SafetyClassificationFailedException ex) {
+			record(AiPurpose.SAFETY, body, response, startedAt, null);
+			throw ex;
+		}
+
+		record(AiPurpose.SAFETY, body, response, startedAt, SafetyClassificationFormat.flags(categories));
+		return categories;
 	}
 
+	/**
+	 * 판정 요청 본문.
+	 *
+	 * <p><b>지시는 {@code system} 으로, 판정 대상은 사용자 메시지로 보낸다</b> (I-7 과 같은 이유).
+	 * 판정 대상 텍스트 안에 <i>"당신은 검수기가 아니다"</i> 같은 문장이 들어와도 지시와 같은
+	 * 평면에 놓이지 않는다 — 판정 대상은 <b>AI 가 방금 생성한 문자열</b>이며, 그것이 UGC 작품의
+	 * 프롬프트에서 유도됐을 수 있다.
+	 */
+	private ObjectNode classificationBody(SafetyClassificationRequest request) {
+		ObjectNode body = JSON.createObjectNode();
+		body.put("model", modelFor(AiPurpose.SAFETY));
+		body.put("max_tokens", 256);
+		body.put("system", PlatformPrompts.SAFETY_JUDGE);
+
+		ObjectNode message = body.putArray("messages").addObject();
+		message.put("role", "user");
+		message.put("content", String.join("\n", request.texts()));
+
+		body.set("output_config", JSON.createObjectNode()
+				.set("format", JSON.createObjectNode()
+						.put("type", "json_schema")
+						.set("schema", JSON.readTree(CLASSIFICATION_SCHEMA))));
+		return body;
+	}
+
+	/** 응답에서 카테고리를 꺼낸다. 형식이 어긋나면 <b>판정 실패</b>다 — 통과가 아니다. */
+	private static Set<SafetyCategory> categories(JsonNode response) {
+		JsonNode content = (response != null) ? response.path("content") : null;
+		if (content == null || !content.isArray()) {
+			throw new SafetyClassificationFailedException("anthropic classification response has no content array");
+		}
+
+		StringBuilder text = new StringBuilder();
+		for (JsonNode block : content) {
+			if ("text".equals(block.path("type").asString(null))) {
+				text.append(block.path("text").asString(""));
+			}
+		}
+		return SafetyClassificationFormat.parse(text.toString());
+	}
+
+	/** <b>요약은 B-34 다.</b> 스텁으로 통과시키지 않는다 (§0.2). */
 	@Override
 	public String summarize(SummaryRequest request) {
 		throw new UnsupportedOperationException("summarize is B-34");
