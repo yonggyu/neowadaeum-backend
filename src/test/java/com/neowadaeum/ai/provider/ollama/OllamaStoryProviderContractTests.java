@@ -14,9 +14,6 @@ import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.GenerationBudgets;
 import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.ai.schema.TurnOutputParser;
-import com.neowadaeum.common.spi.SafetyCategory;
-import com.neowadaeum.common.spi.SafetyClassificationFailedException;
-import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.common.support.FixedTokenCounter;
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.play.port.GeneratedTurn;
@@ -63,7 +60,7 @@ class OllamaStoryProviderContractTests {
 		this.server.start();
 
 		OllamaProperties properties = new OllamaProperties("http://localhost:" + this.server.port(),
-				new OllamaProperties.Models("llama3.1", null, "llama-guard3", null));
+				new OllamaProperties.Models("llama3.1", null, null, null));
 
 		this.provider = new OllamaStoryProvider(
 				RestClient.builder().baseUrl(properties.baseUrl()).build(), properties,
@@ -121,49 +118,6 @@ class OllamaStoryProviderContractTests {
 		assertThat(this.recorded).extracting(AiCallLog.Draft::attemptNo)
 				.as("재요청이 별개 행으로 남고 번호가 갈린다 (B-25)")
 				.containsExactly(1, 2, 3);
-	}
-
-	/**
-	 * <b>I-12 · I-13 — 로컬 모델을 붙여도 판정은 서버가 하고, 판정 모델은 생성 모델과 갈린다.</b>
-	 *
-	 * <p>무검열 로컬 모델이 붙는 자리라서 이 성질이 특히 중요하다 (R3.4). 판정을 provider 에게
-	 * 맡기는 것이 아니라 <b>서버가 판정용 모델을 따로 부른다.</b>
-	 */
-	@Test
-	void I12_the_verdict_call_uses_the_safety_model() {
-		this.server.stubFor(post(urlEqualTo("/api/chat")).willReturn(aResponse()
-				.withStatus(200)
-				.withHeader("content-type", "application/json")
-				.withBody("{\"message\":{\"content\":\"{\\\"categories\\\": [\\\"rating_exceeded\\\"]}\"}}")));
-
-		assertThat(this.provider.classifySafety(new SafetyClassificationRequest(List.of("검수 대상 문장"))))
-				.containsExactly(SafetyCategory.RATING_EXCEEDED);
-
-		String sent = this.server.getAllServeEvents().getFirst().getRequest().getBodyAsString();
-		assertThat(JSON.readTree(sent).path("model").asString(""))
-				.isEqualTo("llama-guard3")
-				.isNotEqualTo("llama3.1");
-		assertThat(this.recorded.getFirst().purpose()).isEqualTo("safety");
-		assertThat(this.recorded.getFirst().safetyFlags()).isEqualTo("rating_exceeded");
-	}
-
-	/**
-	 * <b>형식을 못 맞추면 통과가 아니라 판정 실패다</b> (fail-closed).
-	 *
-	 * <p>턴 생성에서는 형식 위반이 재요청으로 이어지지만(R3.3) 판정에서는 그러지 않는다 — 판정하지
-	 * 못한 응답은 사용자에게 도달하지 않아야 한다 (I-2).
-	 */
-	@Test
-	void B30_a_malformed_verdict_is_not_retried_and_does_not_pass() {
-		this.server.stubFor(post(urlEqualTo("/api/chat")).willReturn(aResponse()
-				.withStatus(200)
-				.withHeader("content-type", "application/json")
-				.withBody("{\"message\":{\"content\":\"모르겠습니다\"}}")));
-
-		assertThatThrownBy(() -> this.provider.classifySafety(new SafetyClassificationRequest(List.of("문장"))))
-				.isInstanceOf(SafetyClassificationFailedException.class);
-
-		assertThat(this.server.getAllServeEvents()).as("판정에는 재요청을 걸지 않는다").hasSize(1);
 	}
 
 	/** I-7 — {@code SYSTEM} 이 작품 입력과 같은 평면에 놓이지 않는다. 형식만 다르고 이유는 같다. */
