@@ -6,6 +6,7 @@ import com.neowadaeum.ai.prompt.AssembledPrompt;
 import com.neowadaeum.ai.prompt.PromptLayer;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.AiCallAttempt;
+import com.neowadaeum.ai.provider.AiCallFallback;
 import com.neowadaeum.ai.provider.AiPurpose;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
@@ -161,7 +162,8 @@ public class OllamaStoryProvider implements StoryProvider {
 	private void record(ObjectNode body, JsonNode response, long startedAt) {
 		this.recorder.record(new AiCallLog.Draft(
 				null, null, AiPurpose.TURN.wireValue(), PROVIDER_ID, body.path("model").asString(""),
-				null, body.toString(), (response != null) ? response.toString() : null,
+				AiCallFallback.intendedProviderId(), body.toString(),
+				(response != null) ? response.toString() : null,
 				null, null,
 				(int) Duration.ofNanos(System.nanoTime() - startedAt).toMillis(),
 				null, null, AiCallAttempt.current()));

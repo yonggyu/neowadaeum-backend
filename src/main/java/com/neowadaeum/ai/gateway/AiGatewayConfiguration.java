@@ -52,8 +52,29 @@ public class AiGatewayConfiguration {
 	@Primary
 	public StoryProvider aiGateway(List<StoryProvider> adapters, ProviderProperties properties) {
 		StoryProvider selected = new ProviderRegistry(adapters).select(properties.active());
-		return new AiGateway(new TimeLimitedStoryProvider(new SchemaRetryingStoryProvider(selected),
+		return new AiGateway(new TimeLimitedStoryProvider(new SchemaRetryingStoryProvider(chain(selected, adapters)),
 				Executors.newVirtualThreadPerTaskExecutor(), properties.timeoutMs()),
 				PayloadWhitelistValidator.forProviderPayloads());
+	}
+
+	/**
+	 * fallback 체인을 만든다 (R3.7, ADR-0007).
+	 *
+	 * <p><b>지목된 것이 첫째다.</b> 나머지는 등록 순서대로 뒤에 붙으며 그것이 죽었을 때만 쓰인다.
+	 * 체인 순서를 별도 설정으로 두지 않은 것은 <b>지금 어댑터가 둘뿐이라 순서가 하나</b>이기
+	 * 때문이다 — 셋이 되는 시점에 설정으로 뺀다.
+	 *
+	 * <p><b>어댑터가 하나면 체인을 만들지 않는다.</b> 승계할 곳이 없는 체인은 호출 한 겹을 더할 뿐이다.
+	 */
+	private static StoryProvider chain(StoryProvider selected, List<StoryProvider> adapters) {
+		List<StoryProvider> rest = adapters.stream().filter(adapter -> adapter != selected).toList();
+		if (rest.isEmpty()) {
+			return selected;
+		}
+
+		List<StoryProvider> ordered = new java.util.ArrayList<>();
+		ordered.add(selected);
+		ordered.addAll(rest);
+		return new FallbackChain(ordered);
 	}
 }
