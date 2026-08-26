@@ -289,7 +289,10 @@ class CatalogSeedTests extends ContainerTestBase {
 				flags.add(rows.getBoolean(1));
 			}
 		}
-		assertThat(flags).containsExactly(false, true);
+		assertThat(flags)
+				.as("기본 엔딩은 마지막 번호다 — 앞에 있어도 평가에서 제외되지만(EndingEngine), "
+						+ "읽는 사람에게 순서가 곧 우선순위로 보인다")
+				.containsExactly(false, false, false, false, true);
 	}
 
 	/** R7.4 — 진입 조건은 GameState 참조식이다. 원문의 {@code all} / {@code gte} / {@code has} 조합을 쓴다. */

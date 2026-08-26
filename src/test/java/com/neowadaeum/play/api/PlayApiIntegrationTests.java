@@ -99,15 +99,16 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
 		JsonNode turn = start.path("turn");
 
-		for (int guard = 0; guard < 40 && !turn.path("isEnding").asBoolean(); guard++) {
+		for (int guard = 0; guard < 45 && !turn.path("isEnding").asBoolean(); guard++) {
 			turn = advance(sessionId, turn.path("choices").get(0).path("choiceId").asString(),
 					turn.path("turnNo").asInt(), 200);
 		}
 
-		assertThat(turn.path("isEnding").asBoolean()).as("40턴 안에 끝나지 않았다").isTrue();
+		assertThat(turn.path("isEnding").asBoolean()).as("45턴 안에 끝나지 않았다").isTrue();
 		assertThat(turn.path("choices")).isEmpty();
 		assertThat(turn.path("endingId").asString()).isNotBlank();
-		assertThat(turn.path("totalEndings").asInt()).isEqualTo(2);
+		// 시크릿을 뺀 보이는 엔딩 넷 (R7.11, B-45).
+		assertThat(turn.path("totalEndings").asInt()).isEqualTo(4);
 	}
 
 	// ── 거절 경로 — 상태를 바꾸지 않는다 (R6.6) ─────────────
@@ -176,7 +177,7 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
 		JsonNode turn = start.path("turn");
 
-		for (int guard = 0; guard < 40 && !turn.path("isEnding").asBoolean(); guard++) {
+		for (int guard = 0; guard < 45 && !turn.path("isEnding").asBoolean(); guard++) {
 			turn = advance(sessionId, turn.path("choices").get(0).path("choiceId").asString(),
 					turn.path("turnNo").asInt(), 200);
 		}

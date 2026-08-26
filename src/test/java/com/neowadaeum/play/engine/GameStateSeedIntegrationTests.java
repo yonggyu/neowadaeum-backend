@@ -133,7 +133,8 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 	/** R7.6 — 조건부 엔딩의 조건이 평가된다. */
 	@Test
 	void R7_6_seed_conditional_ending_is_evaluable() throws SQLException {
-		JsonNode ending = seedCondition("SELECT condition FROM ending_def WHERE ending_no = 1");
+		// B-45 로 번호가 다시 매겨졌다. '첫 빛'(유나 하나를 보는 엔딩)은 이제 4번이다.
+		JsonNode ending = seedCondition("SELECT condition FROM ending_def WHERE ending_no = 4");
 
 		assertThat(this.evaluator.evaluate(ending, stateWith(14, Set.of("shared_lunch")))).isFalse();
 		assertThat(this.evaluator.evaluate(ending, stateWith(20, Set.of()))).isFalse();
@@ -283,7 +284,7 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 						rows.getInt("min_turns"), rows.getInt("max_turns")));
 			}
 		}
-		assertThat(chapters).as("시드 챕터가 없다").hasSize(3);
+		assertThat(chapters).as("시드 챕터가 없다").hasSize(6);
 		return chapters;
 	}
 
@@ -301,7 +302,7 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 						rows.getBoolean("is_secret"), rows.getBoolean("is_default")));
 			}
 		}
-		assertThat(endings).as("시드 엔딩이 없다").hasSize(2);
+		assertThat(endings).as("시드 엔딩이 없다").hasSize(5);
 		return endings;
 	}
 
