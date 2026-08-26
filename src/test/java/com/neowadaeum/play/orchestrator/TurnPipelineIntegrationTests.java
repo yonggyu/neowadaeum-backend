@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
+import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
@@ -12,6 +13,7 @@ import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
 import com.neowadaeum.play.domain.PlaySession;
+import com.neowadaeum.play.domain.Turn;
 import com.neowadaeum.play.domain.SessionStatus;
 import com.neowadaeum.play.engine.ChapterEngine;
 import com.neowadaeum.play.engine.EndingEngine;
@@ -31,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -263,6 +266,100 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 	private UUID newSession() {
 		return this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY, SEED_VERSION,
 				"fixed", "scenario-v1", false, Instant.now(FIXED))).getId();
+	}
+
+	// ── 본문 손실 회귀 (#84) ─────────────────────────────────
+
+	/**
+	 * <b>#84 의 핵심 회귀 테스트</b> — 문단 3개가 <b>파싱부터 DB 저장까지</b> 그대로 남는다.
+	 *
+	 * <p>고정 Provider 가 만들어 둔 객체를 넘기는 것이 아니라 <b>모델이 보냈을 원시 JSON 을 실제
+	 * 파서에 통과시킨다.</b> 그래야 이 테스트가 지키는 것이 계약의 모양이 아니라 <b>경로 전체</b>가
+	 * 된다 — 이전 결함은 파서가 아니라 파서와 저장 <b>사이</b>에 있었다.
+	 *
+	 * <p>세는 것이 개수만이 아닌 것도 의도다. 개수만 보면 문단 셋을 나레이션 셋으로 바꿔도 통과하고,
+	 * 그때 잃는 것은 <b>대사와 나레이션의 구분</b>(R5.2)이다. 순서 · 종류 · 화자 · 본문을 함께 건다.
+	 */
+	@Test
+	void R5_1_three_paragraphs_survive_parsing_pipeline_and_storage() {
+		UUID sessionId = newSession();
+		String rawFromModel = """
+				{
+				  "speakerName": "유나",
+				  "paragraphs": [
+				    { "type": "narration", "text": "복도 끝에서 발소리가 멈췄다." },
+				    { "type": "dialogue",  "text": "거기 서 있으면 문 못 열어." },
+				    { "type": "narration", "text": "돌아보기 전에 그림자가 먼저 지나갔다." }
+				  ],
+				  "choices": [{ "order": 1, "text": "계속한다" }],
+				  "stateChanges": {},
+				  "chapterAdvanceSuggested": false,
+				  "endingSuggested": null
+				}
+				""";
+
+		TurnOutcome outcome = pipelineWith(parsingProvider(rawFromModel)).advance(sessionId, null);
+
+		Turn stored = this.turns.findById(outcome.turnId()).orElseThrow();
+		JsonNode paragraphs = JSON.readTree(stored.getParagraphs());
+
+		assertThat(paragraphs.size()).as("문단이 저장 시점에 사라졌다 (R5.1)").isEqualTo(3);
+		assertThat(paragraphs.get(0).path("type").asString()).isEqualTo("NARRATION");
+		assertThat(paragraphs.get(0).path("speakerName").isNull()).as("나레이션에 화자가 붙었다").isTrue();
+		assertThat(paragraphs.get(0).path("text").asString()).isEqualTo("복도 끝에서 발소리가 멈췄다.");
+
+		assertThat(paragraphs.get(1).path("type").asString()).isEqualTo("DIALOGUE");
+		assertThat(paragraphs.get(1).path("speakerName").asString())
+				.as("턴 단위 화자가 대사 문단으로 복사되지 않았다 (#84 결정)")
+				.isEqualTo("유나");
+		assertThat(paragraphs.get(1).path("text").asString()).isEqualTo("거기 서 있으면 문 못 열어.");
+
+		assertThat(paragraphs.get(2).path("type").asString()).isEqualTo("NARRATION");
+		assertThat(paragraphs.get(2).path("text").asString()).isEqualTo("돌아보기 전에 그림자가 먼저 지나갔다.");
+
+		assertThat(stored.getSpeakerName())
+				.as("turn.speaker_name 은 문단에서 나오는 파생값이다 (#84 결정)")
+				.isEqualTo("유나");
+	}
+
+	/**
+	 * 이전 결함의 재현 방지 — <b>통 문자열을 1개짜리 배열로 감싸던 형태</b>가 돌아오면 실패한다.
+	 *
+	 * <p>{@code List.of(narrative)} 는 배열이므로 "배열인가"만 보는 단언은 그때도 통과했다.
+	 * 실제로 봐야 하는 것은 <b>문단이 이어 붙지 않았는가</b>다.
+	 */
+	@Test
+	void R5_1_paragraphs_are_not_collapsed_into_a_single_entry() {
+		UUID sessionId = newSession();
+		String rawFromModel = """
+				{"paragraphs": [{"type": "narration", "text": "첫째 문단."},
+				                {"type": "narration", "text": "둘째 문단."}],
+				 "choices": [{"order": 1, "text": "계속한다"}]}
+				""";
+
+		TurnOutcome outcome = pipelineWith(parsingProvider(rawFromModel)).advance(sessionId, null);
+
+		JsonNode paragraphs = JSON.readTree(this.turns.findById(outcome.turnId()).orElseThrow().getParagraphs());
+
+		assertThat(paragraphs.size()).isEqualTo(2);
+		assertThat(paragraphs.get(0).path("text").asString())
+				.as("두 문단이 하나로 이어 붙었다")
+				.doesNotContain("둘째");
+	}
+
+	/** 원시 JSON 을 실제 파서에 통과시켜 돌려주는 Provider. B-22 어댑터가 할 일을 축소한 것이다. */
+	private static StoryProvider parsingProvider(String rawFromModel) {
+		return new TurnOnlyStoryProvider() {
+			@Override
+			public String providerId() {
+				return "parsing";
+			}
+
+			@Override
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				return new TurnOutputParser().parse(rawFromModel).toGeneratedTurn();
+			}
+		};
 	}
 
 	private TurnPipeline pipelineWith(StoryProvider storyProvider) {
