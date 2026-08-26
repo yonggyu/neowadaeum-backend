@@ -1,5 +1,6 @@
 package com.neowadaeum.ai.provider.anthropic;
 
+import com.neowadaeum.ai.log.AiCallRecorder;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.schema.TurnOutputParser;
@@ -94,12 +95,14 @@ public class AnthropicProviderConfiguration {
 	 */
 	@Bean
 	public AnthropicStoryProvider anthropicStoryProvider(AnthropicProperties properties,
-			ProviderProperties providerProperties, TurnPromptFactory prompts, TurnOutputParser parser) {
+			ProviderProperties providerProperties, TurnPromptFactory prompts, TurnOutputParser parser,
+			AiCallRecorder recorder) {
 
 		if (!properties.configured()) {
 			return null;
 		}
 
-		return new AnthropicStoryProvider(restClient(properties, providerProperties), properties, prompts, parser);
+		return new AnthropicStoryProvider(restClient(properties, providerProperties), properties, prompts, parser,
+				recorder);
 	}
 }

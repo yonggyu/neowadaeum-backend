@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
@@ -40,6 +41,10 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>컨테이너가 필요 없다 (ADR-0001). WireMock 은 프로세스 안에서 뜬다.
  */
 class AnthropicStoryProviderContractTests {
+
+	/** 기록된 호출. B-25 이후 어댑터가 필수로 요구한다 — 무엇이 남는지도 함께 본다. */
+	private final java.util.List<com.neowadaeum.ai.log.AiCallLog.Draft> recorded =
+			java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -81,7 +86,8 @@ class AnthropicStoryProviderContractTests {
 						.build(),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
-				new TurnOutputParser());
+				new TurnOutputParser(),
+				this.recorded::add);
 	}
 
 	@AfterEach
@@ -197,7 +203,8 @@ class AnthropicStoryProviderContractTests {
 				AnthropicProviderConfiguration.restClient(perPurpose, new ProviderProperties(null, null)),
 				perPurpose,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
-				new TurnOutputParser());
+				new TurnOutputParser(),
+				this.recorded::add);
 
 		respondWith(VALID_TURN);
 		provider.generateTurn(request());
@@ -270,6 +277,93 @@ class AnthropicStoryProviderContractTests {
 		assertThat(this.provider.capabilities().structuredOutput()).isTrue();
 		assertThat(this.provider.capabilities().supportsSystemRole()).isTrue();
 		assertThat(this.provider.providerId()).isEqualTo(AnthropicStoryProvider.PROVIDER_ID);
+	}
+
+	// ── 호출 기록 (B-25) ──────────────────────────────────────
+
+	/**
+	 * <b>성공한 호출이 원문과 함께 기록된다</b> (B-25, S-3).
+	 *
+	 * <p>원문 보관처는 {@code ai_call_log} 하나다. 여기가 비면 <b>모델이 무엇을 돌려줬는지</b>를
+	 * 사후에 볼 방법이 없다 (§13-20).
+	 */
+	@Test
+	void B25_a_successful_call_is_recorded_with_both_payloads() {
+		respondWith(VALID_TURN);
+
+		this.provider.generateTurn(request());
+
+		assertThat(this.recorded).hasSize(1);
+		AiCallLog.Draft draft = this.recorded.getFirst();
+		assertThat(draft.purpose()).isEqualTo("turn");
+		assertThat(draft.providerId()).isEqualTo("anthropic");
+		assertThat(draft.modelId()).isEqualTo("claude-opus-5");
+		assertThat(draft.requestRaw()).contains("[WORLD]");
+		assertThat(draft.responseRaw()).contains("복도 끝에서 발소리가 멈췄다.");
+		assertThat(draft.latencyMs()).isNotNegative();
+	}
+
+	/**
+	 * <b>실패한 호출도 기록된다.</b> 응답은 없지만 <b>요청은 남는다</b> — 무엇을 보냈는지가 단서다.
+	 */
+	@Test
+	void B25_a_failed_call_is_recorded_with_the_request_only() {
+		this.server.stubFor(post(urlEqualTo("/v1/messages"))
+				.willReturn(aResponse().withStatus(500)));
+
+		assertThatThrownBy(() -> this.provider.generateTurn(request()))
+				.isInstanceOf(ProviderCallFailedException.class);
+
+		assertThat(this.recorded).hasSize(1);
+		assertThat(this.recorded.getFirst().requestRaw()).isNotBlank();
+		assertThat(this.recorded.getFirst().responseRaw())
+				.as("응답이 없었는데 무언가 기록됐다")
+				.isNull();
+	}
+
+	/**
+	 * <b>스키마를 어긴 응답도 원문이 남는다.</b>
+	 *
+	 * <p>기록이 파싱보다 먼저인 이유다 — <b>모델이 무엇을 돌려줬길래 거부됐는지</b>를 볼 수 없으면
+	 * 프롬프트를 고칠 근거가 없다.
+	 */
+	@Test
+	void B25_a_schema_violating_response_is_still_recorded() {
+		respondWith("{\"paragraphs\": \"통 문자열 본문\"}");
+
+		assertThatThrownBy(() -> this.provider.generateTurn(request()))
+				.isInstanceOf(TurnOutputSchemaException.class);
+
+		assertThat(this.recorded).hasSize(1);
+		assertThat(this.recorded.getFirst().responseRaw()).contains("통 문자열 본문");
+	}
+
+	/**
+	 * <b>I-3 — 기록에 회원 식별정보를 담을 자리가 없다.</b>
+	 *
+	 * <p>{@code player_ref} 컬럼이 없는 것과 같은 성질이며, {@code Draft} 에도 그 컴포넌트가 없다.
+	 * 역추적은 {@code session_id} 로만 한다.
+	 */
+	@Test
+	void I3_the_recorded_draft_has_no_component_for_member_identity() {
+		assertThat(java.util.Arrays.stream(AiCallLog.Draft.class.getRecordComponents())
+				.map(java.lang.reflect.RecordComponent::getName).toList())
+				.doesNotContain("playerRef", "player_ref", "userId", "email", "birthDate", "ip", "socialId");
+	}
+
+	/**
+	 * <b>{@code cost_micro} 를 채우지 않는다</b> (B-25 결정).
+	 *
+	 * <p>단가는 벤더·모델별로 다르고 시간에 따라 바뀐다. 코드에 박으면 <b>틀린 순간부터 조용히
+	 * 틀린 값이 쌓이고</b>, 그 값으로 예산을 판단하게 된다. 비어 있는 것이 <b>틀린 값보다 낫다.</b>
+	 */
+	@Test
+	void B25_cost_is_left_empty_until_a_price_table_exists() {
+		respondWith(VALID_TURN);
+
+		this.provider.generateTurn(request());
+
+		assertThat(this.recorded.getFirst().costMicro()).isNull();
 	}
 
 	/** §0.2 — 아직 구현하지 않은 용도는 예외 그대로다. 스텁으로 통과시키지 않는다. */

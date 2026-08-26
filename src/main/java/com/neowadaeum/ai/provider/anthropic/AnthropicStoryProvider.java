@@ -3,6 +3,9 @@ package com.neowadaeum.ai.provider.anthropic;
 import com.neowadaeum.ai.prompt.AssembledPrompt;
 import com.neowadaeum.ai.prompt.PromptLayer;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
+import com.neowadaeum.ai.log.AiCallLog;
+import com.neowadaeum.ai.log.AiCallRecorder;
+import com.neowadaeum.ai.provider.AiCallAttempt;
 import com.neowadaeum.ai.provider.AiPurpose;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
@@ -97,12 +100,15 @@ public class AnthropicStoryProvider implements StoryProvider {
 
 	private final TurnOutputParser parser;
 
+	private final AiCallRecorder recorder;
+
 	public AnthropicStoryProvider(RestClient restClient, AnthropicProperties properties,
-			TurnPromptFactory prompts, TurnOutputParser parser) {
+			TurnPromptFactory prompts, TurnOutputParser parser, AiCallRecorder recorder) {
 		this.restClient = restClient;
 		this.properties = properties;
 		this.prompts = prompts;
 		this.parser = parser;
+		this.recorder = recorder;
 	}
 
 	@Override
@@ -123,25 +129,68 @@ public class AnthropicStoryProvider implements StoryProvider {
 		return new ProviderCapabilities(true, 200_000, true);
 	}
 
+	/**
+	 * <b>기록은 성공과 실패 양쪽에서 남는다</b> (B-25). 실패한 호출도 요청은 남는다 —
+	 * <b>무엇을 보냈는지가 단서다.</b>
+	 *
+	 * <p>기록이 파싱보다 먼저인 것도 의도다. 스키마 위반으로 재요청이 돌면 그 시도의 응답 원문이
+	 * 남아야 <b>모델이 무엇을 돌려줬길래 거부됐는지</b>를 볼 수 있다.
+	 */
 	@Override
 	public GeneratedTurn generateTurn(TurnRequest request) {
 		AssembledPrompt prompt = this.prompts.create(request);
+		ObjectNode body = body(prompt);
+		long startedAt = System.nanoTime();
 
 		JsonNode response;
 		try {
 			response = this.restClient.post()
 					.uri("/v1/messages")
-					.body(body(prompt))
+					.body(body)
 					.retrieve()
 					.body(JsonNode.class);
 		}
 		catch (RestClientException ex) {
+			record(request, body, null, startedAt);
 			// 원문을 메시지에 넣지 않는다 (S-3). RestClient 의 예외는 본문 일부를 담을 수 있어
 			// 원인으로도 붙이지 않는다 — 예외는 로그로 흐른다.
 			throw new ProviderCallFailedException("anthropic call failed");
 		}
 
+		record(request, body, response, startedAt);
 		return this.parser.parse(text(response)).toGeneratedTurn();
+	}
+
+	/**
+	 * 호출 한 건을 기록한다 (S-3 — 원문 보관처는 {@code ai_call_log} 하나다).
+	 *
+	 * <p><b>{@code cost_micro} 를 채우지 않는다.</b> 단가는 벤더·모델별로 다르고 시간에 따라
+	 * 바뀐다 — 코드에 박으면 <b>틀린 순간부터 조용히 틀린 값이 쌓이고</b>, 그 값으로 예산을
+	 * 판단하게 된다. 단가표가 생기는 시점에 채운다.
+	 *
+	 * <p><b>{@code playerRef} 를 담을 자리가 없다</b> (I-3). {@link AiCallLog.Draft} 에 그
+	 * 컴포넌트가 없으므로 실을 방법 자체가 없다.
+	 */
+	private void record(TurnRequest request, ObjectNode body, JsonNode response, long startedAt) {
+		this.recorder.record(new AiCallLog.Draft(
+				null,
+				null,
+				AiPurpose.TURN.wireValue(),
+				PROVIDER_ID,
+				body.path("model").asString(""),
+				null,
+				body.toString(),
+				(response != null) ? response.toString() : null,
+				(response != null) ? intOrNull(response.path("usage").path("input_tokens")) : null,
+				(response != null) ? intOrNull(response.path("usage").path("output_tokens")) : null,
+				(int) java.time.Duration.ofNanos(System.nanoTime() - startedAt).toMillis(),
+				null,
+				null,
+				AiCallAttempt.current()));
+	}
+
+	private static Integer intOrNull(JsonNode node) {
+		return node.isIntegralNumber() ? node.intValue() : null;
 	}
 
 	/**

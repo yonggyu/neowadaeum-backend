@@ -39,6 +39,10 @@ import org.junit.jupiter.api.Test;
 class AnthropicTimeoutContractTests {
 
 	/** 초과를 <b>기대하는</b> 테스트라 짧아서 생기는 오차가 결과를 바꾸지 않는다 — 느릴수록 기대대로 간다. */
+	/** 기록된 호출. B-25 이후 어댑터가 필수로 요구한다 — 무엇이 남는지도 함께 본다. */
+	private final java.util.List<com.neowadaeum.ai.log.AiCallLog.Draft> recorded =
+			java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
 	private static final Duration SHORT_BUDGET = Duration.ofMillis(300);
 
 	/** 예산보다 훨씬 길게 끈다. 이 값을 기다리게 되면 취소가 닿지 않은 것이다. */
@@ -107,7 +111,8 @@ class AnthropicTimeoutContractTests {
 						new ProviderProperties(Duration.ofSeconds(30), null)),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
-				new TurnOutputParser());
+				new TurnOutputParser(),
+				this.recorded::add);
 	}
 
 	private static TurnRequest request() {
