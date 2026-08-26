@@ -1,6 +1,9 @@
 package com.neowadaeum.ai.provider;
 
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.OutputSchemaRejectedException;
+import com.neowadaeum.play.port.TurnRequest;
 
 /**
  * 출력 스키마를 못 맞춘 응답을 다시 요청한다 (R5.8, R3.3, §6.1-5, B-21).
@@ -58,7 +61,7 @@ public class SchemaRetryingStoryProvider implements StoryProvider {
 	 * 다시 보내 나아지는 종류의 실패가 아니고, 시간 초과는 이미 25s 를 쓴 뒤다.
 	 */
 	@Override
-	public TurnResult generateTurn(TurnRequest request) {
+	public GeneratedTurn generateTurn(TurnRequest request) {
 		int allowedRetries = allowedRetries();
 
 		TurnOutputSchemaException lastViolation = null;
@@ -86,21 +89,5 @@ public class SchemaRetryingStoryProvider implements StoryProvider {
 	@Override
 	public OutlineResult draftOutline(OutlineRequest request) {
 		return this.delegate.draftOutline(request);
-	}
-
-	/**
-	 * 허용된 횟수를 다 쓰고도 스키마를 만족하지 못했다 (R5.8).
-	 *
-	 * <p><b>{@code ai :: provider} 에 있는 것이 요점이다.</b> {@code play} 가 허용받은 의존은 이
-	 * 패키지 하나이므로 (ADR-0005), 내부 예외인 {@code TurnOutputSchemaException} 이 그대로 밖으로
-	 * 나가면 호출자가 §5.4 를 넘어야 그것을 잡을 수 있다.
-	 *
-	 * <p><b>메시지에 응답 원문이 없다</b> (S-3). 원인 예외는 어긋난 지점까지만 담고 있다.
-	 */
-	public static class OutputSchemaRejectedException extends RuntimeException {
-
-		public OutputSchemaRejectedException(int attempts, Throwable lastViolation) {
-			super("provider output did not match the turn schema in " + attempts + " attempts", lastViolation);
-		}
 	}
 }

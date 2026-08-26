@@ -1,5 +1,8 @@
 package com.neowadaeum.ai.provider;
 
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.GenerationTimedOutException;
+import com.neowadaeum.play.port.TurnRequest;
 import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -54,7 +57,7 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 	}
 
 	@Override
-	public TurnResult generateTurn(TurnRequest request) {
+	public GeneratedTurn generateTurn(TurnRequest request) {
 		return withinLimit(() -> this.delegate.generateTurn(request));
 	}
 
@@ -102,18 +105,6 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 			Thread.currentThread().interrupt();
 			pending.cancel(true);
 			throw new GenerationTimedOutException(this.timeout);
-		}
-	}
-
-	/**
-	 * 시간 제한 초과.
-	 *
-	 * <p>메시지에 <b>요청 내용을 담지 않는다</b> — 예외는 로그로 흐른다 (S-3).
-	 */
-	public static class GenerationTimedOutException extends RuntimeException {
-
-		public GenerationTimedOutException(Duration timeout) {
-			super("provider did not answer within " + timeout);
 		}
 	}
 }

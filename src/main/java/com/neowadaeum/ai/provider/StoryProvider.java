@@ -1,10 +1,18 @@
 package com.neowadaeum.ai.provider;
 
+import com.neowadaeum.play.port.TurnGenerationPort;
+
 /**
  * AI 벤더 추상화 (§3, B-18).
  *
+ * <p><b>{@code play} 가 소유한 턴 생성 계약을 확장한다</b> (ADR-0006). 벤더 seam 은
+ * {@link TurnGenerationPort} 가 요구하는 것에 <b>AI 고유의 것</b>(능력 조회 · 요약 · 아웃라인)을
+ * 더한 것이다. 이 관계 덕분에 어느 어댑터든 그대로 포트 구현이 되고, <b>변환 어댑터가 따로 필요
+ * 없다.</b>
+ *
  * <p><b>순수 DTO 만 주고받는다.</b> {@code ai} 모듈은 도메인 엔티티를 알지 못하며, 이것이 I-3 의
- * 구조적 보장이다 — 엔티티를 모르면 회원 식별정보를 실을 방법 자체가 없다.
+ * 구조적 보장이다 — 엔티티를 모르면 회원 식별정보를 실을 방법 자체가 없다. {@code play :: port} 가
+ * 열려 있어도 거기에는 DTO 와 인터페이스뿐이라 이 성질은 바뀌지 않는다.
  *
  * <p><b>구현체는 어댑터다. 호출자가 어댑터를 직접 고르지 않는다</b> — 어느 것이 불릴지는 설정이
  * 정하고 {@code AiGateway} 가 그 결정을 수행한다 (R3.1, I-14). 세션은 생성 시 provider 에 고정된다
@@ -14,10 +22,7 @@ package com.neowadaeum.ai.provider;
  * 조용히 그것을 물려받고, 지원하지 않는 용도가 지원되는 것처럼 보인다. 어댑터마다 명시적으로
  * 답하게 하고, 아직 못 하는 것은 {@link UnsupportedOperationException} 을 던진다 (§0.2).
  */
-public interface StoryProvider {
-
-	/** 설정·로그·세션 고정에서 이 구현을 지목하는 안정적인 식별자 (R3.5). */
-	String providerId();
+public interface StoryProvider extends TurnGenerationPort {
 
 	/**
 	 * 이 구현이 무엇을 할 수 있는지 (§3).
@@ -26,13 +31,6 @@ public interface StoryProvider {
 	 * 전달 방식이 여기서 갈린다.
 	 */
 	ProviderCapabilities capabilities();
-
-	/**
-	 * 다음 턴을 생성한다 (§4.3 의 4단계).
-	 *
-	 * <p>반환값은 <b>제안</b>이다. 상태 변화·챕터 전환·엔딩은 서버가 최종 결정한다 (I-9, I-10, I-11).
-	 */
-	TurnResult generateTurn(TurnRequest request);
 
 	/**
 	 * 오래된 턴을 요약으로 압축한다 (R4.5, R4.6).

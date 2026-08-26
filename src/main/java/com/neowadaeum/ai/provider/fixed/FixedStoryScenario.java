@@ -1,6 +1,8 @@
 package com.neowadaeum.ai.provider.fixed;
 
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GeneratedTurn;
 import java.util.List;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
@@ -34,28 +36,26 @@ public record FixedStoryScenario(UUID storyVersionRef, String description, List<
 	/**
 	 * 요청 하나에 대응하는 고정 응답.
 	 *
+	 * <p><b>파일이 생성 계약을 그대로 쓴다</b> (#84). 별도의 파일 전용 타입을 두지 않는 것은,
+	 * 두 벌이 되는 순간 <b>시나리오가 표현할 수 있는 것과 실제 계약이 갈라지기</b> 때문이다 —
+	 * 문단 종류와 화자가 파일 형식에서 빠져 있으면 E2E 가 그 손실을 재현하지 못한다.
+	 *
 	 * @param turnNo            요청 시점의 현재 턴 (§4.3 턴 번호 계약). 첫 턴 생성은 {@code 0}
 	 * @param chosenChoiceOrder 직전 턴에서 고른 선택지 순서. {@code turnNo == 0} 이면 {@code null}
+	 * @param paragraphs        본문 문단. <b>통 문자열이 아니다</b> (R5.1)
 	 */
 	public record Entry(
 			int turnNo,
 			Integer chosenChoiceOrder,
-			String narrative,
-			List<Choice> choices,
+			List<GeneratedParagraph> paragraphs,
+			List<GeneratedChoice> choices,
 			JsonNode proposedStateChanges,
 			boolean chapterAdvanceSuggested,
 			String endingSuggested) {
 
-		/** 파일 표현의 선택지. {@code order} 와 {@code text} 뿐이다 (§13-3). */
-		public record Choice(int order, String text) {
-		}
-
-		TurnResult toResult() {
-			List<TurnResult.ProposedChoice> proposed = (choices == null ? List.<Choice>of() : choices).stream()
-					.map(choice -> new TurnResult.ProposedChoice(choice.order(), choice.text()))
-					.toList();
-
-			return new TurnResult(narrative, proposed, proposedStateChanges, chapterAdvanceSuggested, endingSuggested);
+		GeneratedTurn toGeneratedTurn() {
+			return new GeneratedTurn(paragraphs, choices, proposedStateChanges, chapterAdvanceSuggested,
+					endingSuggested);
 		}
 	}
 }

@@ -6,8 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.TurnRequest;
+import com.neowadaeum.play.port.GeneratedChoice;
+import com.neowadaeum.play.port.GeneratedParagraph;
+import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.authoring.blocklist.InMemoryBlocklistQuery;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.common.spi.BlocklistEntry;
@@ -159,10 +161,10 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest request) {
+			public GeneratedTurn generateTurn(TurnRequest request) {
 				calls.incrementAndGet();
-				return new TurnResult(blocked + " 이 문을 열었다.",
-						List.of(new TurnResult.ProposedChoice(1, "계속한다")),
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration(blocked + " 이 문을 열었다.")),
+						List.of(new GeneratedChoice(1, "계속한다")),
 						JSON.readTree("{}"), false, null);
 			}
 		};

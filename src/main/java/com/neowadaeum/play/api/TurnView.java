@@ -17,8 +17,12 @@ import java.util.UUID;
  * @param chapterTitle  전환 시 클라이언트가 인터스티셜에 쓴다 (R7.3)
  * @param chapterChanged 전환 여부 (R7.3)
  * @param progressHint  "Chapter 2 / 전체 3장" (R7.5)
- * @param speakerName   화자. 없으면 나레이션이다 (R5.2)
- * @param paragraphs    본문 문단 (R5.1 — 통 문자열 금지)
+ * @param speakerName   턴의 대표 화자 — <b>문단 배열에서 나오는 파생값</b>이다 (#84). 없으면
+ *                      나레이션만 있는 턴이다 (R5.2). 렌더링의 근거는 각 문단의 화자이며,
+ *                      이 필드는 §5.2 의 턴 단위 계약을 유지하기 위해 남는다
+ * @param paragraphs    본문 문단 (R5.1 — 통 문자열 금지). <b>문자열 배열이 아니라 객체 배열이다</b> —
+ *                      와이어프레임 2a 가 대사와 나레이션을 다르게 렌더하려면 종류와 화자가
+ *                      함께 와야 한다 (R5.2)
  * @param choices       서버가 발급한 선택지. 엔딩이면 빈 배열이다 (R7.8)
  * @param isEnding      종료 여부 (R7.8)
  * @param endingId      도달한 엔딩. 없으면 {@code null}
@@ -32,12 +36,25 @@ public record TurnView(
 		boolean chapterChanged,
 		String progressHint,
 		String speakerName,
-		List<String> paragraphs,
+		List<Paragraph> paragraphs,
 		List<Choice> choices,
 		boolean isEnding,
 		UUID endingId,
 		Integer endingIndex,
 		Integer totalEndings) {
+
+	/**
+	 * 본문 한 문단 (R5.1, R5.2).
+	 *
+	 * <p><b>{@code type} 은 문자열이다</b> — 응답 계약이므로 클라이언트가 읽는 값이며,
+	 * {@code "dialogue"} / {@code "narration"} 소문자로 나간다 (§5.2 와 같은 표기).
+	 *
+	 * @param type        {@code "dialogue"} 또는 {@code "narration"}
+	 * @param speakerName 화자. {@code null} 이면 나레이션으로 렌더한다 (R5.2)
+	 * @param text        문단 본문
+	 */
+	public record Paragraph(String type, String speakerName, String text) {
+	}
 
 	/**
 	 * 선택지.

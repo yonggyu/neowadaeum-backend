@@ -5,8 +5,8 @@ import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.play.port.TurnRequest;
 
 /**
  * Provider 앞단 (§3.3 용어, B-18 골격 · B-19 페이로드 검증).
@@ -63,7 +63,7 @@ public class AiGateway implements StoryProvider {
 	}
 
 	@Override
-	public TurnResult generateTurn(TurnRequest request) {
+	public GeneratedTurn generateTurn(TurnRequest request) {
 		// I-3 — 어댑터에 닿기 전에 막는다. 지우고 보내지 않는다 (B-19).
 		this.payloadWhitelist.validate(request);
 		return this.active.generateTurn(request);

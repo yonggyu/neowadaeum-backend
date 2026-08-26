@@ -2,7 +2,7 @@ package com.neowadaeum.ai.gateway;
 
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.SummaryRequest;
-import com.neowadaeum.ai.provider.TurnRequest;
+import com.neowadaeum.play.port.TurnRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

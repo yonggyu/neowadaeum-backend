@@ -1,6 +1,6 @@
 package com.neowadaeum.play.api;
 
-import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.play.port.TurnGenerationPort;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
@@ -41,12 +41,12 @@ public class SessionStarter {
 	private final PlaySessionRepository sessions;
 	private final StoryVersionFacade storyVersions;
 	private final TurnPipeline pipeline;
-	private final StoryProvider provider;
+	private final TurnGenerationPort provider;
 	private final Clock clock;
 	private final TransactionTemplate transactions;
 
 	public SessionStarter(PlaySessionRepository sessions, StoryVersionFacade storyVersions,
-			TurnPipeline pipeline, StoryProvider provider, Clock clock,
+			TurnPipeline pipeline, TurnGenerationPort provider, Clock clock,
 			PlatformTransactionManager playTransactionManager) {
 		this.transactions = new TransactionTemplate(playTransactionManager);
 		this.sessions = sessions;

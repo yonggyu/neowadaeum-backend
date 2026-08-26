@@ -1,5 +1,6 @@
 package com.neowadaeum.ai.schema;
 
+import com.neowadaeum.play.port.ParagraphType;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -125,12 +126,12 @@ public class TurnOutputParser {
 		return new TurnOutput.Paragraph(paragraphType(element.get("type")), text(element.get("text"), "paragraph"));
 	}
 
-	private TurnOutput.ParagraphType paragraphType(JsonNode node) {
+	private ParagraphType paragraphType(JsonNode node) {
 		if (node == null || !node.isString()) {
 			throw new TurnOutputSchemaException("paragraph type must be a string");
 		}
 		try {
-			return TurnOutput.ParagraphType.valueOf(node.stringValue().trim().toUpperCase(Locale.ROOT));
+			return ParagraphType.valueOf(node.stringValue().trim().toUpperCase(Locale.ROOT));
 		}
 		catch (IllegalArgumentException ex) {
 			// 받은 값을 남기지 않는다 (S-3). 여기는 열거형 자리지만 모델이 무엇을 넣을지는 모르고,

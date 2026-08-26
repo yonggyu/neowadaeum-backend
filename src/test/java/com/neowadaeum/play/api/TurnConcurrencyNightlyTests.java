@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
-import com.neowadaeum.ai.provider.TurnRequest;
-import com.neowadaeum.ai.provider.TurnResult;
+import com.neowadaeum.play.port.TurnRequest;
+import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.common.web.IdempotencyStore;
 import com.neowadaeum.play.domain.PlaySession;
@@ -189,7 +189,7 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 			}
 
 			@Override
-			public TurnResult generateTurn(TurnRequest request) {
+			public GeneratedTurn generateTurn(TurnRequest request) {
 				calls.incrementAndGet();
 				return TurnConcurrencyNightlyTests.this.provider.generateTurn(request);
 			}

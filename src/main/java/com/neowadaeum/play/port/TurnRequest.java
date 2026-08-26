@@ -1,4 +1,4 @@
-package com.neowadaeum.ai.provider;
+package com.neowadaeum.play.port;
 
 import java.util.UUID;
 

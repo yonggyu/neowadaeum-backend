@@ -80,6 +80,7 @@ Controller → Service → Domain → Repository      계층 역행 금지
 스키마 간 JOIN · FK 금지                         참조는 애플리케이션 레벨에서만
 비-Identity 스토어는 user.id 를 저장하지 않는다   playerRef(UUID)만
 ai 모듈은 도메인 엔티티를 모른다                  순수 DTO 입출력만 (I-3의 구조적 보장)
+턴 생성 계약은 play/port 가 소유하고 ai 가 구현한다   play → ai 금지, 역방향만 (ADR-0006)
 safety · batch 는 파사드가 아니라 common/spi 를 쓴다   구현은 데이터 소유 모듈 (ADR-0002/0003)
 트랜잭션 안에서 외부 HTTP(Provider) 호출 금지     짧은 TX → 외부 호출 → 짧은 TX
 ```
@@ -197,7 +198,7 @@ PR 400줄 · 브랜치 수명 3일. 상세는 `docs/git-workflow.md`.
 | `docs/invariants-and-security.md` | I-1~I-20 전문, §7 보안 규칙 전문(S-1~S-11) |
 | `docs/engineering-guide.md` | 제품 개요 · 기술 스택 · 용어 사전 · 핵심 플로우 · 아키텍처 · 코딩 컨벤션 · 테스트 규칙 · 에러 코드 · 자주 하는 실수 |
 | `docs/git-workflow.md` | Git 규칙 전문(§8) |
-| `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 |
+| `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 / **0006 턴 생성 포트 소유(0005 일부 대체)** |
 | `docs/openapi.yaml` | API 계약 — 런타임 진실의 원천. **아직 없다(B-06).** `.gitignore` 예외는 처리됨(#36) |
 | `README.md` | 로컬 실행 · 스키마 4개 · 마이그레이션 명명 규칙 |
 
