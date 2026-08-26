@@ -208,7 +208,8 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 
 		assertThat(result.ended()).isTrue();
 		assertThat(result.decision().ending().defaultEnding()).isFalse();
-		assertThat(result.decision().ending().endingNo()).isEqualTo(1);
+		// '첫 빛'은 B-45 의 재배치로 4번이 됐다 (좁은 조건이 앞 번호다).
+		assertThat(result.decision().ending().endingNo()).isEqualTo(4);
 		assertThat(result.decision().byDefault()).isFalse();
 	}
 
@@ -217,7 +218,7 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 	void R7_2_seed_chapters_advance_by_max_turns_when_conditions_never_hold() throws SQLException {
 		Playthrough result = play(0, Set.of(), 40);
 
-		assertThat(result.finalChapterNo()).isEqualTo(3);
+		assertThat(result.finalChapterNo()).as("여섯 장 전부를 지나야 한다 (B-45)").isEqualTo(6);
 	}
 
 	/**
