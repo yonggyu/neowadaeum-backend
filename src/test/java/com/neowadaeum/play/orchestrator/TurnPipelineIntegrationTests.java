@@ -111,8 +111,10 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 		TurnOutcome outcome = playUntilEnd(pipeline, sessionId, 1);
 
 		assertThat(outcome.ended()).as("조건부 엔딩에 닿지 못했다").isTrue();
-		assertThat(outcome.endingIndex()).isEqualTo(1);
-		assertThat(outcome.totalEndings()).isEqualTo(2);
+		// B-45 로 엔딩이 다섯이 됐다. 시크릿은 총계에서 빠지므로 보이는 엔딩은 넷이고,
+		// '첫 빛'은 그중 셋째다 (R7.11).
+		assertThat(outcome.endingIndex()).isEqualTo(3);
+		assertThat(outcome.totalEndings()).isEqualTo(4);
 
 		PlaySession session = this.sessions.findById(sessionId).orElseThrow();
 		assertThat(session.getStatus()).isEqualTo(SessionStatus.COMPLETED);
@@ -157,6 +159,39 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 
 		assertThat(outcome.ended()).isTrue();
 		assertThat(outcome.turnNo()).isGreaterThan(3);
+	}
+
+	/**
+	 * <b>B-44 — 시작→40턴→엔딩까지 실제 AI 없이 재현한다.</b>
+	 *
+	 * <p>이 작업의 DoD 다. <b>"끝났다"만 보면 3턴에 끝나도 통과한다</b> — 그래서 턴 수를 함께
+	 * 단언한다. 아무 조건도 채우지 않는 갈래는 장마다 {@code max_turns} 로 밀리고(R7.2), 마지막
+	 * 장의 끝에서 기본 엔딩으로 닫힌다 (R7.7). 시드의 {@code max_turns} 합계가 그 40 이다 (B-45).
+	 *
+	 * <p><b>중간의 어느 한 조각이라도 어긋나면 여기서 멈춘다</b> — 40번의 챕터 판정, 40번의 상태
+	 * 병합, 40번의 L2, 그리고 그 사이에 도는 요약 압축(B-34)까지가 한 번에 시험된다.
+	 *
+	 * <p><b>I-15 — 같은 입력에 같은 결과다.</b> 결정론 Provider 는 시나리오 파일이 정한 응답만
+	 * 돌려주며 난수가 없다.
+	 */
+	@Test
+	void B44_the_seed_story_plays_forty_turns_to_the_default_ending() {
+		UUID sessionId = newSession();
+		TurnPipeline pipeline = pipelineWith(this.provider);
+
+		TurnOutcome outcome = playUntilEnd(pipeline, sessionId, 2);
+
+		assertThat(outcome.ended()).as("40턴 갈래가 엔딩에 닿지 못했다").isTrue();
+		assertThat(outcome.turnNo())
+				.as("'끝났다'만으로는 부족하다 — 40턴을 실제로 지났는가")
+				.isEqualTo(40);
+
+		PlaySession session = this.sessions.findById(sessionId).orElseThrow();
+		assertThat(session.getStatus()).isEqualTo(SessionStatus.COMPLETED);
+		assertThat(session.getChapterNo()).as("여섯 장을 전부 지나야 40턴이 된다").isEqualTo(6);
+		assertThat(this.turns.findBySessionIdAndDeletedAtIsNullAndTurnNoBetweenOrderByTurnNoAsc(sessionId, 1, 40))
+				.as("턴 원문은 전부 남는다 (R4.8)")
+				.hasSize(40);
 	}
 
 	/** 턴마다 스냅샷이 하나씩 쌓인다 (I-5 — append-only). */
@@ -248,7 +283,8 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 
 	private TurnOutcome playUntilEnd(TurnPipeline pipeline, UUID sessionId, int choiceOrder) {
 		TurnOutcome outcome = pipeline.advance(sessionId, null);
-		for (int guard = 0; guard < 40 && !outcome.ended(); guard++) {
+		// B-45 이후 아무 조건도 채우지 않는 갈래는 40턴을 다 쓰고 끝난다. 여유를 조금 둔다.
+		for (int guard = 0; guard < 45 && !outcome.ended(); guard++) {
 			outcome = pipeline.advance(sessionId, choiceOrder);
 		}
 		return outcome;

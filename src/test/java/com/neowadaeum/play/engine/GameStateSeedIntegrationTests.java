@@ -133,7 +133,8 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 	/** R7.6 — 조건부 엔딩의 조건이 평가된다. */
 	@Test
 	void R7_6_seed_conditional_ending_is_evaluable() throws SQLException {
-		JsonNode ending = seedCondition("SELECT condition FROM ending_def WHERE ending_no = 1");
+		// B-45 로 번호가 다시 매겨졌다. '첫 빛'(유나 하나를 보는 엔딩)은 이제 4번이다.
+		JsonNode ending = seedCondition("SELECT condition FROM ending_def WHERE ending_no = 4");
 
 		assertThat(this.evaluator.evaluate(ending, stateWith(14, Set.of("shared_lunch")))).isFalse();
 		assertThat(this.evaluator.evaluate(ending, stateWith(20, Set.of()))).isFalse();
@@ -193,9 +194,15 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 	 */
 	@Test
 	void S10_1_11_seed_story_always_terminates_even_with_no_progress() throws SQLException {
-		Playthrough result = play(0, Set.of(), 40);
+		// 시드가 허용하는 최대 진행만큼 돌린다. 숫자를 손으로 적으면 시드를 늘릴 때마다 어긋난다.
+		//
+		// **이 하네스는 파이프라인보다 한 장당 한 턴을 더 쓴다.** 전환이 일어난 턴을 여기서는
+		// 새 장의 0턴째로 되돌리고, 파이프라인은 그 턴을 새 장의 첫 턴으로 센다. 그래서 같은 시드로
+		// 파이프라인은 40턴에, 이 하네스는 max_turns 합계에 끝난다 (B-44 의 E2E 가 전자를 본다).
+		int budget = seedTurnBudget();
+		Playthrough result = play(0, Set.of(), budget);
 
-		assertThat(result.ended()).as("40턴 안에 끝나지 않았다 — 무한 진행이다").isTrue();
+		assertThat(result.ended()).as("%d턴 안에 끝나지 않았다 — 무한 진행이다", budget).isTrue();
 		assertThat(result.decision().ending().defaultEnding()).isTrue();
 		assertThat(result.decision().byDefault()).isTrue();
 	}
@@ -207,7 +214,8 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 
 		assertThat(result.ended()).isTrue();
 		assertThat(result.decision().ending().defaultEnding()).isFalse();
-		assertThat(result.decision().ending().endingNo()).isEqualTo(1);
+		// '첫 빛'은 B-45 의 재배치로 4번이 됐다 (좁은 조건이 앞 번호다).
+		assertThat(result.decision().ending().endingNo()).isEqualTo(4);
 		assertThat(result.decision().byDefault()).isFalse();
 	}
 
@@ -216,7 +224,7 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 	void R7_2_seed_chapters_advance_by_max_turns_when_conditions_never_hold() throws SQLException {
 		Playthrough result = play(0, Set.of(), 40);
 
-		assertThat(result.finalChapterNo()).isEqualTo(3);
+		assertThat(result.finalChapterNo()).as("여섯 장 전부를 지나야 한다 (B-45)").isEqualTo(6);
 	}
 
 	/**
@@ -259,6 +267,16 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 		return new Playthrough(false, null, chapterNo);
 	}
 
+	/** 시드의 {@code max_turns} 합계 — 아무 조건도 채우지 못한 플레이가 쓸 수 있는 최대치다. */
+	private int seedTurnBudget() throws SQLException {
+		try (Connection connection = this.catalog.getConnection();
+				Statement statement = connection.createStatement();
+				ResultSet rows = statement.executeQuery("SELECT SUM(max_turns) FROM chapter_def")) {
+			assertThat(rows.next()).isTrue();
+			return rows.getInt(1);
+		}
+	}
+
 	private static String proposal(int affinityPerTurn, Set<String> flags) {
 		String flagPart = flags.isEmpty() ? ""
 				: ", \"flags.add\": [" + flags.stream().map(flag -> '"' + flag + '"')
@@ -283,7 +301,7 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 						rows.getInt("min_turns"), rows.getInt("max_turns")));
 			}
 		}
-		assertThat(chapters).as("시드 챕터가 없다").hasSize(3);
+		assertThat(chapters).as("시드 챕터가 없다").hasSize(6);
 		return chapters;
 	}
 
@@ -301,7 +319,7 @@ class GameStateSeedIntegrationTests extends ContainerTestBase {
 						rows.getBoolean("is_secret"), rows.getBoolean("is_default")));
 			}
 		}
-		assertThat(endings).as("시드 엔딩이 없다").hasSize(2);
+		assertThat(endings).as("시드 엔딩이 없다").hasSize(5);
 		return endings;
 	}
 
