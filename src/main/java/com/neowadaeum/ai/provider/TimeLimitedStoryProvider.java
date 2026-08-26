@@ -107,5 +107,4 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 			throw new GenerationTimedOutException(this.timeout);
 		}
 	}
-
 }

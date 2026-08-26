@@ -169,8 +169,10 @@ public class TurnPipeline {
 	/**
 	 * L2 대상은 본문과 선택지 둘 다다 (§9.1).
 	 *
-	 * <p><b>문단 하나하나가 검수 대상이다</b> (#84). 이전에는 통 문자열 하나를 넘겼고, 그것이
-	 * 실제로는 문단 여럿을 이어 붙인 값이었다면 <b>경계에 걸친 표현을 판정기가 놓칠 수 있었다.</b>
+	 * <p><b>판정 강도는 달라지지 않는다</b> (#84). {@code RuleBasedSafetyJudge} 는 받은 것을 전부
+	 * 이어 붙여 정규화하므로, 문단 하나를 넘기든 셋을 넘기든 대조 대상 문자열이 같다 — 문단 경계에
+	 * 걸친 표현도 그대로 걸린다. 바뀐 것은 <b>{@code paragraphs} 라는 파라미터 이름이 드디어
+	 * 사실이 됐다</b>는 점이다. 이전에는 통 문자열 하나를 담은 1개짜리 목록이었다.
 	 */
 	private SafetyJudgement screen(GeneratedTurn result) {
 		List<String> choiceTexts = result.choices().stream().map(GeneratedChoice::text).toList();

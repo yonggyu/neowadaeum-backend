@@ -90,5 +90,4 @@ public class SchemaRetryingStoryProvider implements StoryProvider {
 	public OutlineResult draftOutline(OutlineRequest request) {
 		return this.delegate.draftOutline(request);
 	}
-
 }

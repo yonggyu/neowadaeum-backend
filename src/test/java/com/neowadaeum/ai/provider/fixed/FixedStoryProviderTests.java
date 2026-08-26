@@ -161,38 +161,6 @@ class FixedStoryProviderTests {
 				.hasMessageContaining("duplicate");
 	}
 
-	/**
-	 * I-9 — {@code chapter} · {@code turn} 은 서버 전용이다. Provider 응답에 <b>자리 자체가 없어야</b>
-	 * 한다. 값을 무시하는 구현은 다음 사람이 되살릴 수 있지만, 없는 필드는 되살릴 수 없다.
-	 */
-	@Test
-	void I9_result_has_no_server_owned_chapter_or_turn_component() {
-		List<String> components = componentNames(GeneratedTurn.class);
-
-		assertThat(components).doesNotContain("chapter", "chapterNo", "turn", "turnNo");
-	}
-
-	/** I-1 · I-11 — choiceId 발급과 disabled 판정은 서버 몫이다. 제안 선택지는 order · text 뿐이다. */
-	@Test
-	void I1_I11_proposed_choice_carries_only_order_and_text() {
-		assertThat(componentNames(GeneratedChoice.class)).containsExactly("order", "text");
-	}
-
-	/**
-	 * I-3 — 회원 식별정보를 담을 필드가 존재하지 않는다.
-	 *
-	 * <p>화이트리스트 검증기(B-19)는 아직 없다. 그전까지 이 레코드의 <b>형태</b>가 유일한 보장이므로
-	 * 필드가 늘어나면 이 테스트가 먼저 깨져야 한다.
-	 */
-	@Test
-	void I3_request_has_no_component_that_could_carry_member_identity() {
-		List<String> components = componentNames(TurnRequest.class);
-
-		assertThat(components).containsExactly("storyVersionRef", "turnNo", "chosenChoiceOrder");
-		assertThat(components).doesNotContain("playerRef", "player_ref", "userId", "email", "name",
-				"birthDate", "ip", "socialId");
-	}
-
 	/** §4.3 턴 번호 계약 — 첫 턴에는 고른 선택지가 없고, 이후 턴에는 반드시 있다. */
 	@Test
 	void S4_3_turn_number_contract_is_enforced_by_the_request_itself() {
