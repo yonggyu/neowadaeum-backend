@@ -3,6 +3,7 @@ package com.neowadaeum.ai.provider.ollama;
 import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.log.AiCallRecorder;
 import com.neowadaeum.ai.prompt.AssembledPrompt;
+import com.neowadaeum.ai.prompt.PlatformPrompts;
 import com.neowadaeum.ai.prompt.PromptLayer;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.AiCallAttempt;
@@ -11,14 +12,19 @@ import com.neowadaeum.ai.provider.AiPurpose;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
+import com.neowadaeum.ai.provider.SafetyClassificationFormat;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import com.neowadaeum.play.port.GeneratedTurn;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationFailedException;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.ProviderCallFailedException;
 import com.neowadaeum.play.port.TurnRequest;
 import java.time.Duration;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -93,11 +99,11 @@ public class OllamaStoryProvider implements StoryProvider {
 			response = this.restClient.post().uri("/api/chat").body(body).retrieve().body(JsonNode.class);
 		}
 		catch (RestClientException ex) {
-			record(body, null, startedAt);
+			record(AiPurpose.TURN, body, null, startedAt, null);
 			throw new ProviderCallFailedException("ollama call failed");
 		}
 
-		record(body, response, startedAt);
+		record(AiPurpose.TURN, body, response, startedAt, null);
 		return this.parser.parse(text(response)).toGeneratedTurn();
 	}
 
@@ -159,25 +165,83 @@ public class OllamaStoryProvider implements StoryProvider {
 	}
 
 	/** B-25 와 같은 형태로 남긴다. {@code cost_micro} 는 로컬 실행이라 <b>개념 자체가 없다.</b> */
-	private void record(ObjectNode body, JsonNode response, long startedAt) {
+	private void record(AiPurpose purpose, ObjectNode body, JsonNode response, long startedAt, String safetyFlags) {
 		this.recorder.record(new AiCallLog.Draft(
-				null, null, AiPurpose.TURN.wireValue(), PROVIDER_ID, body.path("model").asString(""),
+				null, null, purpose.wireValue(), PROVIDER_ID, body.path("model").asString(""),
 				AiCallFallback.intendedProviderId(), body.toString(),
 				(response != null) ? response.toString() : null,
 				null, null,
 				(int) Duration.ofNanos(System.nanoTime() - startedAt).toMillis(),
-				null, null, AiCallAttempt.current()));
+				null, safetyFlags, AiCallAttempt.current()));
 	}
 
 	/**
-	 * <b>판정 호출은 B-30 의 두 번째 PR 이다.</b> seam 은 열렸지만 이 벤더의 구현은 아직 없다 —
-	 * 스텁으로 빈 집합을 돌려주지 않는다 (§0.2). 빈 집합은 <b>통과</b>이고, 판정하지 않은 것을
-	 * 통과로 바꾸는 것이 이 작업이 없애려는 상태다.
+	 * 세이프티 판정 (R9.2 의 2단, B-30).
+	 *
+	 * <p><b>형식을 강제할 수단이 프롬프트밖에 없다</b> ({@code structuredOutput = false}, R3.3).
+	 * 그렇다고 여기서 재요청을 돌리지 않는다 — <b>판정 실패의 처리는 재요청이 아니라 차단</b>이고
+	 * (fail-closed), 로컬 모델이 형식을 못 맞추는 상황에서 한 번 더 부른다고 나아진다는 근거가
+	 * 없다. 형식을 못 맞추면 그 턴은 통과하지 못한다.
+	 *
+	 * <p><b>로컬 모델이라고 판정을 건너뛰지 않는다</b> (I-13, R3.4). 무검열 모델을 붙여도 15세
+	 * 등급이 유지돼야 하며, 그 보장은 provider 가 아니라 서버가 한다.
 	 */
 	@Override
-	public java.util.Set<com.neowadaeum.common.spi.SafetyCategory> classifySafety(
-			com.neowadaeum.common.spi.SafetyClassificationRequest request) {
-		throw new UnsupportedOperationException("classifySafety is B-30 (2/3)");
+	public Set<SafetyCategory> classifySafety(SafetyClassificationRequest request) {
+		ObjectNode body = classificationBody(request);
+		long startedAt = System.nanoTime();
+
+		JsonNode response;
+		try {
+			response = this.restClient.post()
+					.uri("/api/chat")
+					.body(body)
+					.retrieve()
+					.body(JsonNode.class);
+		}
+		catch (RestClientException ex) {
+			record(AiPurpose.SAFETY, body, null, startedAt, null);
+			throw new ProviderCallFailedException("ollama safety classification failed");
+		}
+
+		Set<SafetyCategory> categories;
+		try {
+			categories = SafetyClassificationFormat.parse(content(response));
+		}
+		catch (SafetyClassificationFailedException ex) {
+			record(AiPurpose.SAFETY, body, response, startedAt, null);
+			throw ex;
+		}
+
+		record(AiPurpose.SAFETY, body, response, startedAt, SafetyClassificationFormat.flags(categories));
+		return categories;
+	}
+
+	/** 판정 요청 본문. 지시는 {@code system} 메시지로, 판정 대상은 사용자 메시지로 간다 (I-7 과 같은 이유). */
+	private ObjectNode classificationBody(SafetyClassificationRequest request) {
+		ObjectNode body = JSON.createObjectNode();
+		body.put("model", modelFor(AiPurpose.SAFETY));
+		body.put("stream", false);
+		body.put("format", "json");
+
+		var messages = body.putArray("messages");
+		ObjectNode system = messages.addObject();
+		system.put("role", "system");
+		system.put("content", PlatformPrompts.SAFETY_JUDGE);
+
+		ObjectNode user = messages.addObject();
+		user.put("role", "user");
+		user.put("content", String.join("\n", request.texts()));
+		return body;
+	}
+
+	/** 판정 응답의 본문. 형태가 어긋나면 <b>판정 실패</b>다 — 통과가 아니다. */
+	private static String content(JsonNode response) {
+		String content = (response != null) ? response.path("message").path("content").asString(null) : null;
+		if (content == null || content.isBlank()) {
+			throw new SafetyClassificationFailedException("ollama classification response has no message content");
+		}
+		return content;
 	}
 
 	@Override

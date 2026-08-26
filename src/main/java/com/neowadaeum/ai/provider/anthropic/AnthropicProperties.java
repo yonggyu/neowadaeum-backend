@@ -70,8 +70,13 @@ public record AnthropicProperties(String apiKey, Models models, String baseUrl, 
 	 * <p><b>키와 <em>턴 생성</em> 모델이 둘 다 있어야 한다.</b> 하나만 있는 상태는 설정을 하다 만
 	 * 것이며, 그 상태로 등록되면 <b>첫 턴 요청에서야</b> 드러난다.
 	 *
-	 * <p>나머지 세 용도는 등록 조건이 아니다 — 요약(B-34) · 검수(B-30) · 아웃라인(B-52)은 아직
-	 * 구현되지 않았고, <b>없는 기능의 설정을 강요하면 그 자리에 아무 값이나 채워 넣게 된다.</b>
+	 * <p>나머지 세 용도는 등록 조건이 아니다 — 요약(B-34)과 아웃라인(B-52)은 아직 구현되지 않았고,
+	 * <b>없는 기능의 설정을 강요하면 그 자리에 아무 값이나 채워 넣게 된다.</b>
+	 *
+	 * <p><b>검수(B-30)는 구현됐지만 아직 등록 조건이 아니다.</b> 파이프라인이 판정을 부르기
+	 * 시작하는 시점에 그것을 조일지 정한다 — 지금 조이면 <b>부르지도 않는 기능 때문에</b> 기존
+	 * 설정이 부팅에 실패한다. 그때까지는 부르는 자리에서 실패한다({@link #modelFor}), 즉 조용히
+	 * 턴 생성 모델을 빌려 쓰는 경로는 없다.
 	 */
 	public boolean configured() {
 		return this.apiKey != null && !this.apiKey.isBlank() && modelFor(AiPurpose.TURN) != null;
