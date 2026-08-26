@@ -151,6 +151,29 @@ class FallbackChainTests {
 				.isInstanceOf(ProviderCallFailedException.class);
 	}
 
+	/**
+	 * <b>판정도 승계된다</b> (B-30).
+	 *
+	 * <p>요약·아웃라인과 갈리는 이유는 실패의 결과가 다르기 때문이다 — 판정하지 못한 응답은
+	 * 통과하지 못하므로(fail-closed), 벤더 하나가 죽으면 <b>모든 턴이 차단된다.</b> 그것은
+	 * ADR-0007 이 승계를 허용한 조건 그 자체다.
+	 */
+	@Test
+	void B30_a_dead_vendor_does_not_block_every_turn_the_chain_classifies_instead() {
+		Counting dead = Counting.failingWith("dead", () -> new ProviderCallFailedException("down"));
+		Counting alive = Counting.answering("alive");
+
+		java.util.Set<com.neowadaeum.common.spi.SafetyCategory> verdict =
+				new FallbackChain(List.of(dead, alive))
+						.classifySafety(new com.neowadaeum.common.spi.SafetyClassificationRequest(List.of("문장")));
+
+		assertThat(verdict).isEmpty();
+		assertThat(alive.calls).as("승계가 일어나지 않았다").isEqualTo(1);
+		assertThat(alive.seenIntendedProvider)
+				.as("승계 사실이 기록에 남으려면 원래 지목된 provider 를 알아야 한다 (R3.7)")
+				.isEqualTo("dead");
+	}
+
 	/** 호출 횟수와 승계 여부를 기록하는 어댑터. */
 	private static final class Counting extends TurnOnlyStoryProvider {
 
@@ -193,6 +216,17 @@ class FallbackChainTests {
 				throw this.failure.get();
 			}
 			return answer();
+		}
+
+		@Override
+		public java.util.Set<com.neowadaeum.common.spi.SafetyCategory> classifySafety(
+				com.neowadaeum.common.spi.SafetyClassificationRequest request) {
+			this.calls++;
+			this.seenIntendedProvider = AiCallFallback.intendedProviderId();
+			if (this.failure != null) {
+				throw this.failure.get();
+			}
+			return java.util.Set.of();
 		}
 	}
 }

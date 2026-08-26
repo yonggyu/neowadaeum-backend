@@ -11,6 +11,8 @@ import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
 import java.util.List;
@@ -204,5 +206,39 @@ class FixedStoryProviderTests {
 	private static List<String> componentNames(Class<?> type) {
 		RecordComponent[] components = type.getRecordComponents();
 		return Arrays.stream(components).map(RecordComponent::getName).toList();
+	}
+
+	/**
+	 * <b>I-15 — 판정 결과도 결정론이다</b> (B-30).
+	 *
+	 * <p>시나리오가 선언한 카테고리가 그대로 돌아온다. 세이프티 경로를 E2E 로 재현하려면 이것이
+	 * 있어야 한다 — 결정론 Provider 에게 "모델이라면 뭐라고 답할까"를 지어내게 하지 않는다.
+	 */
+	@Test
+	void I15_the_scenario_declares_what_the_judge_sees() {
+		FixedStoryScenario.Entry flagged = new FixedStoryScenario.Entry(0, null,
+				List.of(GeneratedParagraph.narration("걸리는 문단")), List.of(new GeneratedChoice(1, "선택")),
+				JsonMapper.builder().build().readTree("{}"), false, null,
+				List.of(SafetyCategory.RATING_EXCEEDED));
+		FixedStoryProvider provider = new FixedStoryProvider(
+				List.of(new FixedStoryScenario(FIXTURE_STORY, "판정 선언", List.of(flagged))));
+
+		assertThat(provider.classifySafety(new SafetyClassificationRequest(List.of("걸리는 문단"))))
+				.containsExactly(SafetyCategory.RATING_EXCEEDED);
+		assertThat(provider.classifySafety(new SafetyClassificationRequest(List.of("걸리는 문단"))))
+				.as("같은 입력에 같은 결과가 아니면 결정론이 아니다")
+				.containsExactly(SafetyCategory.RATING_EXCEEDED);
+	}
+
+	/** 선언이 없는 텍스트에는 아무것도 걸리지 않는다 — 1단(블록리스트)은 그와 무관하게 돈다. */
+	@Test
+	void B30_an_undeclared_text_has_no_categories() {
+		FixedStoryScenario.Entry plain = new FixedStoryScenario.Entry(0, null,
+				List.of(GeneratedParagraph.narration("평범한 문단")), List.of(new GeneratedChoice(1, "선택")),
+				JsonMapper.builder().build().readTree("{}"), false, null, List.of());
+		FixedStoryProvider provider = new FixedStoryProvider(
+				List.of(new FixedStoryScenario(FIXTURE_STORY, "선언 없음", List.of(plain))));
+
+		assertThat(provider.classifySafety(new SafetyClassificationRequest(List.of("평범한 문단")))).isEmpty();
 	}
 }
