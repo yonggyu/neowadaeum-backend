@@ -5,11 +5,15 @@ import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.TurnRequest;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -36,8 +40,18 @@ public class FixedStoryProvider implements StoryProvider {
 
 	private final Map<ScenarioKey, GeneratedTurn> responses;
 
+	/**
+	 * 판정 대상 텍스트 → 시나리오가 선언한 카테고리 (B-30).
+	 *
+	 * <p><b>키가 텍스트인 이유.</b> 판정기가 받는 것은 요청 좌표가 아니라 <b>이미 생성된 문자열</b>
+	 * 이다 (I-12 — 판정기는 무엇이 그것을 만들었는지 모른다). 그래서 같은 좌표로 되짚지 못하고,
+	 * 시나리오가 만든 텍스트 자체를 키로 삼는다.
+	 */
+	private final Map<String, List<SafetyCategory>> verdicts;
+
 	public FixedStoryProvider(List<FixedStoryScenario> scenarios) {
 		this.responses = index(scenarios);
+		this.verdicts = indexVerdicts(scenarios);
 	}
 
 	@Override
@@ -67,6 +81,23 @@ public class FixedStoryProvider implements StoryProvider {
 	}
 
 	/**
+	 * 시나리오가 선언한 판정 결과를 그대로 돌려준다 (B-30).
+	 *
+	 * <p><b>모델을 부르지 않는다는 성질은 여기서도 같다</b> — 판정 결과 역시 파일이 정한다. 그래서
+	 * 세이프티 경로가 E2E 에서 <b>재현 가능</b>하다: 차단되는 턴을 선언해 두면 언제나 차단된다
+	 * (I-15).
+	 *
+	 * <p><b>선언이 없으면 빈 집합이다.</b> 이것은 스텁이 아니라 <b>"이 텍스트에는 아무것도 걸리지
+	 * 않는다"는 고정 응답</b>이다 (§0.2) — 1단(정규화 + 블록리스트)은 그와 무관하게 그대로 돈다.
+	 */
+	@Override
+	public Set<SafetyCategory> classifySafety(SafetyClassificationRequest request) {
+		Set<SafetyCategory> hits = new LinkedHashSet<>();
+		request.texts().forEach(text -> hits.addAll(this.verdicts.getOrDefault(text, List.of())));
+		return hits;
+	}
+
+	/**
 	 * <b>요약은 이 Provider 의 일이 아니다</b> (B-34).
 	 *
 	 * <p>§0.2 — 스텁으로 통과시키지 않는다. 빈 문자열이나 입력을 되돌려주는 구현을 두면 요약
@@ -81,6 +112,25 @@ public class FixedStoryProvider implements StoryProvider {
 	@Override
 	public OutlineResult draftOutline(OutlineRequest request) {
 		throw new UnsupportedOperationException("draftOutline is B-52; the fixed provider does not draft outlines");
+	}
+
+	/**
+	 * 항목이 만든 문단·선택지 텍스트에 그 항목의 선언을 건다.
+	 *
+	 * <p>판정기는 문단과 선택지를 함께 받으므로(§9.1 의 L2 행) 양쪽 텍스트를 모두 키로 넣는다.
+	 */
+	private static Map<String, List<SafetyCategory>> indexVerdicts(List<FixedStoryScenario> scenarios) {
+		Map<String, List<SafetyCategory>> verdicts = new HashMap<>();
+		for (FixedStoryScenario scenario : scenarios) {
+			for (FixedStoryScenario.Entry entry : scenario.entries()) {
+				if (entry.safetyCategories().isEmpty()) {
+					continue;
+				}
+				entry.paragraphs().forEach(paragraph -> verdicts.put(paragraph.text(), entry.safetyCategories()));
+				entry.choices().forEach(choice -> verdicts.put(choice.text(), entry.safetyCategories()));
+			}
+		}
+		return Map.copyOf(verdicts);
 	}
 
 	private static Map<ScenarioKey, GeneratedTurn> index(List<FixedStoryScenario> scenarios) {

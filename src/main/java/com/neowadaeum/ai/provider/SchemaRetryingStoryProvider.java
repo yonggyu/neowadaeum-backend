@@ -1,10 +1,13 @@
 package com.neowadaeum.ai.provider;
 
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationTimedOutException;
 import com.neowadaeum.play.port.OutputSchemaRejectedException;
 import com.neowadaeum.play.port.TurnRequest;
+import java.util.Set;
 
 /**
  * 출력 스키마를 못 맞춘 응답을 다시 요청한다 (R5.8, R3.3, §6.1-5, B-21).
@@ -103,6 +106,18 @@ public class SchemaRetryingStoryProvider implements StoryProvider {
 	@Override
 	public String summarize(SummaryRequest request) {
 		return this.delegate.summarize(request);
+	}
+
+	/**
+	 * <b>판정에는 재요청을 걸지 않는다</b> (B-30).
+	 *
+	 * <p>여기의 재요청 계약은 §5.2 <b>턴 출력</b> 스키마에 대한 것이다 (R5.8 · R3.3). 판정 응답이
+	 * 형식을 어기면 그것은 <b>판정 실패</b>이고, 판정 실패의 처리는 재요청이 아니라 차단이다
+	 * (fail-closed) — 판정하지 못한 응답을 사용자에게 보내지 않는 것이 요점이다 (I-2).
+	 */
+	@Override
+	public Set<SafetyCategory> classifySafety(SafetyClassificationRequest request) {
+		return this.delegate.classifySafety(request);
 	}
 
 	@Override

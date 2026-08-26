@@ -169,6 +169,17 @@ public class OllamaStoryProvider implements StoryProvider {
 				null, null, AiCallAttempt.current()));
 	}
 
+	/**
+	 * <b>판정 호출은 B-30 의 두 번째 PR 이다.</b> seam 은 열렸지만 이 벤더의 구현은 아직 없다 —
+	 * 스텁으로 빈 집합을 돌려주지 않는다 (§0.2). 빈 집합은 <b>통과</b>이고, 판정하지 않은 것을
+	 * 통과로 바꾸는 것이 이 작업이 없애려는 상태다.
+	 */
+	@Override
+	public java.util.Set<com.neowadaeum.common.spi.SafetyCategory> classifySafety(
+			com.neowadaeum.common.spi.SafetyClassificationRequest request) {
+		throw new UnsupportedOperationException("classifySafety is B-30 (2/3)");
+	}
+
 	@Override
 	public String summarize(SummaryRequest request) {
 		throw new UnsupportedOperationException("summarize is B-34");

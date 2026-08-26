@@ -256,4 +256,18 @@ class PayloadWhitelistValidatorTests {
 		private record Entry(int turnNo, UUID playerRef) {
 		}
 	}
+
+	/**
+	 * <b>판정 페이로드도 선언 대상이다</b> (B-30, I-3).
+	 *
+	 * <p>선언이 없는 타입은 통과하지 못한다 — 새 요청 타입이 검증을 <b>지나가는</b> 것이 아니라
+	 * <b>막히는</b> 쪽이 기본값이어야 한다.
+	 */
+	@Test
+	void I3_the_classification_payload_is_declared_and_carries_only_texts() {
+		PayloadWhitelistValidator validator = PayloadWhitelistValidator.forProviderPayloads();
+
+		validator.validate(new com.neowadaeum.common.spi.SafetyClassificationRequest(
+				java.util.List.of("판정할 문장")));
+	}
 }

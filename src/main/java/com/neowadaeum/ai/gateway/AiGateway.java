@@ -5,8 +5,11 @@ import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.TurnRequest;
+import java.util.Set;
 
 /**
  * Provider 앞단 (§3.3 용어, B-18 골격 · B-19 페이로드 검증).
@@ -73,6 +76,18 @@ public class AiGateway implements StoryProvider {
 	public String summarize(SummaryRequest request) {
 		this.payloadWhitelist.validate(request);
 		return this.active.summarize(request);
+	}
+
+	/**
+	 * 판정 페이로드도 같은 검증을 지난다 (I-3, B-19).
+	 *
+	 * <p>담기는 것이 판정 대상 텍스트뿐이라 지금은 통과가 자명하지만, <b>자명함은 오늘의 성질</b>
+	 * 이다 — 나중에 "판정 정확도를 높이려고" 세션이나 작품 정보를 얹으려는 순간 여기서 막힌다.
+	 */
+	@Override
+	public Set<SafetyCategory> classifySafety(SafetyClassificationRequest request) {
+		this.payloadWhitelist.validate(request);
+		return this.active.classifySafety(request);
 	}
 
 	@Override

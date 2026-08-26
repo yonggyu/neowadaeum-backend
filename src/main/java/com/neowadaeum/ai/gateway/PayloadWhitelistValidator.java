@@ -2,6 +2,7 @@ package com.neowadaeum.ai.gateway;
 
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.SummaryRequest;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.TurnRequest;
 import java.util.ArrayList;
 import java.util.List;
@@ -104,7 +105,10 @@ public class PayloadWhitelistValidator {
 						"recentTurns", "chosenChoiceText", "paragraphs", "paragraphsDigest", "userAction"),
 				SummaryRequest.class, Set.of("previousSummary", "turns", "maxTokens",
 						"turnNo", "chosenChoiceText", "paragraphsDigest"),
-				OutlineRequest.class, Set.of("worldPrompt", "chapterCount", "endingCount")));
+				OutlineRequest.class, Set.of("worldPrompt", "chapterCount", "endingCount"),
+				// B-30 — 판정에 넘어가는 것은 판정 대상 텍스트뿐이다. 세션·작품·사용자에 관한
+				// 이름은 하나도 없고, 늘리려면 이 선언을 먼저 고쳐야 한다 (I-3).
+				SafetyClassificationRequest.class, Set.of("texts")));
 	}
 
 	/**

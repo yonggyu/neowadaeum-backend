@@ -1,10 +1,13 @@
 package com.neowadaeum.ai.provider;
 
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationTimedOutException;
 import com.neowadaeum.play.port.TurnRequest;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -81,6 +84,17 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 	@Override
 	public String summarize(SummaryRequest request) {
 		return withinLimit(() -> this.delegate.summarize(request));
+	}
+
+	/**
+	 * 판정 호출도 같은 제한을 받는다 (B-30).
+	 *
+	 * <p><b>사용자가 이 호출을 기다린다</b> — 응답은 L2 를 통과하기 전까지 사용자에게 도달하지
+	 * 않는다 (I-2). 상한이 없으면 판정기가 느린 날 턴 전체가 그만큼 늦어진다.
+	 */
+	@Override
+	public Set<SafetyCategory> classifySafety(SafetyClassificationRequest request) {
+		return withinLimit(() -> this.delegate.classifySafety(request));
 	}
 
 	@Override
