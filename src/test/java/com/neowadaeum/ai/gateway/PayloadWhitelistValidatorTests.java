@@ -147,7 +147,7 @@ class PayloadWhitelistValidatorTests {
 	@Test
 	void I3_the_real_payloads_pass() {
 		this.validator.validate(TurnRequest.opening(STORY_VERSION, GenerationContexts.sample()));
-		this.validator.validate(new TurnRequest(STORY_VERSION, 3, 2, GenerationContexts.sample()));
+		this.validator.validate(TurnRequest.of(STORY_VERSION, 3, 2, GenerationContexts.sample()));
 		this.validator.validate(new SummaryRequest("직전 요약",
 				List.of(new SummaryRequest.TurnDigest(1, "선택", "요지")), 600));
 		this.validator.validate(new OutlineRequest("세계관", 5, 3));

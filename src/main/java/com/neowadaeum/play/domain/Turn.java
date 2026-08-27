@@ -139,6 +139,7 @@ public class Turn {
 		turn.endingId = draft.endingId();
 		turn.safetyVerdict = draft.safetyVerdict();
 		turn.aiGenerated = draft.aiGenerated();
+		turn.adminFreeInput = draft.adminFreeInput();
 		turn.createdAt = now;
 		return turn;
 	}
@@ -160,7 +161,15 @@ public class Turn {
 			boolean ending,
 			UUID endingId,
 			SafetyVerdict safetyVerdict,
-			boolean aiGenerated) {
+			boolean aiGenerated,
+
+			/**
+			 * 관리자 자유입력으로 만들어진 턴인가 (R14.2).
+			 *
+			 * <p><b>본문을 만든 것은 여전히 AI 다.</b> 이 값이 표시하는 것은 <b>이번 턴의
+			 * 행동이 어디서 왔는가</b>이며, {@code aiGenerated} 와 다른 축이다.
+			 */
+			boolean adminFreeInput) {
 
 		public TurnDraft {
 			if (safetyVerdict == null) {

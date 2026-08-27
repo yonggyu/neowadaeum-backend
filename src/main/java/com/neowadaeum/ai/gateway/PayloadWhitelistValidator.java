@@ -100,7 +100,7 @@ public class PayloadWhitelistValidator {
 		return new PayloadWhitelistValidator(Map.of(
 				// B-22 로 늘어난 이름들이 여기 있다. TurnRequest 가 참조만 나르던 시절에는 셋이었다.
 				// 늘어난 것은 전부 작품 데이터와 서버가 만든 상태다 — 회원 식별정보는 없다 (I-3).
-				TurnRequest.class, Set.of("storyVersionRef", "turnNo", "chosenChoiceOrder", "context",
+				TurnRequest.class, Set.of("storyVersionRef", "turnNo", "chosenChoiceOrder", "freeInput", "context",
 						"worldPrompt", "characters", "name", "persona", "gameState", "summary",
 						"recentTurns", "chosenChoiceText", "paragraphs", "paragraphsDigest", "userAction"),
 				SummaryRequest.class, Set.of("previousSummary", "turns", "maxTokens",

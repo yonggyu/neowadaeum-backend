@@ -51,7 +51,11 @@ class GeneratedTurnContractTests {
 	void I3_request_has_no_component_that_could_carry_member_identity() {
 		List<String> components = componentNames(TurnRequest.class);
 
-		assertThat(components).containsExactly("storyVersionRef", "turnNo", "chosenChoiceOrder", "context");
+		// B-43 으로 freeInput 이 늘었다. 관리자가 넣은 **행동 문장**이며 회원을 가리키지 않는다 —
+		// 그리고 L1 을 통과한 것만 여기 온다 (I-17). 목록을 늘리는 것은 의식적인 결정이어야 하므로
+		// containsExactly 를 유지한다.
+		assertThat(components)
+				.containsExactly("storyVersionRef", "turnNo", "chosenChoiceOrder", "freeInput", "context");
 		assertThat(components).doesNotContain("playerRef", "player_ref", "userId", "email",
 				"birthDate", "ip", "socialId");
 
