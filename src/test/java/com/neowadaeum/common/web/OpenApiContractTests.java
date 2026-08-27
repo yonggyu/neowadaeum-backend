@@ -10,6 +10,7 @@ import com.neowadaeum.catalog.query.GenreView;
 import com.neowadaeum.catalog.query.StoryCardView;
 import com.neowadaeum.play.api.HistoryView;
 import com.neowadaeum.play.api.LibraryView;
+import com.neowadaeum.play.api.MyStoriesView;
 import com.neowadaeum.play.api.ResumeView;
 import com.neowadaeum.play.api.StoryDetailResponse;
 import com.neowadaeum.play.api.TurnView;
@@ -268,6 +269,32 @@ class OpenApiContractTests {
 		assertThat(propertiesOf("HistoryItem")).containsAll(recordComponentsOf(HistoryView.Item.class));
 		assertThat(propertiesOf("HistoryItem")).doesNotContain("choiceId");
 		assertThat(recordComponentsOf(HistoryView.Item.class)).doesNotContain("choiceId");
+	}
+
+	/** 내 것들 응답의 모든 필드가 계약에 선언되어 있다 (B-36). */
+	@Test
+	void B36_implemented_my_stories_fields_are_all_declared() {
+		assertThat(propertiesOf("MySessionsResponse"))
+				.containsAll(recordComponentsOf(MyStoriesView.Sessions.class));
+		assertThat(propertiesOf("MySessionItem"))
+				.containsAll(recordComponentsOf(MyStoriesView.SessionItem.class));
+		assertThat(propertiesOf("MyStoriesResponse"))
+				.containsAll(recordComponentsOf(MyStoriesView.Stories.class));
+		assertThat(propertiesOf("MyStoryItem"))
+				.containsAll(recordComponentsOf(MyStoriesView.StoryItem.class));
+	}
+
+	/**
+	 * {@code status} 쿼리 값이 계약과 같다 (§13-6).
+	 *
+	 * <p><b>{@code in_progress} 는 존재하지 않는 상태였다.</b> 계약이 그것을 되살리면 구현이
+	 * 조용히 0건을 돌려주는 조회로 돌아간다.
+	 */
+	@Test
+	void B36_my_session_status_values_match_the_contract() {
+		assertThat(propertiesOf("MySessionItem")).contains("status");
+		assertThat(schema("MySessionItem").toString()).contains("active").contains("completed")
+				.doesNotContain("in_progress]");
 	}
 
 	// ── 4. S-11 ──────────────────────────────────────────────

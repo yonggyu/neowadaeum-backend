@@ -4,7 +4,10 @@ import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SessionStatus;
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 import org.springframework.data.domain.Limit;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -36,6 +39,35 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 	 */
 	List<PlaySession> findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(UUID playerRef,
 			SessionStatus status, Limit limit);
+
+	/**
+	 * 작품별 플레이 횟수 (§13.7, R13.4).
+	 *
+	 * <p>지운 세션은 세지 않는다 — 사용자가 없앤 것을 작성자의 지표로 삼지 않는다.
+	 *
+	 * <p><b>도달률(B-39)과 다른 값이다.</b> 그쪽은 배치가 갱신하는 집계이고 이것은 목록 한 줄을
+	 * 그리기 위한 즉석 계산이다. 작품 수가 적은 화면이므로 지금은 이것으로 충분하다.
+	 */
+	long countByStoryIdAndDeletedAtIsNull(UUID storyId);
+
+	/**
+	 * 내 세션 목록의 한 쪽 (§13.7, B-36).
+	 *
+	 * <p><b>{@code active} 와 {@code completed} 만 부른다</b> (§13-6). 버려지거나 만료된 세션은
+	 * 목록에 없다 — 사용자가 이어갈 수도 되돌아볼 수도 없는 것을 보여 줄 이유가 없다.
+	 *
+	 * <p>커서는 {@code updatedAt} 이다. 같은 시각이 둘일 수 있으므로 {@code id} 를 함께 본다 —
+	 * 그러지 않으면 쪽 경계에서 겹치거나 사라진다.
+	 */
+	@Query("""
+			SELECT s FROM PlaySession s
+			WHERE s.playerRef = :playerRef AND s.status = :status AND s.deletedAt IS NULL
+			  AND (:cursorAt IS NULL OR (s.updatedAt < :cursorAt
+			       OR (s.updatedAt = :cursorAt AND s.id < :cursorId)))
+			ORDER BY s.updatedAt DESC, s.id DESC
+			""")
+	List<PlaySession> findMine(@Param("playerRef") UUID playerRef, @Param("status") SessionStatus status,
+			@Param("cursorAt") Instant cursorAt, @Param("cursorId") UUID cursorId, Limit limit);
 
 	/**
 	 * 이 작품의 내 진행 중 세션 (§13.3).
