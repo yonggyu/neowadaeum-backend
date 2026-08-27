@@ -1,0 +1,147 @@
+package com.neowadaeum.authoring.review;
+
+import com.neowadaeum.authoring.draft.DraftService;
+import com.neowadaeum.authoring.draft.DraftStoryDefinition;
+import com.neowadaeum.authoring.draft.StoryDraft;
+import com.neowadaeum.authoring.precheck.PrecheckFinding;
+import com.neowadaeum.authoring.precheck.PrecheckScreen;
+import com.neowadaeum.catalog.publish.StoryDefinition;
+import com.neowadaeum.catalog.publish.StoryPublisher;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+/**
+ * 제출과 자동 검수 (§8.3, R8.5~R8.8).
+ *
+ * <p><b>승인이 곧 게시다</b> (R8.8) — 통과하면 버전이 발행되고 현재가 된다. 나누면 <b>승인됐는데
+ * 플레이할 수 없는</b> 작품이 남는다.
+ *
+ * <p><b>{@code public} 은 자동 검수만으로 승인되지 않는다</b> (R8.6). 자동이 통과시켜도
+ * {@code in_review} 에 머물며, 사람이 본 뒤에 열린다 (B-55).
+ *
+ * <p><b>반려 사유는 카테고리만이다</b> (R8.7). 어떤 항목에 걸렸는지를 알려 주면 <b>우회 학습을
+ * 돕는다</b>.
+ *
+ * <p><b>같은 L1 을 쓴다.</b> 작성 중 통과한 것이 제출에서 걸리면 작성 중 피드백은 거짓 안심이
+ * 되고, 반대면 제출 검수가 무의미하다.
+ */
+@Service
+public class SubmissionService {
+
+	private final DraftService drafts;
+
+	private final PrecheckScreen screen;
+
+	private final StoryPublisher publisher;
+
+	private final StoryReviewRepository reviews;
+
+	private final Clock clock;
+
+	private final TransactionTemplate transactions;
+
+	public SubmissionService(DraftService drafts, PrecheckScreen screen, StoryPublisher publisher,
+			StoryReviewRepository reviews, Clock clock,
+			PlatformTransactionManager catalogTransactionManager) {
+		this.drafts = drafts;
+		this.screen = screen;
+		this.publisher = publisher;
+		this.reviews = reviews;
+		this.clock = clock;
+		this.transactions = new TransactionTemplate(catalogTransactionManager);
+	}
+
+	/**
+	 * 제출한다.
+	 *
+	 * <p><b>검수가 먼저이고 발행이 나중이다.</b> 순서를 뒤집으면 반려된 원고의 작품이 카탈로그에
+	 * 남는다 — 아무도 볼 수 없더라도 그것은 쌓인다.
+	 */
+	public SubmissionOutcome submit(UUID authorRef, UUID draftId, Visibility visibility) {
+		StoryDraft draft = this.drafts.read(authorRef, draftId);
+		StoryDefinition definition = DraftStoryDefinition.from(authorRef, draft.getPayload());
+
+		PrecheckScreen.Result screened = this.screen.screen(fieldsOf(definition));
+		if (screened.state() == com.neowadaeum.authoring.draft.DraftSafetyState.BLOCKED) {
+			return rejected(screened.findings());
+		}
+		return approve(definition, visibility);
+	}
+
+	/**
+	 * <b>전 필드와 챕터·엔딩을 함께 본다</b> (R8.5).
+	 *
+	 * <p>미리보기 3턴 출력은 여기서 다시 보지 않는다 (§13-38) — 그것은 이미 L2 를 지났다.
+	 */
+	private static Map<String, String> fieldsOf(StoryDefinition definition) {
+		Map<String, String> fields = new LinkedHashMap<>();
+		fields.put("title", definition.title());
+		fields.put("shortDesc", definition.shortDesc());
+		fields.put("worldIntro", definition.worldIntro());
+		fields.put("worldPrompt", definition.worldPrompt());
+		definition.chapters().forEach(chapter -> {
+			fields.put("chapters[%d].title".formatted(chapter.chapterNo()), chapter.title());
+			fields.put("chapters[%d].summarySeed".formatted(chapter.chapterNo()),
+					chapter.summarySeed());
+		});
+		definition.endings().forEach(ending -> {
+			fields.put("endings[%d].label".formatted(ending.endingNo()), ending.label());
+			fields.put("endings[%d].epilogueText".formatted(ending.endingNo()),
+					ending.epilogueText());
+		});
+		fields.values().removeIf(java.util.Objects::isNull);
+		return fields;
+	}
+
+	/** <b>반려된 원고는 작품을 만들지 않는다.</b> 아무도 볼 수 없더라도 그것은 쌓인다. */
+	private SubmissionOutcome rejected(List<PrecheckFinding> findings) {
+		Set<String> reasons = new LinkedHashSet<>();
+		findings.forEach(finding -> reasons.add(finding.kind()));
+		return new SubmissionOutcome(null, ReviewStatus.REJECTED, Visibility.PRIVATE,
+				List.copyOf(reasons));
+	}
+
+	/**
+	 * 자동 검수를 통과했다.
+	 *
+	 * <p><b>{@code public} 은 여기서 열리지 않는다</b> (R8.6) — {@code in_review} 로 두고 사람을
+	 * 기다린다. 그동안 작품은 {@code private} 이다: <b>검수 중인 작품이 보이면 검수의 의미가 없다.</b>
+	 */
+	private SubmissionOutcome approve(StoryDefinition definition, Visibility visibility) {
+		boolean needsHuman = visibility == Visibility.PUBLIC;
+		ReviewStatus status = needsHuman ? ReviewStatus.IN_REVIEW : ReviewStatus.APPROVED;
+		Visibility effective = needsHuman ? Visibility.PRIVATE : visibility;
+
+		return this.transactions.execute(status2 -> {
+			StoryPublisher.PublishedVersion published = this.publisher.publishNew(definition,
+					"{\"flags\":[]}");
+			this.publisher.applyReview(published.storyId(), status.columnValue(),
+					effective.columnValue());
+			if (!needsHuman) {
+				// R8.8 — 승인이 곧 게시다. 인간 검수가 남았으면 아직 현재 버전이 아니다.
+				this.publisher.markCurrent(published.storyId(), published.versionId());
+			}
+			this.reviews.save(StoryReview.of(published.storyId(), ReviewStage.AUTO,
+					ReviewVerdict.PASS, "[]", null, null, Instant.now(this.clock)));
+			return new SubmissionOutcome(published.storyId(), status, effective, List.of());
+		});
+	}
+
+	/**
+	 * 제출 결과.
+	 *
+	 * <p><b>비율도 임계값도 담지 않는다</b> (§13-12, S-11) — 값을 알면 그 아래로 관리할 수 있다.
+	 */
+	public record SubmissionOutcome(UUID storyId, ReviewStatus reviewStatus, Visibility visibility,
+			List<String> rejectReasons) {
+	}
+}
