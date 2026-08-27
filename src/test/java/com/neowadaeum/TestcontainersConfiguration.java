@@ -101,6 +101,25 @@ public class TestcontainersConfiguration {
 				() -> "test-only-jwt-signing-material-not-a-real-secret");
 	}
 
+	/**
+	 * 호출 한도를 테스트에서 올린다 (B-38).
+	 *
+	 * <p><b>§15 의 값이 테스트를 막는다.</b> 40턴 E2E(B-44)는 <b>한 테스트가 정당하게 40번을
+	 * 넘게 부르는</b> 경우이며, 사람이 아니라 기계이므로 분당 10회 제한의 대상이 아니다.
+	 *
+	 * <p><b>값을 낮추는 대신 올린다.</b> 낮추면 통과하는 테스트가 늘지만 그것은 한도를 끄는 것과
+	 * 같다 — 여기서는 <b>메커니즘</b>이 검증 대상이고({@code RateLimitIntegrationTests} 가 창을
+	 * 소진해 확인한다), <b>§15 의 값 자체</b>는 컨테이너 없이 {@code RateLimitPropertiesTests} 가
+	 * 못박는다.
+	 */
+	@Bean
+	DynamicPropertyRegistrar rateLimitRegistrar() {
+		return registry -> {
+			registry.add("app.rate-limit.turn-per-minute", () -> 1000);
+			registry.add("app.rate-limit.turn-per-day", () -> 5000);
+		};
+	}
+
 	/** DataSourceConfiguration 이 {@code currentSchema} 를 요구한다. 빠지면 부팅이 실패한다. */
 	private static String jdbcUrl(PostgreSQLContainer container, StoreSchema store) {
 		String url = container.getJdbcUrl();
