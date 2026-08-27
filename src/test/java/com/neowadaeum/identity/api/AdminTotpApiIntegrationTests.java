@@ -5,8 +5,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.identity.auth.AdminAccessGuard;
 import com.neowadaeum.identity.domain.User;
@@ -22,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * B-40 — 관리자 2FA 가 <b>실제 요청 경로에서</b> 동작한다 (R14.6, S-4).
@@ -36,6 +36,9 @@ class AdminTotpApiIntegrationTests extends ContainerTestBase {
 
 	private static final String BASE = "/api/v1/admin/2fa";
 
+	/** 컨텍스트의 빈이 아니라 테스트가 자기 것을 쓴다 — 응답 <b>문자열</b>을 보는 것이 목적이다. */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
+
 	@Autowired
 	private MockMvc mvc;
 
@@ -48,9 +51,6 @@ class AdminTotpApiIntegrationTests extends ContainerTestBase {
 	@Autowired
 	@org.springframework.beans.factory.annotation.Qualifier("identityDataSource")
 	private javax.sql.DataSource identity;
-
-	@Autowired
-	private ObjectMapper json;
 
 	@AfterEach
 	void clear() {
@@ -180,7 +180,7 @@ class AdminTotpApiIntegrationTests extends ContainerTestBase {
 	private String enroll() throws Exception {
 		String body = this.mvc.perform(post(BASE + "/enroll").with(asPlayer(ADMIN_PLAYER_REF)))
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-		return this.json.readTree(body).get("secret").asText();
+		return JSON.readTree(body).get("secret").asText();
 	}
 
 	private JsonNode postCode(String path, String code) throws Exception {
@@ -188,7 +188,7 @@ class AdminTotpApiIntegrationTests extends ContainerTestBase {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"code\":\"%s\"}".formatted(code)))
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-		return this.json.readTree(body);
+		return JSON.readTree(body);
 	}
 
 	private String currentCode(String base32Secret) {
