@@ -67,7 +67,13 @@ class SessionHistoryIntegrationTests extends ContainerTestBase {
 		assertThat(JSON.readTree(raw).path("items")).isNotEmpty();
 	}
 
-	/** 고른 선택지의 <b>문구</b>가 온다 — 식별자가 아니다. */
+	/**
+	 * 고른 선택지의 <b>문구</b>가 온다 — 식별자가 아니다.
+	 *
+	 * <p>이 테스트가 CI 에서 처음 빨개지며 <b>아무도 {@code chosen_choice_id} 를 쓰지 않는다</b>는
+	 * 사실을 드러냈다. 컬럼은 S-2 부터 있었고 §4.3-3 이 기록을 요구했지만 파이프라인에 그 자리가
+	 * 없었다 — 기록 화면이 처음 그 값을 읽는 소비자였다.
+	 */
 	@Test
 	void S13_6_the_chosen_choice_comes_as_text() throws Exception {
 		UUID sessionId = playTurns(2);

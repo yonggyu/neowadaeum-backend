@@ -196,6 +196,22 @@ public class Turn {
 		return this.choices;
 	}
 
+	/**
+	 * 이 턴에서 무엇을 골랐는지 기록한다 (§4.3-3).
+	 *
+	 * <p><b>선택과 시각이 함께 간다.</b> 마이그레이션의 CHECK 가 둘 중 하나만 있는 상태를
+	 * 거부하며(V2), {@code isPending} 판정(§13-9)과 기록 화면(§13.6)이 이 값을 읽는다.
+	 *
+	 * <p>이미 기록된 턴은 바뀌지 않는다 — 지나간 선택을 나중에 고치는 경로를 만들지 않는다.
+	 */
+	public void recordChoice(String choiceId, Instant now) {
+		if (this.chosenChoiceId != null) {
+			return;
+		}
+		this.chosenChoiceId = choiceId;
+		this.chosenAt = now;
+	}
+
 	public String getChosenChoiceId() {
 		return this.chosenChoiceId;
 	}

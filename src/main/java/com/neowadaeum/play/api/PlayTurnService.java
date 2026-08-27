@@ -88,7 +88,7 @@ public class PlayTurnService {
 					.orElseThrow(() -> new ApiException(ErrorCode.CONCURRENT_GENERATION));
 		}
 
-		return generate(playerRef, session, sessionId, chosenOrder, key);
+		return generate(playerRef, session, sessionId, chosenOrder, request.choiceId(), key);
 	}
 
 	/**
@@ -97,11 +97,12 @@ public class PlayTurnService {
 	 * <p><b>{@code finally} 에서 락을 푼다.</b> 실패 경로에서 빠뜨리면 그 계정은 TTL 이 지날 때까지
 	 * 아무것도 못 한다.
 	 */
-	private TurnView generate(UUID playerRef, PlaySession session, UUID sessionId, int chosenOrder, String key) {
+	private TurnView generate(UUID playerRef, PlaySession session, UUID sessionId, int chosenOrder,
+			String chosenChoiceId, String key) {
 		// §4.3-2 — 동시 생성 락(계정당 1개).
 		this.guards.acquireGenerationLock(playerRef);
 		try {
-			TurnOutcome outcome = this.pipeline.advance(sessionId, chosenOrder);
+			TurnOutcome outcome = this.pipeline.advance(sessionId, chosenOrder, chosenChoiceId);
 			if (outcome.status() == TurnOutcome.TurnStatus.SAFETY_BLOCKED) {
 				throw safetyBlocked(outcome);
 			}
