@@ -91,6 +91,15 @@ public class Turn {
 	@Column(name = "is_admin_free_input", nullable = false, updatable = false)
 	private boolean adminFreeInput;
 
+	/**
+	 * 이 턴의 본문이 AI 가 만든 것인가 (R11.2, §11).
+	 *
+	 * <p><b>응답을 만들 때 계산하지 않는다.</b> 계산하면 그 값은 응답 코드의 성질이지 이 턴의
+	 * 사실이 아니고, 기록(B-35)이나 롤백 후 재생(R14.4)에서 같은 턴이 다른 값을 갖게 된다.
+	 */
+	@Column(name = "is_ai_generated", nullable = false, updatable = false)
+	private boolean aiGenerated;
+
 	/** 화자 이름. 표시 전용이며 값이 없을 수 있다 (§5.2). */
 	@Column(name = "speaker_name", updatable = false)
 	private String speakerName;
@@ -129,6 +138,7 @@ public class Turn {
 		turn.ending = draft.ending();
 		turn.endingId = draft.endingId();
 		turn.safetyVerdict = draft.safetyVerdict();
+		turn.aiGenerated = draft.aiGenerated();
 		turn.createdAt = now;
 		return turn;
 	}
@@ -149,7 +159,8 @@ public class Turn {
 			boolean chapterChanged,
 			boolean ending,
 			UUID endingId,
-			SafetyVerdict safetyVerdict) {
+			SafetyVerdict safetyVerdict,
+			boolean aiGenerated) {
 
 		public TurnDraft {
 			if (safetyVerdict == null) {
@@ -207,6 +218,11 @@ public class Turn {
 
 	public SafetyVerdict getSafetyVerdict() {
 		return this.safetyVerdict;
+	}
+
+	/** R11.2 — 이 턴이 만들어진 경로의 사실이다. */
+	public boolean isAiGenerated() {
+		return this.aiGenerated;
 	}
 
 	public boolean isAdminFreeInput() {

@@ -79,12 +79,14 @@ class SessionMappingTests extends ContainerTestBase {
 				[{"choiceId": "1-0-a1b2c3", "text": "문을 연다"}, {"choiceId": "1-1-d4e5f6", "text": "돌아선다"}]""";
 
 		Turn saved = this.turns.save(Turn.create(new Turn.TurnDraft(session.getId(), 1, 1, paragraphs, choices,
-				null, false, false, null, SafetyVerdict.PASS), NOW));
+				null, false, false, null, SafetyVerdict.PASS, true), NOW));
 		Turn found = this.turns.findById(saved.getId()).orElseThrow();
 
 		assertThat(JSON.readTree(found.getParagraphs())).isEqualTo(JSON.readTree(paragraphs));
 		assertThat(JSON.readTree(found.getChoices())).isEqualTo(JSON.readTree(choices));
 		assertThat(found.getSessionId()).isEqualTo(session.getId());
+		// R11.2 — 저장된 사실이다. 응답을 만들 때 계산하지 않는다.
+		assertThat(found.isAiGenerated()).isTrue();
 		assertThat(found.getTurnNo()).isEqualTo(1);
 		assertThat(found.isEnding()).isFalse();
 		// §13-9 isPending — 아직 고르지 않은 마지막 턴이다.
@@ -107,7 +109,7 @@ class SessionMappingTests extends ContainerTestBase {
 	@Test
 	void I2_turn_cannot_be_created_without_a_safety_verdict() {
 		assertThatThrownBy(() -> Turn.create(new Turn.TurnDraft(UUID.randomUUID(), 1, 1, "[]", "[]",
-				null, false, false, null, null), NOW))
+				null, false, false, null, null, true), NOW))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 

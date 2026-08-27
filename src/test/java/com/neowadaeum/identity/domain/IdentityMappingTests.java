@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ContainerTestBase;
+import com.neowadaeum.common.spi.NoticeSurface;
 import com.neowadaeum.identity.repository.AiNoticeImpressionRepository;
 import com.neowadaeum.identity.repository.ConsentLogRepository;
 import com.neowadaeum.identity.repository.OauthIdentityRepository;

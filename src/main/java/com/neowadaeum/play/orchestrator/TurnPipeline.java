@@ -335,7 +335,9 @@ public class TurnPipeline {
 				JSON.writeValueAsString(generated.result().paragraphs()),
 				choicesJson, generated.result().leadSpeakerName(),
 				chapterDecision.changed(), ended, endingId,
-				generated.verdict()), now));
+				// R11.2 — 이 경로는 Provider 가 만든 본문만 저장한다 (§4.3-5·6). 다른 경로가
+				// 생기면 그 경로가 자기 사실을 넣는다. 여기서 정하는 것은 이 경로의 사실이다.
+				generated.verdict(), true), now));
 
 		// I-5 — append. 덮어쓰지 않는다.
 		this.snapshots.save(GameStateSnapshot.capture(context.sessionId(), newTurnNo,

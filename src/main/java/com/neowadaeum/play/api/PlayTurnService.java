@@ -176,7 +176,9 @@ public class PlayTurnService {
 				turn.isEnding(),
 				turn.getEndingId(),
 				outcome.endingIndex(),
-				turn.isEnding() ? outcome.totalEndings() : null);
+				turn.isEnding() ? outcome.totalEndings() : null,
+				// R11.2 — 저장된 사실을 그대로 읽는다. 여기서 판단하지 않는다.
+				turn.isAiGenerated());
 	}
 
 	// ── 검증 ────────────────────────────────────────────────
