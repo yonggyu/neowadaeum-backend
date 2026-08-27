@@ -1,7 +1,6 @@
 package com.neowadaeum.play.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.neowadaeum.ContainerTestBase;
@@ -24,8 +23,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>S-9-1 이 파이프라인을 만들었고, 여기서 HTTP 로 열린다. 시작 → 턴 → 엔딩이 실제 요청으로
  * 돌고, 잘못된 요청이 <b>상태를 바꾸지 않고</b> 거절되는지 함께 본다.
  *
- * <p>{@code dev} 고정 {@code player_ref} 때문에 "작품당 active 세션 1개"(§13-9)가 테스트 사이에
+ * <p>테스트가 같은 {@code playerRef} 를 쓰므로 "작품당 active 세션 1개"(§13-9)가 테스트 사이에
  * 걸린다 — 매 테스트 전에 이 작품의 플레이 기록을 비운다.
+ *
+ * <p><b>모든 요청이 토큰을 싣는다</b> (B-12, #34). 고정 {@code player_ref} 우회는 사라졌고,
+ * {@link com.neowadaeum.ContainerTestBase#asPlayer()} 가 실제 발급기의 토큰을 헤더로 붙인다.
  */
 class PlayApiIntegrationTests extends ContainerTestBase {
 
@@ -55,18 +57,53 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	// ── 정상 경로 ───────────────────────────────────────────
 
 	/**
-	 * CSRF 토큰 없이는 거절된다.
+	 * <b>토큰 없이는 거절된다</b> (B-12, #34).
 	 *
-	 * <p>인증 우회는 <b>인증을 없앤 것이지 요청 위조를 허용한 것이 아니다.</b> 토큰이 없으면 남의
-	 * 사이트가 고정 {@code player_ref} 의 세션을 만들 수 있다 — 초안의 {@code csrf().disable()} 을
-	 * CodeQL 이 high 로 잡았고 그 지적이 맞았다.
+	 * <p>이 자리에는 CSRF 토큰 검사가 있었다. 그때는 <b>인증이 우회된 상태</b>였고, 남의 사이트가
+	 * 고정 {@code player_ref} 의 세션을 만드는 것을 CSRF 가 막았다. 이제 자격 증명이
+	 * {@code Authorization} 헤더로만 오므로 브라우저가 자동으로 실어 보내는 것이 없고,
+	 * <b>막아야 할 것은 위조가 아니라 인증 부재</b>다.
 	 */
 	@Test
-	void S9_2_a_request_without_a_csrf_token_is_rejected() throws Exception {
+	void S34_a_request_without_a_token_is_rejected() throws Exception {
 		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY))
-				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(403));
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(401))
+				.andExpect(result -> assertThat(errorOf(result)).isEqualTo("UNAUTHENTICATED"));
 
 		assertThat(this.sessions.count()).as("거절된 요청이 세션을 만들면 안 된다").isZero();
+	}
+
+	/** 위조·만료 토큰도 같은 응답이다. 어느 쪽이 틀렸는지 알려주지 않는다 (S-6). */
+	@Test
+	void S34_a_forged_token_is_indistinguishable_from_no_token() throws Exception {
+		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY)
+						.header("Authorization", "Bearer not.a.real.token"))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(401))
+				.andExpect(result -> assertThat(errorOf(result)).isEqualTo("UNAUTHENTICATED"));
+
+		assertThat(this.sessions.count()).isZero();
+	}
+
+	/**
+	 * <b>남의 세션에 턴을 더할 수 없다.</b>
+	 *
+	 * <p>우회가 있던 동안에는 확인할 수 없던 성질이다 — 모든 요청이 같은 {@code playerRef} 였다.
+	 */
+	@Test
+	void S34_another_member_cannot_advance_someone_elses_session() throws Exception {
+		JsonNode start = startSession();
+		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
+		String choiceId = start.path("turn").path("choices").get(0).path("choiceId").asString();
+
+		this.mockMvc.perform(post("/api/v1/sessions/{sessionId}/turns", sessionId)
+						.with(asPlayer(UUID.randomUUID()))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"choiceId\":\"%s\",\"turnNo\":1}".formatted(choiceId)))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(404));
+
+		assertThat(this.sessions.findById(sessionId).orElseThrow().getTurnNo())
+				.as("남의 요청이 세션을 움직이면 안 된다")
+				.isEqualTo(1);
 	}
 
 	/** §4.2 — 세션 시작과 함께 턴 1 이 온다. 별도 요청이 필요 없다. */
@@ -118,7 +155,7 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	void S13_9_starting_a_second_session_for_the_same_story_is_rejected() throws Exception {
 		startSession();
 
-		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(csrf()))
+		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(asPlayer()))
 				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(409))
 				.andExpect(result -> assertThat(errorOf(result)).isEqualTo("SESSION_ALREADY_ACTIVE"));
 	}
@@ -209,7 +246,7 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	// ── 보조 ────────────────────────────────────────────────
 
 	private JsonNode startSession() throws Exception {
-		MvcResult result = this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(csrf()))
+		MvcResult result = this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(asPlayer()))
 				.andReturn();
 		assertThat(result.getResponse().getStatus()).isEqualTo(201);
 		return JSON.readTree(result.getResponse().getContentAsString());
@@ -217,7 +254,7 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 
 	private JsonNode advance(UUID sessionId, String choiceId, int turnNo, int expectedStatus) throws Exception {
 		MvcResult result = this.mockMvc.perform(post("/api/v1/sessions/{sessionId}/turns", sessionId)
-						.with(csrf())
+						.with(asPlayer())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"choiceId\":\"%s\",\"turnNo\":%d}".formatted(choiceId, turnNo)))
 				.andReturn();

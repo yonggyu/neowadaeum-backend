@@ -1,6 +1,11 @@
 package com.neowadaeum;
 
+import com.neowadaeum.identity.auth.AuthTokenService;
+import java.util.UUID;
 import org.junit.jupiter.api.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
@@ -21,14 +26,12 @@ import org.springframework.context.annotation.Import;
  * 붙이지 말고 <b>왜 필요한지와 함께</b> 이 클래스에 반영하거나 별도 베이스 클래스를 만든다. 컨텍스트가
  * 한 벌 더 뜬다는 사실이 리뷰에 보여야 한다.
  *
- * <p><b>{@code dev} 프로파일로 돈다.</b> 슬라이스는 인증(B-07 · B-12)을 제외하고 {@code dev} 고정
- * {@code player_ref} 로 대체했다(ADR-0004). 그 구현은 {@code @Profile("dev")} 이고 컨트롤러가 그것을
- * <b>필수 인자로</b> 받으므로, 프로파일이 없으면 컨텍스트 자체가 뜨지 않는다 — 실제로 이 애노테이션을
- * 붙이기 전에 그렇게 확인했다.
+ * <p><b>{@code dev} 프로파일로 돈다.</b> 결정론 Provider(S-3)와 dev 콘솔(B-47)·계약 문서(B-06)가
+ * 그 프로파일에서만 존재하기 때문이다. <b>인증은 프로파일과 무관하다</b> — B-12 가 고정
+ * {@code player_ref} 우회를 제거했으므로 {@code dev} 에서도 토큰이 필요하다 (#34).
  *
- * <p><b>그 실패가 버그가 아니라 설계다.</b> 인증 없이 플레이 경로가 열리는 것을 막는 마지막 장치이며,
- * {@code prod} 와 무프로파일에서 우회 빈이 만들어지지 않는다는 것은
- * {@code DevPlayerRefBypassTests} 가 따로 검증한다 (#34).
+ * <p>그래서 {@link #asPlayer()} 를 둔다. <b>실제 발급기가 만든 토큰을 실제 헤더로</b> 보낸다 —
+ * SecurityContext 를 직접 채우면 인증 필터가 도는지는 확인되지 않는다.
  *
  * <p>{@code @AutoConfigureMockMvc} 도 여기에 둔다. 컨트롤러 테스트마다 붙이면 캐시 키가 갈라져
  * 컨텍스트가 그 수만큼 더 뜬다 — 위와 같은 이유다.
@@ -41,4 +44,29 @@ import org.springframework.context.annotation.Import;
 @AutoConfigureMockMvc
 @SpringBootTest
 public abstract class ContainerTestBase {
+
+	/**
+	 * 테스트가 기본으로 쓰는 회원.
+	 *
+	 * <p>고정 값인 것은 편의다 — <b>인증 우회가 아니다.</b> 이 값으로 토큰을 만들려면 서명 키가
+	 * 필요하고, 서버는 그 토큰을 다른 요청과 똑같이 검증한다.
+	 */
+	protected static final UUID TEST_PLAYER_REF = UUID.fromString("00000000-0000-4000-8000-000000000001");
+
+	@Autowired
+	private AuthTokenService authTokens;
+
+	/** 기본 회원으로 요청한다. */
+	protected RequestPostProcessor asPlayer() {
+		return asPlayer(TEST_PLAYER_REF);
+	}
+
+	/** 지정한 회원으로 요청한다. 소유자 판정 테스트가 쓴다. */
+	protected RequestPostProcessor asPlayer(UUID playerRef) {
+		String token = this.authTokens.issue(playerRef).accessToken();
+		return request -> {
+			request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+			return request;
+		};
+	}
 }
