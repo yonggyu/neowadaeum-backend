@@ -37,5 +37,13 @@ fi
 gitleaks protect --staged --redact --no-banner || fail "시크릿이 탐지됐다.
   커밋하지 않는다. 이미 푸시된 값이라면 삭제가 아니라 로테이션이 먼저다 (§7.1-4)."
 
+step "pre-commit 훅 설치 확인 (S-1)"
+# S-1 은 훅과 CI 를 **둘 다** 요구한다. 훅은 .git/hooks 에 있어 클론으로 전파되지 않으므로
+# 레포의 .githooks 를 가리키게 해야 한다 (#26). 막지 않고 알리기만 한다 — 이 스크립트의
+# 목적은 예고이지 게이트가 아니다 (§8.9).
+if [ "$(git config --get core.hooksPath || true)" != ".githooks" ]; then
+  printf '\033[33m  ! pre-commit 훅이 설치되어 있지 않다. 설치: git config core.hooksPath .githooks\033[0m\n'
+fi
+
 printf '\n\033[32m✓ 통과. 푸시해도 된다.\033[0m\n'
 printf '  남은 것: PR 본문 작성 · diff 전수 확인(§8.9) · CI 3잡\n'
