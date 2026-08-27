@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
@@ -26,7 +27,10 @@ import org.springframework.core.io.ClassPathResource;
  */
 class IdentityEnumContractTests {
 
-	private static final String MIGRATION = "db/migration/identity/V2__identity_core.sql";
+	/** 값 목록이 두 마이그레이션에 나뉘어 있다 — V2 는 회원·로그인, V3 는 동의·고지다. */
+	private static final List<String> MIGRATIONS = List.of(
+			"db/migration/identity/V2__identity_core.sql",
+			"db/migration/identity/V3__identity_consent.sql");
 
 	/** §2.2 — {@code user.status} 3종. */
 	@Test
@@ -40,11 +44,26 @@ class IdentityEnumContractTests {
 		assertThat(checkedValues("provider")).containsExactlyInAnyOrderElementsOf(dbNames(OauthProvider.values()));
 	}
 
+	/** §2.2 — {@code consent_log.consent_type} 4종. */
+	@Test
+	void S2_2_consent_type_matches_the_check_constraint() {
+		assertThat(checkedValues("consent_type"))
+				.containsExactlyInAnyOrderElementsOf(dbNames(ConsentType.values()));
+	}
+
+	/** §2.7 — {@code ai_notice_impression.surface} 4종. */
+	@Test
+	void S2_7_notice_surface_matches_the_check_constraint() {
+		assertThat(checkedValues("surface")).containsExactlyInAnyOrderElementsOf(dbNames(NoticeSurface.values()));
+	}
+
 	/** 변환은 한 곳에서만 한다. 모든 값이 소문자로 나갔다가 그대로 돌아온다. */
 	@Test
 	void every_value_round_trips_through_its_converter() {
 		assertRoundTrip(new UserStatusConverter(), UserStatus.values());
 		assertRoundTrip(new OauthProviderConverter(), OauthProvider.values());
+		assertRoundTrip(new ConsentTypeConverter(), ConsentType.values());
+		assertRoundTrip(new NoticeSurfaceConverter(), NoticeSurface.values());
 	}
 
 	/**
@@ -81,16 +100,20 @@ class IdentityEnumContractTests {
 
 	/** {@code <column> IN ('a', 'b')} 에서 값 목록만 뽑는다. */
 	private static List<String> checkedValues(String column) {
-		Matcher matcher = Pattern.compile(column + "\\s+IN\\s*\\(([^)]*)\\)").matcher(migration());
+		Matcher matcher = Pattern.compile(column + "\\s+IN\\s*\\(([^)]*)\\)").matcher(migrations());
 		assertThat(matcher.find()).as("%s 컬럼의 CHECK 제약이 마이그레이션에 없다", column).isTrue();
 		return Arrays.stream(matcher.group(1).split(","))
 				.map(value -> value.trim().replace("'", ""))
 				.toList();
 	}
 
-	private static String migration() {
+	private static String migrations() {
+		return MIGRATIONS.stream().map(IdentityEnumContractTests::read).collect(Collectors.joining("\n"));
+	}
+
+	private static String read(String path) {
 		try {
-			return new String(new ClassPathResource(MIGRATION).getInputStream().readAllBytes(),
+			return new String(new ClassPathResource(path).getInputStream().readAllBytes(),
 					StandardCharsets.UTF_8);
 		}
 		catch (IOException ex) {

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ContainerTestBase;
+import com.neowadaeum.identity.repository.AiNoticeImpressionRepository;
+import com.neowadaeum.identity.repository.ConsentLogRepository;
 import com.neowadaeum.identity.repository.OauthIdentityRepository;
 import com.neowadaeum.identity.repository.UserRepository;
 import java.time.Instant;
@@ -14,7 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 
 /**
- * B-07(1/2) — {@code user} · {@code oauth_identity} 가 {@code identity} 스키마에 실제로 매핑되는지.
+ * B-07 — identity 네 표가 {@code identity} 스키마에 실제로 매핑되는지.
  *
  * <p>매핑 자체는 {@code hibernate.hbm2ddl.auto=validate} 가 부팅에서 이미 검증한다. 여기서 보는 것은
  * 그다음이다 — <b>값이 왕복하는가</b>, 그리고 <b>DB 가 규칙을 실제로 거부하는가.</b>
@@ -31,6 +33,12 @@ class IdentityMappingTests extends ContainerTestBase {
 
 	@Autowired
 	private OauthIdentityRepository oauthIdentities;
+
+	@Autowired
+	private ConsentLogRepository consents;
+
+	@Autowired
+	private AiNoticeImpressionRepository impressions;
 
 	/** §2.2 — 가입 시점의 값이 그대로 돌아온다. 상태 표기는 소문자다. */
 	@Test
@@ -123,5 +131,77 @@ class IdentityMappingTests extends ContainerTestBase {
 				.isEqualTo(user.getId());
 		assertThat(this.oauthIdentities.findByProviderAndSubject(OauthProvider.GOOGLE, "sub-2"))
 				.isEmpty();
+	}
+
+	/** R10.2 — 동의는 판본과 함께 남는다. 판본이 없으면 재동의 여부를 판정할 수 없다. */
+	@Test
+	void R10_2_consent_round_trips_with_its_version() {
+		User user = this.users.save(User.register(UUID.randomUUID(), null, NOW));
+
+		ConsentLog saved = this.consents.save(
+				ConsentLog.agree(user.getId(), ConsentType.TOS, "2026-08-01", "ip-hash", NOW));
+		ConsentLog found = this.consents.findById(saved.getId()).orElseThrow();
+
+		assertThat(found.getUserId()).isEqualTo(user.getId());
+		assertThat(found.getConsentType()).isEqualTo(ConsentType.TOS);
+		assertThat(found.getVersion()).isEqualTo("2026-08-01");
+		assertThat(found.getIpHash()).isEqualTo("ip-hash");
+		assertThat(found.getAgreedAt()).isEqualTo(NOW);
+	}
+
+	/**
+	 * <b>재동의는 UPDATE 가 아니라 새 행이다.</b>
+	 *
+	 * <p>덮어쓰면 "이전 판본에 언제 동의했는가"가 사라진다 — 그것이 증빙의 절반이다.
+	 * 조회는 언제나 가장 최근 한 건을 본다.
+	 */
+	@Test
+	void R10_2_re_consent_appends_a_row_instead_of_overwriting() {
+		User user = this.users.save(User.register(UUID.randomUUID(), null, NOW));
+		this.consents.save(ConsentLog.agree(user.getId(), ConsentType.PRIVACY, "v1", null, NOW));
+		this.consents.save(ConsentLog.agree(user.getId(), ConsentType.PRIVACY, "v2", null, NOW.plusSeconds(60)));
+
+		assertThat(this.consents.findFirstByUserIdAndConsentTypeOrderByAgreedAtDesc(user.getId(),
+				ConsentType.PRIVACY))
+				.get()
+				.extracting(ConsentLog::getVersion)
+				.isEqualTo("v2");
+		assertThat(this.consents.countByUserIdAndConsentType(user.getId(), ConsentType.PRIVACY))
+				.as("덮어썼다면 1건이다")
+				.isEqualTo(2);
+	}
+
+	/**
+	 * <b>§13-8 — 고지 노출은 동의가 아니다.</b>
+	 *
+	 * <p>노출을 기록해도 {@code consent_log} 는 비어 있다. 두 표를 섞었다면 이 단언이 깨진다.
+	 */
+	@Test
+	void S13_8_showing_the_notice_is_not_a_consent() {
+		User user = this.users.save(User.register(UUID.randomUUID(), null, NOW));
+
+		this.impressions.save(
+				AiNoticeImpression.shown(user.getId(), "notice-1", NoticeSurface.LIBRARY, NOW));
+
+		assertThat(this.impressions.existsByUserIdAndNoticeVersion(user.getId(), "notice-1")).isTrue();
+		assertThat(this.consents.findFirstByUserIdAndConsentTypeOrderByAgreedAtDesc(user.getId(),
+				ConsentType.AI_NOTICE))
+				.as("노출 기록이 동의로 새면 동의 이력의 증빙력이 흐려진다 (§13-8)")
+				.isEmpty();
+	}
+
+	/** R11.3 — 노출 이력이 판본·화면과 함께 왕복한다. */
+	@Test
+	void R11_3_impression_round_trips_with_its_version_and_surface() {
+		User user = this.users.save(User.register(UUID.randomUUID(), null, NOW));
+
+		AiNoticeImpression saved = this.impressions.save(
+				AiNoticeImpression.shown(user.getId(), "notice-2", NoticeSurface.PLAY, NOW));
+		AiNoticeImpression found = this.impressions.findById(saved.getId()).orElseThrow();
+
+		assertThat(found.getUserId()).isEqualTo(user.getId());
+		assertThat(found.getNoticeVersion()).isEqualTo("notice-2");
+		assertThat(found.getSurface()).isEqualTo(NoticeSurface.PLAY);
+		assertThat(found.getShownAt()).isEqualTo(NOW);
 	}
 }
