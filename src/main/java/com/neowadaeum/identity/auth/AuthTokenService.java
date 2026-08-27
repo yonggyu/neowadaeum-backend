@@ -50,6 +50,14 @@ public class AuthTokenService {
 
 	static final String REFRESH = "refresh";
 
+	/**
+	 * 관리자 단계 승격.
+	 *
+	 * <p><b>액세스 토큰으로는 관리자 경로를 통과하지 못한다.</b> 용도를 나누지 않으면 로그인만으로
+	 * 관리자 문이 열리고, 그러면 2FA 를 둔 이유가 사라진다.
+	 */
+	static final String ADMIN_STEP_UP = "admin_step_up";
+
 	private final JwtEncoder encoder;
 
 	private final JwtDecoder decoder;
@@ -95,6 +103,35 @@ public class AuthTokenService {
 	/** {@code /auth/refresh} 가 부른다. <b>액세스 토큰으로는 통과하지 못한다.</b> */
 	public UUID resolveRefresh(String refreshToken) {
 		return subjectOf(refreshToken, REFRESH);
+	}
+
+	/**
+	 * 두 번째 요소를 통과한 관리자에게 발급한다 (B-40, S-4).
+	 *
+	 * <p><b>서버에 상태를 두지 않는다.</b> 수명이 분 단위이므로 무효화가 필요해지는 폭이 좁다.
+	 */
+	public AdminStepUp issueAdminStepUp(UUID playerRef) {
+		Instant now = this.clock.instant();
+		java.time.Duration ttl = this.properties.adminStepUpTtl();
+		return new AdminStepUp(sign(playerRef, ADMIN_STEP_UP, now, ttl), ttl.toSeconds());
+	}
+
+	/**
+	 * 관리자 경로가 부른다.
+	 *
+	 * @throws ApiException {@code UNAUTHENTICATED} — 위조·만료·용도 불일치를 구분하지 않는다 (S-6)
+	 */
+	public UUID resolveAdminStepUp(String stepUpToken) {
+		return subjectOf(stepUpToken, ADMIN_STEP_UP);
+	}
+
+	/**
+	 * 승격 토큰과 그 수명.
+	 *
+	 * @param token 관리자 경로에 함께 보내는 값
+	 * @param expiresIn 초. 클라이언트가 <b>언제 다시 코드를 물어야 하는지</b> 알아야 한다
+	 */
+	public record AdminStepUp(String token, long expiresIn) {
 	}
 
 	private String sign(UUID playerRef, String tokenUse, Instant now, java.time.Duration ttl) {
