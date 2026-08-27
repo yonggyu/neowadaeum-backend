@@ -26,6 +26,19 @@ class SafetyL2ContextTests extends ContainerTestBase {
 	void ADR0002_judge_and_blocklist_implementation_are_wired_in_the_real_context() {
 		assertThat(this.judge).isNotNull();
 		assertThat(this.blocklistQuery).isNotNull();
-		assertThat(this.blocklistQuery.findAll()).as("슬라이스 기본값은 빈 블록리스트다").isEmpty();
+	}
+
+	/**
+	 * <b>배선된 구현이 표를 읽는 쪽이다</b> (B-49).
+	 *
+	 * <p>전에는 "빈 목록"을 확인했다. 그때는 구현이 언제나 비어 있는 스텁이었기 때문이며,
+	 * 그것은 <b>배선이 아니라 스텁의 성질</b>을 본 것이다. 지금 확인할 것은 컨텍스트가
+	 * 집어 온 것이 <b>어느 구현인가</b>다 — 스텁이 다시 {@code @Primary} 가 되는 날
+	 * 세이프티 1단이 조용히 사라진다.
+	 */
+	@Test
+	void ADR0002_the_wired_implementation_reads_the_store() {
+		assertThat(this.blocklistQuery)
+				.isInstanceOf(com.neowadaeum.authoring.blocklist.PersistentBlocklistQuery.class);
 	}
 }
