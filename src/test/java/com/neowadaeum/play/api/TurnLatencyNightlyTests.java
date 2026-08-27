@@ -54,10 +54,14 @@ import org.springframework.transaction.PlatformTransactionManager;
  * <p><b>잰 값을 파일로 남긴다.</b> 콘솔에만 찍으면 CI 로그에 실리지 않아 아무도 보지 못한다 —
  * 결과는 {@code build/perf/} 로 나가고 nightly 워크플로가 그것을 아티팩트로 올린다.
  *
+ * <p><b>예산 초과는 여기서 다시 재지 않는다.</b> {@code TurnResilienceIntegrationTests} 가
+ * 이미 그것을 본다 — 예산이 없으면 Provider 가 시작되지도 않고, 세션의 턴 번호도 그대로다
+ * (R6.6). 같은 것을 두 곳에서 확인하면 <b>둘이 갈라지는 날</b>이 온다.
+ *
  * <p>{@code nightly} 다 (ADR-0001). 부하 측정을 PR 마다 돌리면 CI 가 그것을 기다리는 데 대부분의
  * 시간을 쓴다.
  */
-@org.junit.jupiter.api.Tag("container")
+@org.junit.jupiter.api.Tag("nightly")
 class TurnLatencyNightlyTests extends ContainerTestBase {
 
 	/** 계측은 이 테스트의 관심사가 아니다 — 값을 버리는 레지스트리로 배선만 채운다 (B-48). */
@@ -156,34 +160,6 @@ class TurnLatencyNightlyTests extends ContainerTestBase {
 		// **우리 몫**은 전체에서 Provider 가 쓴 시간을 뺀 것이다.
 		assertThat(totals.p50()).isGreaterThanOrEqualTo(PROVIDER_LATENCY.toMillis());
 		writeReport(totals);
-	}
-
-	/**
-	 * <b>예산을 넘기면 끊긴다. 그리고 세션은 그대로다</b> (R6.6).
-	 *
-	 * <p>끊기는 것만으로는 부족하다 — 끊긴 뒤 세션의 턴 번호가 올라가 있으면 사용자는
-	 * <b>보지 못한 턴</b>을 지나친 것이 된다.
-	 */
-	@Test
-	void R6_6_a_turn_over_budget_is_cut_and_leaves_the_session_untouched() {
-		UUID sessionId = newSession();
-		int before = this.sessions.findById(sessionId).orElseThrow().getTurnNo();
-
-		TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots,
-				this.storyVersions, slowProvider(), this.safetyJudge, this.gameStateEngine,
-				this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(), this.summaries,
-				this.summaryTrigger, this.playTransactionManager, FIXED,
-				// 예산을 Provider 지연보다 짧게 잡는다. 25초를 실제로 기다릴 이유가 없다 —
-				// 확인하려는 것은 **예산이 지켜지는가**이지 그 값이 얼마인가가 아니다.
-				new TurnBudgetProperties(Duration.ofMillis(50)), new TurnMetrics(METERS),
-				new SafetyMetrics(METERS));
-
-		org.assertj.core.api.Assertions.assertThatThrownBy(() -> pipeline.advance(sessionId, null))
-				.isInstanceOf(RuntimeException.class);
-
-		assertThat(this.sessions.findById(sessionId).orElseThrow().getTurnNo()).isEqualTo(before);
-		assertThat(this.turns.findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(sessionId))
-				.isEmpty();
 	}
 
 	private long timeOneTurn(TurnPipeline pipeline, UUID sessionId) {
