@@ -12,13 +12,9 @@ import java.util.UUID;
  * {@code @ConditionalOnMissingBean} 으로 "아무나 통과" 구현이 끼어들면 인증이 없는 서버가 조용히
  * 뜬다. 세이프티 SPI(ADR-0002)와 같은 원칙이다.
  *
- * <p>구현은 두 갈래다.
- *
- * <ul>
- *   <li>{@code dev} — 고정 값 ({@link DevFixedPlayerRefResolver}). <b>인증 우회</b>이며 ADR-0004 의
- *       대체 수단이다. <b>B-12 착수 시 제거한다.</b>
- *   <li>운영 — 인증 토큰에서 판별한다. <b>B-12</b> 의 산출물이며 아직 없다
- * </ul>
+ * <p><b>구현은 하나뿐이며 프로파일 조건이 없다</b> — 인증 토큰에서 판별한다 (B-12).
+ * 슬라이스 기간에 있던 {@code dev} 고정 값 구현은 <b>인증 우회</b>였고 B-12 가 제거했다 (#34).
+ * 그 제거가 되돌려지지 않는다는 것은 {@code AuthBypassRemovalTests} 가 확인한다.
  */
 public interface PlayerRefResolver {
 
