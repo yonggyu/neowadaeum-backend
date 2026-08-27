@@ -1,5 +1,7 @@
-package com.neowadaeum.ai.log;
+package com.neowadaeum.ai.debug;
 
+import com.neowadaeum.ai.log.AiCallLog;
+import com.neowadaeum.ai.log.AiCallLogRepository;
 import com.neowadaeum.common.spi.AccessAuditRecorder;
 import com.neowadaeum.common.spi.AuditedResource;
 import java.util.ArrayList;

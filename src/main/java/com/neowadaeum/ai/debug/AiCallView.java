@@ -1,4 +1,4 @@
-package com.neowadaeum.ai.log;
+package com.neowadaeum.ai.debug;
 
 import java.time.Instant;
 import java.util.UUID;

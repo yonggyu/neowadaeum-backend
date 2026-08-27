@@ -1,5 +1,7 @@
-package com.neowadaeum.ai.log;
+package com.neowadaeum.ai.debug;
 
+import com.neowadaeum.ai.log.AiCallLog;
+import com.neowadaeum.ai.log.AiCallLogRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
