@@ -40,6 +40,10 @@ class StoreIsolationTests extends ContainerTestBase {
 	@Qualifier("identityEntityManagerFactory")
 	private EntityManagerFactory identityEntityManagerFactory;
 
+	@Autowired
+	@Qualifier("catalogEntityManagerFactory")
+	private EntityManagerFactory catalogEntityManagerFactory;
+
 	/**
 	 * <b>EMF 는 자기 스토어의 엔티티만 안다.</b>
 	 *
@@ -50,6 +54,7 @@ class StoreIsolationTests extends ContainerTestBase {
 		Set<String> playEntities = entityNames(this.playEntityManagerFactory);
 		Set<String> promptLogEntities = entityNames(this.promptLogEntityManagerFactory);
 		Set<String> identityEntities = entityNames(this.identityEntityManagerFactory);
+		Set<String> catalogEntities = entityNames(this.catalogEntityManagerFactory);
 
 		assertThat(playEntities).contains("PlaySession", "Turn", "GameStateSnapshot");
 		assertThat(promptLogEntities).containsExactly("AiCallLog");
@@ -60,7 +65,12 @@ class StoreIsolationTests extends ContainerTestBase {
 				.as("한 EMF 가 두 스토어의 엔티티를 알면 JPQL 한 줄로 크로스 스키마 조인이 된다")
 				.doesNotContainAnyElementsOf(promptLogEntities)
 				.doesNotContainAnyElementsOf(identityEntities);
+		assertThat(catalogEntities).containsExactlyInAnyOrder("Genre", "StoryGenre");
+
 		assertThat(promptLogEntities).doesNotContainAnyElementsOf(identityEntities);
+		assertThat(catalogEntities)
+				.doesNotContainAnyElementsOf(playEntities)
+				.doesNotContainAnyElementsOf(identityEntities);
 	}
 
 	/**
@@ -91,6 +101,17 @@ class StoreIsolationTests extends ContainerTestBase {
 				.createQuery("SELECT session FROM PlaySession session"))
 				.as("identity EMF 가 play 엔티티를 알고 있다 — 스캔 범위가 넓다")
 				.isInstanceOf(IllegalArgumentException.class);
+
+		// B-08 — 마지막 스토어. play 가 catalog 엔티티를 물면 세션이 작품 표를 직접 조인한다.
+		assertThatThrownBy(() -> this.playEntityManagerFactory.createEntityManager()
+				.createQuery("SELECT g FROM Genre g"))
+				.as("play EMF 가 catalog 엔티티를 알고 있다 — 파사드를 건너뛰는 경로가 열린다")
+				.isInstanceOf(IllegalArgumentException.class);
+
+		assertThatThrownBy(() -> this.catalogEntityManagerFactory.createEntityManager()
+				.createQuery("SELECT u FROM User u"))
+				.as("catalog EMF 가 identity 엔티티를 알고 있다 — playerRef 우회 경로가 열린다")
+				.isInstanceOf(IllegalArgumentException.class);
 	}
 
 	/**
@@ -120,6 +141,9 @@ class StoreIsolationTests extends ContainerTestBase {
 				.isNotSameAs(this.promptLogEntityManagerFactory)
 				.isNotSameAs(this.identityEntityManagerFactory);
 		assertThat(this.promptLogEntityManagerFactory).isNotSameAs(this.identityEntityManagerFactory);
+		assertThat(this.catalogEntityManagerFactory)
+				.isNotSameAs(this.playEntityManagerFactory)
+				.isNotSameAs(this.identityEntityManagerFactory);
 		assertThat(this.identityEntityManagerFactory.getProperties().get("hibernate.hbm2ddl.auto"))
 				.as("엔티티와 마이그레이션이 어긋나면 부팅에서 잡혀야 한다")
 				.isEqualTo("validate");

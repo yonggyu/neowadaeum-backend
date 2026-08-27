@@ -94,7 +94,7 @@ class AutoConfigurationExclusionTests extends ContainerTestBase {
 	}
 
 	/**
-	 * §5.3 — EntityManagerFactory 는 <b>엔티티를 가진 스토어마다 1벌</b>이다. 지금은 셋이다 (#20, B-07).
+	 * §5.3 — EntityManagerFactory 는 <b>스토어마다 1벌</b>이다. 넷이 다 찼다 (#20, B-08).
 	 *
 	 * <p>B-05 시점에는 0벌, #39 시점에는 play 하나였다. <b>이 테스트가 지키는 것은 개수가 아니다</b> —
 	 * 자동설정이 만든 EMF 가 섞이지 않는다는 것이다. 자동설정 EMF 는 이름이 {@code entityManagerFactory}
@@ -103,13 +103,13 @@ class AutoConfigurationExclusionTests extends ContainerTestBase {
 	 *
 	 * <p><b>목록을 명시적으로 적는다.</b> 스토어가 엔티티를 갖게 될 때마다 이 줄을 <b>의식적으로</b>
 	 * 고치게 하려는 것이다 — 개수만 세면 자동설정 EMF 가 하나 끼어도 숫자가 맞아떨어질 수 있다.
-	 * 남은 하나는 catalog(B-08) 다.
+	 * <b>#20 은 이 지점에서 닫힌다</b> — 네 스토어가 모두 자기 EMF 를 갖는다.
 	 */
 	@Test
 	void S5_3_entity_manager_factories_exist_per_store_with_entities() {
 		assertThat(this.context.getBeanNamesForType(EntityManagerFactory.class))
 				.containsExactlyInAnyOrder("playEntityManagerFactory", "promptLogEntityManagerFactory",
-						"identityEntityManagerFactory")
+						"identityEntityManagerFactory", "catalogEntityManagerFactory")
 				.as("자동설정 EMF 는 이름이 entityManagerFactory 다. 그것이 섞이면 스캔 범위가 전체가 된다")
 				.doesNotContain("entityManagerFactory");
 	}
@@ -127,7 +127,7 @@ class AutoConfigurationExclusionTests extends ContainerTestBase {
 	void S5_3_transaction_managers_exist_per_store_with_entities() {
 		assertThat(this.context.getBeanNamesForType(PlatformTransactionManager.class))
 				.containsExactlyInAnyOrder("playTransactionManager", "promptLogTransactionManager",
-						"identityTransactionManager")
+						"identityTransactionManager", "catalogTransactionManager")
 				.as("자동설정 TM 은 이름이 transactionManager 다")
 				.doesNotContain("transactionManager");
 	}
