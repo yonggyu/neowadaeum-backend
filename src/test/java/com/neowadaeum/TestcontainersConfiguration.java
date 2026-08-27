@@ -86,6 +86,21 @@ public class TestcontainersConfiguration {
 				() -> "redis://%s:%d".formatted(redisContainer.getHost(), redisContainer.getMappedPort(6379)));
 	}
 
+	/**
+	 * {@code auth.jwt.secret} 도 런타임 전용이다 (B-12). {@code application.yml} 의
+	 * {@code ${JWT_SECRET}} 은 테스트에 {@code .env} 가 없어 플레이스홀더 문자열 그대로 남고,
+	 * {@code JwtProperties} 의 길이 검사가 <b>부팅을 세운다</b> — 그것이 §7.3 이 의도한 동작이다.
+	 *
+	 * <p>그래서 테스트용 값을 런타임에 주입한다. 설정 yml 을 만들지 않는 이유는 Redis 와 같다.
+	 * <b>이 값은 테스트 전용이며 어떤 환경에서도 쓰이지 않는다</b> — 운영 시크릿은 {@code .env} 에만
+	 * 있고 이 파일에는 없다 (§7.1).
+	 */
+	@Bean
+	DynamicPropertyRegistrar jwtSecretRegistrar() {
+		return registry -> registry.add("auth.jwt.secret",
+				() -> "test-only-jwt-signing-material-not-a-real-secret");
+	}
+
 	/** DataSourceConfiguration 이 {@code currentSchema} 를 요구한다. 빠지면 부팅이 실패한다. */
 	private static String jdbcUrl(PostgreSQLContainer container, StoreSchema store) {
 		String url = container.getJdbcUrl();
