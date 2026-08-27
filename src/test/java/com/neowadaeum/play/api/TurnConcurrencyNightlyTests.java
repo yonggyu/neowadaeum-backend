@@ -73,6 +73,9 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 	private StoryVersionFacade storyVersions;
 
 	@Autowired
+	private com.neowadaeum.catalog.query.StoryCatalogFacade storyCatalog;
+
+	@Autowired
 	private StoryProvider provider;
 
 	@Autowired
@@ -209,7 +212,7 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 				counting, this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
 				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED, TurnBudgetProperties.defaults());
 		PlayTurnService service = new PlayTurnService(this.sessions, this.turns, this.storyVersions, pipeline,
-				this.guards, this.idempotency);
+				this.guards, this.idempotency, this.storyCatalog);
 
 		UUID playerRef = UUID.randomUUID();
 		PlaySession session = this.sessions.save(PlaySession.start(playerRef, SEED_STORY, SEED_VERSION,

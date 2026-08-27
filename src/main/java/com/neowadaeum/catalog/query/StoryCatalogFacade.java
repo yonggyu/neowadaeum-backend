@@ -47,6 +47,14 @@ public class StoryCatalogFacade {
 	/** 계약의 {@code Limit} 상한. 더 큰 값을 받아도 여기서 잘린다. */
 	static final int MAX_LIMIT = 50;
 
+	/**
+	 * R2.8 — 이보다 표본이 적으면 도달률을 내보내지 않는다.
+	 *
+	 * <p>비율이 무의미하기도 하지만, <b>UGC 작품에서는 개인 식별로 이어질 수 있다</b> —
+	 * 완주자가 셋인 작품의 도달률은 특정인의 선택을 드러낸다.
+	 */
+	static final int REACH_RATE_MIN_SAMPLE = 50;
+
 	private final JdbcClient jdbc;
 
 	private final Clock clock;
@@ -127,6 +135,32 @@ public class StoryCatalogFacade {
 
 	private record MyStoryRow(UUID id, String title, String coverUrl, String visibility, String reviewStatus,
 			java.time.Instant createdAt) {
+	}
+
+	/**
+	 * 엔딩 도달률 (R2.7, R2.8, I-20, #161).
+	 *
+	 * <p><b>계산하지 않는다.</b> 배치가 갱신한 값을 읽을 뿐이다 (I-20) — 조회 시점에 세면
+	 * 인기 있는 작품일수록 엔딩 화면이 느려지고, 그것이 I-20 이 금지한 것이다.
+	 *
+	 * <p><b>표본이 {@value #REACH_RATE_MIN_SAMPLE} 미만이면 비어 있다</b> (R2.8). 두 가지
+	 * 이유가 있다 — 비율이 무의미하고(2명 중 1명 = 50%), <b>UGC 작품에서는 개인 식별로 이어질
+	 * 수 있다</b>(완주자가 셋인 작품의 도달률은 특정인의 선택을 드러낸다).
+	 *
+	 * @return {@code 0.0 ~ 1.0}. 집계가 없거나 표본이 적으면 비어 있다
+	 */
+	public Optional<Double> reachRate(UUID storyId, int endingNo) {
+		return this.jdbc.sql("""
+						SELECT reached_count, total_completed_count FROM ending_stat
+						WHERE story_id = :storyId AND ending_no = :endingNo
+						""")
+				.param("storyId", storyId)
+				.param("endingNo", endingNo)
+				.query((rs, rowNum) -> new long[] { rs.getLong("reached_count"),
+						rs.getLong("total_completed_count") })
+				.optional()
+				.filter(counts -> counts[1] >= REACH_RATE_MIN_SAMPLE)
+				.map(counts -> (double) counts[0] / counts[1]);
 	}
 
 	/**
