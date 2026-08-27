@@ -86,6 +86,18 @@ public class StorySummary {
 		return summary;
 	}
 
+	/**
+	 * 되돌리기로 접힌다 (R14.4, B-42).
+	 *
+	 * <p><b>스냅샷과 함께 접힌다.</b> 요약만 남으면 상태와 이야기가 어긋난 채로 다음 턴이
+	 * 만들어진다 — R14.4 가 "함께"라고 적은 것이 이것이다.
+	 */
+	public void softDelete(Instant now) {
+		if (this.deletedAt == null) {
+			this.deletedAt = now;
+		}
+	}
+
 	public UUID getId() {
 		return this.id;
 	}

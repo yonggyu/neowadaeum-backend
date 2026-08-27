@@ -172,6 +172,21 @@ public class Turn {
 		}
 	}
 
+	/**
+	 * 되돌리기로 접힌다 (R14.4, B-42).
+	 *
+	 * <p><b>지우지 않는다.</b> 되돌린 턴도 일어난 일이며, 무엇을 어디까지 되돌렸는지는
+	 * 그 행이 남아 있어야 알 수 있다 (I-5 와 같은 성질).
+	 *
+	 * <p>두 번 접어도 처음 접힌 시각을 지킨다 — 되돌리기가 두 번 오면 두 번째가 첫 번째의
+	 * 기록을 덮어써서는 안 된다.
+	 */
+	public void softDelete(Instant now) {
+		if (this.deletedAt == null) {
+			this.deletedAt = now;
+		}
+	}
+
 	public UUID getId() {
 		return this.id;
 	}

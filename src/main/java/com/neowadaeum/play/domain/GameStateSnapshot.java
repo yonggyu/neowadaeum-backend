@@ -63,6 +63,19 @@ public class GameStateSnapshot {
 		return snapshot;
 	}
 
+	/**
+	 * 되돌리기로 접힌다 (R14.4, B-42).
+	 *
+	 * <p><b>이 클래스의 주석이 예고한 그 경로다</b> — 스냅샷은 UPDATE 하지 않으므로(I-5),
+	 * 되돌리기는 값을 고치는 것이 아니라 <b>행을 접는 것</b>이다. 살아 있는 행 기준의 유일
+	 * 인덱스가 그 위에서 성립한다.
+	 */
+	public void softDelete(Instant now) {
+		if (this.deletedAt == null) {
+			this.deletedAt = now;
+		}
+	}
+
 	public UUID getId() {
 		return this.id;
 	}
