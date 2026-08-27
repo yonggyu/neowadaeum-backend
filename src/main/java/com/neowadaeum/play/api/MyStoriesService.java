@@ -55,9 +55,13 @@ public class MyStoriesService {
 		int size = Math.clamp((limit != null) ? limit : DEFAULT_LIMIT, 1, MAX_LIMIT);
 		Optional<Cursor> after = Cursor.parse(cursor);
 
-		List<PlaySession> rows = this.sessions.findMine(playerRef, wanted,
-				after.map(Cursor::updatedAt).orElse(null), after.map(Cursor::sessionId).orElse(null),
-				Limit.of(size + 1));
+		Limit window = Limit.of(size + 1);
+		List<PlaySession> rows = after
+				.map(from -> this.sessions.findMineAfter(playerRef, wanted, from.updatedAt(),
+						from.sessionId(), window))
+				.orElseGet(() -> this.sessions
+						.findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDescIdDesc(playerRef,
+								wanted, window));
 		boolean more = rows.size() > size;
 		List<PlaySession> page = more ? rows.subList(0, size) : rows;
 

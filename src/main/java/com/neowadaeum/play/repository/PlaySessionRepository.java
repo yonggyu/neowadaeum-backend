@@ -58,15 +58,22 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 	 *
 	 * <p>커서는 {@code updatedAt} 이다. 같은 시각이 둘일 수 있으므로 {@code id} 를 함께 본다 —
 	 * 그러지 않으면 쪽 경계에서 겹치거나 사라진다.
+	 *
+	 * <p><b>커서 유무로 조회를 나눈다.</b> 한 쿼리에 {@code :cursorAt IS NULL} 을 넣으면
+	 * PostgreSQL 이 <b>null 파라미터의 타입을 정하지 못해</b> 첫 쪽 요청이 전부 실패한다 —
+	 * CI 가 그것을 500 으로 잡았다.
 	 */
+	List<PlaySession> findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDescIdDesc(UUID playerRef,
+			SessionStatus status, Limit limit);
+
+	/** 커서 이후 (§13.7). {@code (updatedAt, id)} 키셋이며 파라미터에 {@code null} 이 없다. */
 	@Query("""
 			SELECT s FROM PlaySession s
 			WHERE s.playerRef = :playerRef AND s.status = :status AND s.deletedAt IS NULL
-			  AND (:cursorAt IS NULL OR (s.updatedAt < :cursorAt
-			       OR (s.updatedAt = :cursorAt AND s.id < :cursorId)))
+			  AND (s.updatedAt < :cursorAt OR (s.updatedAt = :cursorAt AND s.id < :cursorId))
 			ORDER BY s.updatedAt DESC, s.id DESC
 			""")
-	List<PlaySession> findMine(@Param("playerRef") UUID playerRef, @Param("status") SessionStatus status,
+	List<PlaySession> findMineAfter(@Param("playerRef") UUID playerRef, @Param("status") SessionStatus status,
 			@Param("cursorAt") Instant cursorAt, @Param("cursorId") UUID cursorId, Limit limit);
 
 	/**
