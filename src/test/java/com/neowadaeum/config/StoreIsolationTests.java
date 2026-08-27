@@ -57,7 +57,7 @@ class StoreIsolationTests extends ContainerTestBase {
 		Set<String> catalogEntities = entityNames(this.catalogEntityManagerFactory);
 
 		assertThat(playEntities).contains("PlaySession", "Turn", "GameStateSnapshot");
-		assertThat(promptLogEntities).containsExactlyInAnyOrder("AiCallLog", "AdminAuditLog");
+		assertThat(promptLogEntities).containsExactlyInAnyOrder("AiCallLog", "AdminAuditLog", "AccessAuditLog");
 		assertThat(identityEntities)
 				.containsExactlyInAnyOrder("User", "OauthIdentity", "ConsentLog", "AiNoticeImpression",
 						"AdminTotp");

@@ -144,6 +144,34 @@ public class AiCallLog {
 		return this.responseRaw;
 	}
 
+	public String getModelId() {
+		return this.modelId;
+	}
+
+	public String getFallbackFrom() {
+		return this.fallbackFrom;
+	}
+
+	public Integer getInputTokens() {
+		return this.inputTokens;
+	}
+
+	public Integer getOutputTokens() {
+		return this.outputTokens;
+	}
+
+	public Integer getLatencyMs() {
+		return this.latencyMs;
+	}
+
+	public Long getCostMicro() {
+		return this.costMicro;
+	}
+
+	public String getSafetyFlags() {
+		return this.safetyFlags;
+	}
+
 	public int getAttemptNo() {
 		return this.attemptNo;
 	}
