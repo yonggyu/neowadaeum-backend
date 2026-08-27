@@ -32,9 +32,12 @@ import org.springframework.mock.web.MockHttpServletRequest;
  */
 class AdminAccessGuardTests {
 
+	/** 문서용 예약 대역이다 (RFC 5737). 운영 주소를 테스트에 적지 않는다 (S-11). */
+	private static final String ALLOWED_CIDR = "203.0.113.0/24";
+
 	private static final String ALLOWED_IP = "203.0.113.10";
 
-	private static final String OTHER_IP = "203.0.113.99";
+	private static final String OTHER_IP = "198.51.100.7";
 
 	private static final Instant NOW = Instant.parse("2026-08-27T00:00:00Z");
 
@@ -53,7 +56,7 @@ class AdminAccessGuardTests {
 	void S4_an_admin_from_an_allowed_ip_passes() {
 		UUID userId = givenUser(UserRole.ADMIN);
 
-		assertThat(guardWith(List.of(ALLOWED_IP)).requireAdmin(this.playerRef, requestFrom(ALLOWED_IP)))
+		assertThat(guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef, requestFrom(ALLOWED_IP)))
 				.isEqualTo(userId);
 		verify(this.audit, never()).record(any(), any(), any(), any(), any(), any());
 	}
@@ -63,7 +66,7 @@ class AdminAccessGuardTests {
 	void S4_a_normal_user_is_denied_even_from_an_allowed_ip() {
 		givenUser(UserRole.USER);
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_IP)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
 				requestFrom(ALLOWED_IP)))
 				.isInstanceOf(ApiException.class)
 				.extracting(ex -> ((ApiException) ex).errorCode())
@@ -75,7 +78,7 @@ class AdminAccessGuardTests {
 	void S4_an_admin_from_another_ip_is_denied() {
 		givenUser(UserRole.ADMIN);
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_IP)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
 				requestFrom(OTHER_IP)))
 				.isInstanceOf(ApiException.class);
 	}
@@ -103,7 +106,7 @@ class AdminAccessGuardTests {
 	void R14_5_a_denied_attempt_is_recorded() {
 		UUID userId = givenUser(UserRole.USER);
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_IP)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
 				requestFrom(OTHER_IP))).isInstanceOf(ApiException.class);
 
 		verify(this.audit).record(eq(userId), eq(AdminAccessGuard.DENIED_ACTION), eq("admin"), any(),
@@ -115,9 +118,27 @@ class AdminAccessGuardTests {
 	void R14_5_an_unknown_player_ref_is_denied_without_an_audit_row() {
 		given(this.users.findByPlayerRef(this.playerRef)).willReturn(Optional.empty());
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_IP)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
 				requestFrom(ALLOWED_IP))).isInstanceOf(ApiException.class);
 		verify(this.audit, never()).record(any(), any(), any(), any(), any(), any());
+	}
+
+	/** 대역 안의 다른 주소도 통과한다 — 운영 접속은 단일 주소가 아니다. */
+	@Test
+	void S4_any_address_inside_the_range_passes() {
+		UUID userId = givenUser(UserRole.ADMIN);
+
+		assertThat(guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+				requestFrom("203.0.113.200"))).isEqualTo(userId);
+	}
+
+	/** 잘못 적은 대역은 <b>모두 허용</b>이 아니다 — 설정 오류가 문을 열면 안 된다. */
+	@Test
+	void S4_a_malformed_range_does_not_open_the_door() {
+		givenUser(UserRole.ADMIN);
+
+		assertThatThrownBy(() -> guardWith(List.of("not-a-cidr")).requireAdmin(this.playerRef,
+				requestFrom(ALLOWED_IP))).isInstanceOf(ApiException.class);
 	}
 
 	/** <b>IP 원문이 감사로 넘어가지 않는다</b> (§12) — 해시만 간다. */
@@ -125,7 +146,7 @@ class AdminAccessGuardTests {
 	void S12_the_raw_ip_never_reaches_the_audit() {
 		UUID userId = givenUser(UserRole.ADMIN);
 
-		guardWith(List.of(ALLOWED_IP)).recordAction(userId, "admin.debug.read", "session",
+		guardWith(List.of(ALLOWED_CIDR)).recordAction(userId, "admin.debug.read", "session",
 				UUID.randomUUID(), java.util.Map.of(), requestFrom(ALLOWED_IP));
 
 		org.mockito.ArgumentCaptor<String> ipHash = org.mockito.ArgumentCaptor.forClass(String.class);
