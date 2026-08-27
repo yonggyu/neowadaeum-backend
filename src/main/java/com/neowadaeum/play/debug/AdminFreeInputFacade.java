@@ -2,6 +2,7 @@ package com.neowadaeum.play.debug;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.observability.SafetyMetrics;
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.orchestrator.TurnOutcome;
 import com.neowadaeum.play.orchestrator.TurnPipeline;
@@ -35,11 +36,14 @@ public class AdminFreeInputFacade {
 
 	private final TurnPipeline pipeline;
 
+	private final SafetyMetrics safetyMetrics;
+
 	public AdminFreeInputFacade(PlaySessionRepository sessions, InputSafetyScreen inputScreen,
-			TurnPipeline pipeline) {
+			TurnPipeline pipeline, SafetyMetrics safetyMetrics) {
 		this.sessions = sessions;
 		this.inputScreen = inputScreen;
 		this.pipeline = pipeline;
+		this.safetyMetrics = safetyMetrics;
 	}
 
 	/**
@@ -61,6 +65,9 @@ public class AdminFreeInputFacade {
 		}
 
 		InputVerdict verdict = this.inputScreen.screen(action);
+		// B-48 — L1 의 유일한 길목이 여기다. 검수기 자체에 계측을 붙이면 UGC 검수(B-54)가
+		// 붙는 날 두 호출자가 같은 카운터를 다르게 태그하게 된다.
+		this.safetyMetrics.record("l1", verdict.blocked(), verdict.categories());
 		if (verdict.blocked()) {
 			throw new ApiException(ErrorCode.SAFETY_BLOCKED);
 		}

@@ -3,6 +3,8 @@ package com.neowadaeum.play.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
+import com.neowadaeum.common.observability.SafetyMetrics;
+import com.neowadaeum.common.observability.TurnMetrics;
 import com.neowadaeum.common.support.TurnBudgetProperties;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
@@ -51,6 +53,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Tag("nightly")
 class TurnConcurrencyNightlyTests extends ContainerTestBase {
+
+	/** 계측은 이 테스트의 관심사가 아니다 — 값을 버리는 레지스트리로 배선만 채운다 (B-48). */
+	private static final io.micrometer.core.instrument.MeterRegistry METERS =
+			new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -210,7 +216,8 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 
 		TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
 				counting, this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
-				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED, TurnBudgetProperties.defaults());
+				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED, TurnBudgetProperties.defaults(),
+				new TurnMetrics(METERS), new SafetyMetrics(METERS));
 		PlayTurnService service = new PlayTurnService(this.sessions, this.turns, this.storyVersions, pipeline,
 				this.guards, this.idempotency, this.storyCatalog);
 

@@ -41,8 +41,10 @@ class AdminFreeInputFacadeTests {
 
 	private final TurnPipeline pipeline = mock(TurnPipeline.class);
 
+	/** 계측은 이 테스트의 관심사가 아니다 — 값을 버리는 레지스트리로 배선만 채운다 (B-48). */
 	private final AdminFreeInputFacade facade = new AdminFreeInputFacade(this.sessions, this.screen,
-			this.pipeline);
+			this.pipeline, new com.neowadaeum.common.observability.SafetyMetrics(
+					new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
 
 	/**
 	 * <b>사용자 소유 세션에는 넣지 못한다</b> (I-18, R14.3).
