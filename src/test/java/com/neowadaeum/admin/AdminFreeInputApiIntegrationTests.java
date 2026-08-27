@@ -173,6 +173,9 @@ class AdminFreeInputApiIntegrationTests extends ContainerTestBase {
 			org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder)
 			throws Exception {
 		var response = this.mvc.perform(builder).andReturn().getResponse();
+		// 토큰은 요청 헤더에 있고 본문에는 없다 — 본문만 찍는다 (S-3).
+		System.out.println("[free-input] status=" + response.getStatus() + " body="
+				+ response.getContentAsString());
 		assertThat(response.getStatus())
 				.withFailMessage("expected 200 but was %d: %s", response.getStatus(),
 						response.getContentAsString())
