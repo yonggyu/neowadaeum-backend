@@ -2,7 +2,9 @@ package com.neowadaeum.play.repository;
 
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SessionStatus;
+import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -22,4 +24,16 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 	 * 위한 것</b>이지 유일성을 보장하는 수단이 아니다.
 	 */
 	boolean existsByPlayerRefAndStoryIdAndStatus(UUID playerRef, UUID storyId, SessionStatus status);
+
+	/**
+	 * 이어하기 목록 (§13.2).
+	 *
+	 * <p><b>{@code playerRef} 로만 찾는다</b> (I-3). 이 스토어는 회원을 특정할 값을 모르며,
+	 * 그래서 남의 세션이 섞일 경로도 없다.
+	 *
+	 * <p>최근에 이어가던 것이 위로 온다. 개수를 제한하는 것은 화면이 그만큼만 보여 주기
+	 * 때문이며, 전체 목록은 B-36 의 몫이다.
+	 */
+	List<PlaySession> findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(UUID playerRef,
+			SessionStatus status, Limit limit);
 }

@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.api.PlayController;
 import com.neowadaeum.play.api.TurnRequestBody;
+import com.neowadaeum.catalog.query.GenreView;
+import com.neowadaeum.catalog.query.StoryCardView;
+import com.neowadaeum.play.api.LibraryView;
 import com.neowadaeum.play.api.TurnView;
 import java.io.InputStream;
 import java.util.Arrays;
@@ -186,6 +189,23 @@ class OpenApiContractTests {
 	void B06_implemented_start_session_response_fields_are_all_declared() {
 		assertThat(propertiesOf("StartSessionResponse"))
 				.containsAll(recordComponentsOf(PlayController.StartSessionResponse.class));
+	}
+
+	/**
+	 * 라이브러리 응답의 모든 필드가 계약에 선언되어 있다 (B-15).
+	 *
+	 * <p>여기서 어긋나면 <b>프론트가 모르는 필드</b>가 나가고, 그 지점이 계약이 거짓말을
+	 * 시작하는 자리다.
+	 */
+	@Test
+	void B15_implemented_library_response_fields_are_all_declared() {
+		assertThat(propertiesOf("LibraryResponse")).containsAll(recordComponentsOf(LibraryView.class));
+		assertThat(propertiesOf("LibrarySection"))
+				.containsAll(recordComponentsOf(LibraryView.SectionView.class));
+		assertThat(propertiesOf("ContinueSession"))
+				.containsAll(recordComponentsOf(LibraryView.ContinueSessionView.class));
+		assertThat(propertiesOf("StoryCard")).containsAll(recordComponentsOf(StoryCardView.class));
+		assertThat(propertiesOf("Genre")).containsAll(recordComponentsOf(GenreView.class));
 	}
 
 	// ── 4. S-11 ──────────────────────────────────────────────
