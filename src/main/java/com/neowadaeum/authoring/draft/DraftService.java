@@ -89,6 +89,40 @@ public class DraftService {
 				.ifPresent(this.drafts::delete));
 	}
 
+	/**
+	 * 검수 결과를 원고에 남긴다 (B-50).
+	 *
+	 * <p><b>남기지 않으면 게이트가 볼 것이 없다</b> — 응답만 돌려주면 클라이언트 검증에만
+	 * 의존하게 되고, 그것이 R8.3 이 막으려는 상태다.
+	 */
+	public void recordPrecheck(UUID authorRef, UUID draftId,
+			com.neowadaeum.authoring.precheck.PrecheckScreen.Result result) {
+		this.transactions.executeWithoutResult(status -> requireOwned(authorRef, draftId)
+				.recordPrecheck(result.state(), findingsJson(result), Instant.now(this.clock)));
+	}
+
+	/**
+	 * <b>원문도 걸린 항목도 담지 않는다</b> (R8.7, S-3, S-11).
+	 *
+	 * <p>{@code story_draft.safety_findings} 는 원고와 함께 보관되고 검수자가 읽는다 — 거기에
+	 * 걸린 항목이 남으면 그 표가 우회 사전이 된다.
+	 */
+	private static String findingsJson(
+			com.neowadaeum.authoring.precheck.PrecheckScreen.Result result) {
+		StringBuilder json = new StringBuilder("[");
+		for (int i = 0; i < result.findings().size(); i++) {
+			var finding = result.findings().get(i);
+			if (i > 0) {
+				json.append(',');
+			}
+			json.append("{\"field\":\"").append(finding.field())
+					.append("\",\"span\":[").append(finding.span()[0]).append(',')
+					.append(finding.span()[1]).append("],\"kind\":\"").append(finding.kind())
+					.append("\"}");
+		}
+		return json.append(']').toString();
+	}
+
 	private StoryDraft requireOwned(UUID authorRef, UUID draftId) {
 		StoryDraft draft = this.drafts.findById(draftId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
