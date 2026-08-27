@@ -89,6 +89,9 @@ auth:
     access-token-ttl: PT30M
     refresh-token-ttl: P30D
 
+# client-id 는 ID 토큰의 대상(aud) 검증에 쓴다 (B-12). 없으면 다른 서비스용으로 발급된
+# 구글 토큰이 이 서버에서도 통한다 — 구글이 서명한 것은 맞지만 우리에게 발급된 것이 아니다.
+# jwk-set-uri 는 코드가 기본값(구글 공개 JWKS)을 갖는다. 배포마다 정할 값이 아니다.
 security:
   oauth2:
     google:
