@@ -120,6 +120,15 @@ public class TurnPipeline {
 	 * @param chosenChoiceOrder 직전 턴에서 고른 선택지 순서. <b>세션의 첫 턴이면 {@code null}</b>
 	 */
 	public TurnOutcome advance(UUID sessionId, Integer chosenChoiceOrder) {
+		return advance(sessionId, chosenChoiceOrder, null);
+	}
+
+	/**
+	 * 다음 턴을 만들되 <b>직전 턴에 무엇을 골랐는지 함께 기록한다</b> (§4.3-3, B-35).
+	 *
+	 * @param chosenChoiceId 직전 턴이 발급한 식별자. 첫 턴이면 {@code null}
+	 */
+	public TurnOutcome advance(UUID sessionId, Integer chosenChoiceOrder, String chosenChoiceId) {
 		PipelineContext context = this.transactions.execute(status -> readContext(sessionId));
 
 		// ── 트랜잭션 밖 ── Provider 호출과 L2 검수 (§9.2, §13-14-a)
@@ -135,7 +144,16 @@ public class TurnPipeline {
 			return blocked(context);
 		}
 
-		TurnOutcome outcome = this.transactions.execute(status -> commit(context, generated));
+		TurnOutcome outcome = this.transactions.execute(status -> {
+			// §4.3-3 — 선택은 다음 턴이 저장되는 것과 같은 트랜잭션에서 기록된다. 나누면
+			// "골랐는데 다음 턴이 없는" 또는 그 반대의 상태가 남는다.
+			if (chosenChoiceId != null) {
+				this.turns.findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(context.sessionId())
+						.ifPresent(previous -> previous.recordChoice(chosenChoiceId,
+								Instant.now(this.clock)));
+			}
+			return commit(context, generated);
+		});
 
 		// R4.6 — 여기서부터는 사용자 대기 시간이 아니다. 요약은 응답이 나간 뒤에 갱신된다.
 		this.summaryTrigger.afterTurn(context.sessionId(), outcome.turnNo());

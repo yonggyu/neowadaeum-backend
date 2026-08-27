@@ -33,13 +33,15 @@ public class PlayController {
 	private final SessionStarter sessionStarter;
 	private final PlayTurnService turns;
 	private final SessionResumeService resumeService;
+	private final SessionHistoryService history;
 
 	public PlayController(PlayerRefResolver playerRefs, SessionStarter sessionStarter, PlayTurnService turns,
-			SessionResumeService resumeService) {
+			SessionResumeService resumeService, SessionHistoryService history) {
 		this.playerRefs = playerRefs;
 		this.sessionStarter = sessionStarter;
 		this.turns = turns;
 		this.resumeService = resumeService;
+		this.history = history;
 	}
 
 	/**
@@ -97,6 +99,19 @@ public class PlayController {
 	@GetMapping("/sessions/{sessionId}/current")
 	public TurnView current(@PathVariable UUID sessionId) {
 		return this.turns.current(this.playerRefs.currentPlayerRef(), sessionId);
+	}
+
+	/**
+	 * 기록 (§13.6, 화면 2e).
+	 *
+	 * <p><b>{@code choiceId} 를 주지 않는다.</b> 읽기 전용이며, 여기서 받은 식별자로 턴을 진행할
+	 * 수 있으면 지나간 분기를 다시 고를 수 있게 된다 (I-1).
+	 */
+	@GetMapping("/sessions/{sessionId}/history")
+	public HistoryView history(@PathVariable UUID sessionId,
+			@RequestParam(required = false) String cursor,
+			@RequestParam(required = false) Integer limit) {
+		return this.history.history(this.playerRefs.currentPlayerRef(), sessionId, cursor, limit);
 	}
 
 	/**
