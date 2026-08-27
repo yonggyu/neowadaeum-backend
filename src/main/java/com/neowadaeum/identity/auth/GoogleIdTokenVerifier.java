@@ -2,13 +2,9 @@ package com.neowadaeum.identity.auth;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.neowadaeum.common.support.Sha256;
 import java.time.Clock;
-import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -74,7 +70,8 @@ public class GoogleIdTokenVerifier {
 		if (subject == null || subject.isBlank()) {
 			throw new ApiException(ErrorCode.UNAUTHENTICATED);
 		}
-		return new VerifiedSocialIdentity(subject, hashOf(jwt.getClaimAsString("email")));
+		// 이메일 원문은 여기서 끝난다. 밖으로 나가는 것은 해시뿐이다 (§12, I-3).
+		return new VerifiedSocialIdentity(subject, Sha256.hex(jwt.getClaimAsString("email")));
 	}
 
 	/**
@@ -88,19 +85,4 @@ public class GoogleIdTokenVerifier {
 		return audience != null && audience.contains(this.clientId);
 	}
 
-	/** 이메일 원문을 저장하지 않는다. 같은 사람인지 비교하는 데는 해시로 충분하다 (§12). */
-	private static String hashOf(String email) {
-		if (email == null || email.isBlank()) {
-			return null;
-		}
-		try {
-			byte[] digest = MessageDigest.getInstance("SHA-256")
-					.digest(email.trim().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
-			return HexFormat.of().formatHex(digest);
-		}
-		catch (NoSuchAlgorithmException ex) {
-			// SHA-256 은 모든 JVM 에 있다. 없다면 해시 없이 진행하는 것보다 실패가 낫다.
-			throw new IllegalStateException("SHA-256 unavailable", ex);
-		}
-	}
 }

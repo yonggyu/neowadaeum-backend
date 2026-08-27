@@ -80,6 +80,11 @@ public class User {
 		return user;
 	}
 
+	/** 연령 확인 완료를 기록한다 (B-13, R10.2). 판정 자체는 {@code AgeGate} 의 몫이다. */
+	public void markAgeVerified(Instant verifiedAt) {
+		this.ageVerifiedAt = verifiedAt;
+	}
+
 	public UUID getId() {
 		return this.id;
 	}
