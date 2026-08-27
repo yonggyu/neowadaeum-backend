@@ -80,9 +80,14 @@ app:
       password: ${PROMPTLOG_DB_PASSWORD}
 
 # ── 인증 (§12 B-12) ──────────────────────────────────────────
+# secret 에 기본값을 두지 않는다 (§7.3). 없으면 부팅이 실패해야 한다.
+# 32바이트 미만이면 JwtProperties 가 부팅을 세운다 — 짧은 HS256 키는 서명이 신뢰의 근거가 되지 못한다.
 auth:
   jwt:
     secret: ${JWT_SECRET}
+    # 액세스는 짧게, 리프레시는 길게. 값 자체는 시크릿이 아니므로 여기 적는다.
+    access-token-ttl: PT30M
+    refresh-token-ttl: P30D
 
 security:
   oauth2:
