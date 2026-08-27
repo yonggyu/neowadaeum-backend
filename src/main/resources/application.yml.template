@@ -79,6 +79,14 @@ app:
       username: ${PROMPTLOG_DB_USER}
       password: ${PROMPTLOG_DB_PASSWORD}
 
+# ── 배치 (R2.7, I-20, #159) ──────────────────────────────────
+# 도달률은 배치 갱신이다 — 조회 경로가 계산하지 않는다 (I-20).
+# fixedDelay 이므로 앞 회차가 끝난 뒤부터 센다. 값이 없으면 코드가 1시간을 쓴다.
+# app:
+#   batch:
+#     ending-stat:
+#       delay: PT1H
+
 # ── 호출 한도 (§15, S-8, #157) ───────────────────────────────
 # 값의 출처는 §15 다 — 턴 생성 분당 10회, precheck 분당 20회, 계정당 일일 한도.
 # auth-per-minute-per-ip 는 S-8 이다: 인증 전 경로는 계정 기준으로 셀 수 없다.
