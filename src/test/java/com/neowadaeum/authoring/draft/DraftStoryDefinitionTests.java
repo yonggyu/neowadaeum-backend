@@ -87,14 +87,29 @@ class DraftStoryDefinitionTests {
 				.isInstanceOf(ApiException.class);
 	}
 
-	/** <b>조건이 붙지 않는다</b> (R7.16) — 조건은 템플릿에서 고르며 미리보기는 그 전이다. */
+	/** 챕터에는 조건이 붙지 않는다 (R7.16) — 조건은 템플릿에서 고르며 미리보기는 그 전이다. */
 	@Test
-	void R7_16_no_condition_is_invented() {
+	void R7_16_no_chapter_condition_is_invented() {
 		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD);
 
 		assertThat(definition.chapters()).allSatisfy(
 				chapter -> assertThat(chapter.entryConditionJson()).isNull());
-		assertThat(definition.endings()).allSatisfy(
-				ending -> assertThat(ending.conditionJson()).isNull());
+	}
+
+	/**
+	 * <b>일반 엔딩은 도달할 수 없는 조건을 받는다</b> (§13-16).
+	 *
+	 * <p>일반 엔딩은 조건을 반드시 갖는다 (V4 의 CHECK). 조건 없이 넣으면 DB 가 거절하고,
+	 * 거절을 피하려 기본으로 바꾸면 그 엔딩이 폴백이 되어 <b>첫 턴부터 끝나 버린다.</b>
+	 *
+	 * <p>미리보기에서 그 엔딩에 닿지 못하는 것은 맞다 — 조건이 정해지기 전이므로 닿는 것이
+	 * 오히려 거짓말이다.
+	 */
+	@Test
+	void S13_16_a_normal_ending_gets_an_unreachable_condition() {
+		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD);
+
+		assertThat(definition.endings().get(0).conditionJson()).isNotNull();
+		assertThat(definition.endings().getLast().conditionJson()).isNull();
 	}
 }

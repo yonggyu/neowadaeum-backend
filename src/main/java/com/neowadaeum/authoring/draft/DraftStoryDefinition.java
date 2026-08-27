@@ -28,6 +28,15 @@ public final class DraftStoryDefinition {
 
 	private static final int PREVIEW_CHAPTER_MIN_TURNS = 1;
 
+	/**
+	 * 조건이 아직 없는 엔딩에 붙이는 조건 (§13-16).
+	 *
+	 * <p><b>{@code turnGte} 를 파이프라인이 절대 닿지 않는 값으로 둔다.</b> 조건 없이 넣으면
+	 * DB 가 거절하고(일반 엔딩은 조건을 반드시 갖는다), 거절을 피하려 기본으로 바꾸면 그
+	 * 엔딩이 폴백이 되어 <b>첫 턴부터 끝나 버린다.</b>
+	 */
+	private static final String UNREACHABLE_CONDITION = "{\"turnGte\":1000000}";
+
 	private DraftStoryDefinition() {
 	}
 
@@ -62,13 +71,20 @@ public final class DraftStoryDefinition {
 	 * <p>작성자의 엔딩 목록에 기본이 없으면 세션이 끝나지 못한다 (R7.7). 마지막 항목을 기본으로
 	 * 삼는 대신 <b>따로 하나를 더한다</b> — 작성자가 쓴 엔딩을 조건 없는 폴백으로 바꿔 버리면
 	 * 그 엔딩은 <b>아무 조건에서나</b> 나온다.
+	 *
+	 * <p><b>일반 엔딩은 조건을 반드시 갖는다</b> (V4 의 CHECK, §13-16). 조건은 템플릿에서
+	 * 고르는 값인데(R7.16) 미리보기 단계에서는 아직 고르지 않았다 — 그래서 <b>도달할 수 없는
+	 * 조건</b>을 붙인다. 조건 없이 넣으면 그 엔딩이 폴백이 되어 <b>첫 턴부터 끝나 버린다.</b>
+	 *
+	 * <p>미리보기에서 그 엔딩들에 닿지 못하는 것은 <b>맞다</b> — 조건이 정해지기 전이므로
+	 * 닿는 것이 오히려 거짓말이다. 작성자가 확인하는 것은 도입부의 문체와 흐름이다.
 	 */
 	private static List<StoryDefinition.Ending> endingsOf(JsonNode root) {
 		List<StoryDefinition.Ending> endings = new ArrayList<>();
 		int endingNo = 1;
 		for (JsonNode ending : root.path("endings")) {
 			endings.add(new StoryDefinition.Ending(endingNo++, text(ending, "label"),
-					ending.path("epilogueText").asString(null), null, false, false));
+					ending.path("epilogueText").asString(null), UNREACHABLE_CONDITION, false, false));
 		}
 		endings.add(new StoryDefinition.Ending(endingNo, "이야기의 끝", null, null, true, false));
 		return endings;
