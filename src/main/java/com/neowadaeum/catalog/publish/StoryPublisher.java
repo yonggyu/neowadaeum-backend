@@ -2,6 +2,8 @@ package com.neowadaeum.catalog.publish;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Locale;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -66,7 +68,7 @@ public class StoryPublisher {
 				.params(storyId, slugFor(storyId, definition.title()), definition.title(),
 						trimmedShortDesc(definition.shortDesc()), definition.worldIntro(),
 						USER_AUTHOR_TYPE, definition.authorRef(), PRIVATE_VISIBILITY,
-						DRAFT_REVIEW_STATUS, now)
+						DRAFT_REVIEW_STATUS, at(now))
 				.update();
 
 		UUID versionId = insertVersion(storyId, 1, definition, stateSchemaJson, now);
@@ -100,7 +102,7 @@ public class StoryPublisher {
 	@Transactional("catalogTransactionManager")
 	public void markCurrent(UUID storyId, UUID versionId) {
 		this.jdbc.sql("UPDATE story SET current_version_id = ?, published_at = ? WHERE id = ?")
-				.params(versionId, Instant.now(this.clock), storyId).update();
+				.params(versionId, at(Instant.now(this.clock)), storyId).update();
 	}
 
 	private UUID insertVersion(UUID storyId, int versionNo, StoryDefinition definition,
@@ -112,7 +114,7 @@ public class StoryPublisher {
 						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)
 						""")
 				.params(versionId, storyId, versionNo, definition.worldPrompt(), CHOICE_POLICY,
-						stateSchemaJson, definition.stateTemplateKey(), now)
+						stateSchemaJson, definition.stateTemplateKey(), at(now))
 				.update();
 
 		for (StoryDefinition.Chapter chapter : definition.chapters()) {
@@ -140,6 +142,14 @@ public class StoryPublisher {
 					.update();
 		}
 		return versionId;
+	}
+
+	/**
+	 * JDBC 는 {@link Instant} 를 그대로 바인딩하지 못한다 — 타임존이 없는 값이라 어느 SQL 타입인지
+	 * 정해지지 않는다. UTC 로 못박아 넘긴다 (§9.1).
+	 */
+	private static OffsetDateTime at(Instant instant) {
+		return instant.atOffset(ZoneOffset.UTC);
 	}
 
 	/** <b>제목만으로 만들지 않는다</b> — 같은 제목이 충돌하고, 작성자가 주소를 선점할 수 있다. */
