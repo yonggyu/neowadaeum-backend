@@ -12,6 +12,7 @@ import com.neowadaeum.ai.log.AiCallLogRepository;
 import com.neowadaeum.identity.access.AdminAccessGuard;
 import com.neowadaeum.identity.domain.User;
 import com.neowadaeum.identity.repository.UserRepository;
+import com.neowadaeum.play.domain.PlaySession;
 import java.time.Instant;
 import java.util.UUID;
 import javax.crypto.Mac;
@@ -40,6 +41,8 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 
 	private static final UUID SEED_STORY = UUID.fromString("11111111-1111-4111-8111-000000000001");
 
+	private static final UUID SEED_VERSION = UUID.fromString("11111111-1111-4111-8111-111111111111");
+
 	@Autowired
 	private MockMvc mvc;
 
@@ -50,6 +53,9 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 	private AiCallLogRepository aiCalls;
 
 	@Autowired
+	private com.neowadaeum.play.repository.PlaySessionRepository sessions;
+
+	@Autowired
 	private AccessAuditLogRepository accessLogs;
 
 	@Autowired
@@ -58,6 +64,8 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 
 	@AfterEach
 	void clear() {
+		this.sessions.findAll().stream().filter(s -> ADMIN_PLAYER_REF.equals(s.getPlayerRef()))
+				.forEach(this.sessions::delete);
 		this.accessLogs.deleteAll();
 		this.aiCalls.deleteAll();
 		this.users.findByPlayerRef(ADMIN_PLAYER_REF).ifPresent(this.users::delete);
@@ -98,7 +106,7 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 	@Test
 	void R14_5_the_console_returns_the_session_and_the_raw_calls() throws Exception {
 		givenAdmin();
-		UUID sessionId = givenSessionWithOneTurn();
+		UUID sessionId = givenSession();
 		givenAiCall(sessionId);
 
 		JsonNode body = JSON.readTree(this.mvc
@@ -118,7 +126,7 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 	@Test
 	void S5_reading_the_raw_text_leaves_a_record() throws Exception {
 		givenAdmin();
-		UUID sessionId = givenSessionWithOneTurn();
+		UUID sessionId = givenSession();
 		UUID callLogId = givenAiCall(sessionId);
 
 		this.mvc.perform(get(debugPath(sessionId)).with(asPlayer(ADMIN_PLAYER_REF))
@@ -133,7 +141,7 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 	@Test
 	void S5_a_blocked_request_reads_nothing() throws Exception {
 		givenAdmin();
-		UUID sessionId = givenSessionWithOneTurn();
+		UUID sessionId = givenSession();
 		givenAiCall(sessionId);
 
 		this.mvc.perform(get(debugPath(sessionId)).with(asPlayer(ADMIN_PLAYER_REF)))
@@ -166,12 +174,15 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 		return JSON.readTree(confirmed).get("stepUpToken").asText();
 	}
 
-	private UUID givenSessionWithOneTurn() throws Exception {
-		String created = this.mvc.perform(post("/api/v1/stories/%s/sessions".formatted(SEED_STORY))
-						.with(asPlayer(ADMIN_PLAYER_REF)).contentType(MediaType.APPLICATION_JSON)
-						.content("{\"restart\":true}"))
-				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
-		return UUID.fromString(JSON.readTree(created).get("sessionId").asText());
+	/**
+	 * 세션을 <b>직접 만든다.</b>
+	 *
+	 * <p>API 로 시작하면 시나리오 Provider · 호출 한도 · "작품당 active 1개" 가 이 테스트에
+	 * 딸려 온다 — 여기서 볼 것은 <b>디버그 경로</b>이지 세션 생성이 아니다.
+	 */
+	private UUID givenSession() {
+		return this.sessions.save(PlaySession.start(ADMIN_PLAYER_REF, SEED_STORY, SEED_VERSION,
+				"fixed", "scenario", false, Instant.now())).getId();
 	}
 
 	private UUID givenAiCall(UUID sessionId) {
