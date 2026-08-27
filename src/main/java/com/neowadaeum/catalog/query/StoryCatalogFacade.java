@@ -64,6 +64,73 @@ public class StoryCatalogFacade {
 	}
 
 	/**
+	 * <b>공식 카탈로그가 실제로 쓰는 장르만</b> (§13.2, B-15).
+	 *
+	 * <p>라이브러리 개요가 장르 섹션을 전부 만들면 비어 있는 섹션이 화면에 남는다. 여기서
+	 * 걸러 두면 <b>섹션 수만큼의 조회</b>도 함께 준다 — 장르가 늘어도 빈 섹션은 늘지 않는다.
+	 */
+	public List<String> officialGenreKeys() {
+		return this.jdbc.sql("""
+						SELECT DISTINCT g.key, g.display_order
+						FROM story_genre sg
+						JOIN genre g ON g.id = sg.genre_id
+						JOIN story s ON s.id = sg.story_id
+						WHERE s.review_status = 'approved'
+						  AND s.visibility <> 'private'
+						  AND s.published_at IS NOT NULL
+						  AND s.current_version_id IS NOT NULL
+						  AND s.author_type = 'official'
+						ORDER BY g.display_order
+						""")
+				.query((rs, rowNum) -> rs.getString("key"))
+				.list();
+	}
+
+	/**
+	 * 이어하기 카드가 필요한 작품 정보를 <b>한 번에</b> 읽는다 (§13.2, R13.2).
+	 *
+	 * <p>세션마다 물으면 이어하기 다섯 개가 열 번의 조회가 된다. 챕터 제목은 몇 개 되지 않으므로
+	 * 그 버전의 것을 통째로 담아 보내고, 어느 챕터인지는 <b>세션이 안다</b> — 그 값은 play 의
+	 * 것이고 catalog 는 알 필요가 없다 (§5.3).
+	 *
+	 * @param storyVersionIds 세션이 고정한 버전들 (I-4)
+	 * @return 버전 id 로 찾는 지도. 사라진 버전은 들어 있지 않다
+	 */
+	public Map<UUID, StoryBriefView> briefs(List<UUID> storyVersionIds) {
+		if (storyVersionIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<UUID, List<StoryBriefView.ChapterTitle>> chapters = new HashMap<>();
+		this.jdbc.sql("""
+						SELECT story_version_id, chapter_no, title FROM chapter_def
+						WHERE story_version_id IN (:ids) ORDER BY chapter_no
+						""")
+				.param("ids", storyVersionIds)
+				.query((rs, rowNum) -> Map.entry(rs.getObject("story_version_id", UUID.class),
+						new StoryBriefView.ChapterTitle(rs.getInt("chapter_no"), rs.getString("title"))))
+				.list()
+				.forEach(entry -> chapters.computeIfAbsent(entry.getKey(), key -> new ArrayList<>())
+						.add(entry.getValue()));
+
+		Map<UUID, StoryBriefView> byVersion = new HashMap<>();
+		this.jdbc.sql("""
+						SELECT v.id AS version_id, s.id AS story_id, s.title, s.cover_url
+						FROM story_version v JOIN story s ON s.id = v.story_id
+						WHERE v.id IN (:ids)
+						""")
+				.param("ids", storyVersionIds)
+				.query((rs, rowNum) -> {
+					UUID versionId = rs.getObject("version_id", UUID.class);
+					return new StoryBriefView(versionId, rs.getObject("story_id", UUID.class),
+							rs.getString("title"), rs.getString("cover_url"),
+							chapters.getOrDefault(versionId, List.of()));
+				})
+				.list()
+				.forEach(brief -> byVersion.put(brief.storyVersionId(), brief));
+		return byVersion;
+	}
+
+	/**
 	 * 섹션 한 쪽을 읽는다.
 	 *
 	 * <p>정렬은 {@code (published_at DESC, id DESC)} 이며 커서도 그 짝이다. 발행 시각만으로는
