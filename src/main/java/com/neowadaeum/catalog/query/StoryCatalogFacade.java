@@ -64,6 +64,72 @@ public class StoryCatalogFacade {
 	}
 
 	/**
+	 * 내가 만든 작품 (§13.7, R13.4, B-36).
+	 *
+	 * <p><b>노출 조건을 걸지 않는다.</b> 작성자는 자기 작품을 상태와 무관하게 본다 — 오히려
+	 * {@code pending} · {@code rejected} 야말로 이 화면이 보여 줘야 할 것이다 (R8.7).
+	 *
+	 * <p><b>{@code rejectReasons} 는 아직 비어 있다.</b> 출처가 {@code story_review} 이고 그 표는
+	 * B-10 이다. 자리를 비워 두는 것과 없는 것은 다르다 — 계약이 요구하는 필드이며, 채우는 쪽이
+	 * 생기면 여기만 바뀐다.
+	 *
+	 * @param playerRef 작성자. {@code author_ref} 와 대조한다 (I-3 — catalog 는 이 값만 안다)
+	 */
+	public MyStoryPage mine(UUID playerRef, String cursor, Integer limit) {
+		int size = Math.clamp((limit != null) ? limit : DEFAULT_LIMIT, 1, MAX_LIMIT);
+		Optional<Cursor> after = Cursor.parse(cursor);
+
+		Map<String, Object> params = new HashMap<>();
+		params.put("author", playerRef);
+		params.put("size", size + 1);
+		after.ifPresent(cur -> {
+			params.put("cursorAt", java.sql.Timestamp.from(cur.publishedAt()));
+			params.put("cursorId", cur.storyId());
+		});
+
+		String sql = """
+				SELECT s.id, s.title, s.cover_url, s.short_desc, s.author_type, s.created_at AS ordered_at,
+				       s.visibility, s.review_status, s.published_at
+				FROM story s
+				WHERE s.author_ref = :author
+				""";
+		if (after.isPresent()) {
+			sql += "  AND (s.created_at, s.id) < (:cursorAt, :cursorId)\n";
+		}
+		sql += "ORDER BY s.created_at DESC, s.id DESC\nLIMIT :size";
+
+		List<MyStoryRow> rows = this.jdbc.sql(sql).params(params)
+				.query((rs, rowNum) -> new MyStoryRow(rs.getObject("id", UUID.class), rs.getString("title"),
+						rs.getString("cover_url"), rs.getString("visibility"), rs.getString("review_status"),
+						rs.getTimestamp("ordered_at").toInstant()))
+				.list();
+
+		boolean more = rows.size() > size;
+		List<MyStoryRow> page = more ? rows.subList(0, size) : rows;
+		List<MyStoryView> stories = page.stream()
+				.map(row -> new MyStoryView(row.id(), row.title(), row.coverUrl(), row.visibility(),
+						reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt()))
+				.toList();
+
+		return new MyStoryPage(stories, more
+				? new Cursor(page.getLast().createdAt(), page.getLast().id()).encode() : null);
+	}
+
+	/**
+	 * <b>{@code auto_rejected} 는 사용자에게 {@code rejected} 로 보인다</b> (§13-9).
+	 *
+	 * <p>자동 검수인지 사람이 본 것인지는 내부 기록이며, 그것을 알리면 어느 쪽을 통과하면
+	 * 되는지에 대한 단서가 된다.
+	 */
+	private static String reviewStatusFor(String stored) {
+		return "auto_rejected".equals(stored) ? "rejected" : stored;
+	}
+
+	private record MyStoryRow(UUID id, String title, String coverUrl, String visibility, String reviewStatus,
+			java.time.Instant createdAt) {
+	}
+
+	/**
 	 * 이어하기 판정에 필요한 작품 쪽 사실 (§13.4, §4.7, B-17).
 	 *
 	 * <p><b>노출 조건을 걸지 않는다.</b> 이 조회는 <b>이미 시작한 세션</b>이 어떤 상태인지 묻는
