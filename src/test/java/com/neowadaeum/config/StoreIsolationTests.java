@@ -66,7 +66,7 @@ class StoreIsolationTests extends ContainerTestBase {
 				.doesNotContainAnyElementsOf(promptLogEntities)
 				.doesNotContainAnyElementsOf(identityEntities);
 		assertThat(catalogEntities)
-				.containsExactlyInAnyOrder("Genre", "StoryGenre", "AuthorProfile", "EndingStat");
+				.containsExactlyInAnyOrder("Genre", "StoryGenre", "AuthorProfile", "EndingStat", "ServiceConfig");
 
 		assertThat(promptLogEntities).doesNotContainAnyElementsOf(identityEntities);
 		assertThat(catalogEntities)

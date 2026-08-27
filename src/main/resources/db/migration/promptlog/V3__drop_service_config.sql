@@ -1,0 +1,11 @@
+-- V3 — service_config 를 catalog 로 넘긴다 (B-14, §13-4)
+--
+-- B-11 이 이 표를 여기 만들었고, docs/corrections.md §13-4 는 catalog 스키마라고 적는다.
+-- catalog/V8 이 같은 이름으로 만들며, **비어 있으므로 옮길 데이터가 없다.**
+--
+-- 위치가 왜 중요한가 — promptlog 는 원문 보관처이고 접근 통제 대상이다 (R2.10).
+-- 고지 문구(R11.1)는 공개 값이며 그 통제 안에 있을 이유가 없다. 게다가 이 스토어의 엔티티를
+-- 소유하는 모듈은 ai 이고, 값을 읽어야 하는 identity · play 는 ai 를 참조할 수 없다 (ADR-0006).
+--
+-- IF EXISTS 를 쓰지 않는다. 없다면 전제가 틀린 것이고, 그 사실이 드러나야 한다.
+DROP TABLE service_config;
