@@ -65,7 +65,8 @@ class StoreIsolationTests extends ContainerTestBase {
 				.as("한 EMF 가 두 스토어의 엔티티를 알면 JPQL 한 줄로 크로스 스키마 조인이 된다")
 				.doesNotContainAnyElementsOf(promptLogEntities)
 				.doesNotContainAnyElementsOf(identityEntities);
-		assertThat(catalogEntities).containsExactlyInAnyOrder("Genre", "StoryGenre");
+		assertThat(catalogEntities)
+				.containsExactlyInAnyOrder("Genre", "StoryGenre", "AuthorProfile", "EndingStat");
 
 		assertThat(promptLogEntities).doesNotContainAnyElementsOf(identityEntities);
 		assertThat(catalogEntities)
