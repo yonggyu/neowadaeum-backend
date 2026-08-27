@@ -53,6 +53,8 @@ tags:
     description: 신고 (§13.9)
   - name: landing
     description: 랜딩 (§13.10)
+  - name: admin
+    description: 관리자 (§14). 역할·IP·2FA 를 **모두** 요구한다 (S-4)
 
 security:
   - bearerAuth: []
@@ -765,6 +767,136 @@ paths:
               schema:
                 $ref: '#/components/schemas/LandingResponse'
 
+  # ── §14 Admin — 역할·IP·2FA 를 모두 통과해야 한다 (S-4) ──────
+  /api/v1/admin/sessions/{sessionId}/debug:
+    get:
+      tags: [admin]
+      operationId: getSessionDebug
+      summary: 세션 디버그
+      description: |
+        한 세션에서 무슨 일이 일어났는지 본다 — provider · model · gameState · storySummary ·
+        최근 턴 · **AI 호출 원문** · 사용량.
+
+        **세 조건이 AND 다** (S-4). 액세스 토큰만으로는 열리지 않는다 — `X-Admin-Step-Up` 이
+        함께 와야 하며, 그 값은 `POST /api/v1/admin/2fa/verify` 가 발급한다.
+
+        **원문을 읽으면 기록된다** (R12.3, S-5). 읽은 건마다 `access_audit_log` 에 한 줄이
+        남고, **기록하지 못하면 원문도 나가지 않는다.**
+
+        지운 세션도 보인다 — 무슨 일이 있었는지 보는 것이 목적이고, 지워졌다는 사실도 그 일부다.
+
+        `playerRef` 는 응답에 없다 (I-3). 관리자가 알아야 하는 것은 세션에서 일어난 일이지
+        그것이 누구인지가 아니다.
+      x-implemented-by: B-41
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - $ref: '#/components/parameters/AdminStepUp'
+      responses:
+        '200':
+          description: 세션 상태와 AI 호출 원문
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionDebugResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/2fa/enroll:
+    post:
+      tags: [admin]
+      operationId: enrollAdminTotp
+      summary: 관리자 2FA 등록 시작
+      description: |
+        **비밀이 나가는 유일한 응답이다.** 이후로는 어떤 경로로도 다시 볼 수 없다.
+
+        아직 등록하지 않은 관리자는 승격 없이 부를 수 있다 — 요구하면 **등록할 방법 자체가
+        없어진다.** 이미 확정된 등록이 있으면 `X-Admin-Step-Up` 을 요구한다: 재등록은 2FA 를
+        갈아 치우는 행위이므로 그 자체가 2FA 뒤에 있어야 한다.
+      x-implemented-by: B-40
+      parameters:
+        - $ref: '#/components/parameters/AdminStepUp'
+      responses:
+        '200':
+          description: 인증기에 넣을 비밀
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotpEnrollmentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/2fa/confirm:
+    post:
+      tags: [admin]
+      operationId: confirmAdminTotp
+      summary: 관리자 2FA 등록 확정
+      description: |
+        인증기가 만든 코드로 **실제로 들어갔는지** 확인한다. 이 코드가 맞아야 비로소 그 비밀이
+        문을 연다.
+
+        확정은 곧바로 승격을 준다 — 방금 코드를 맞힌 사람에게 다시 묻는 것은 아무것도 더
+        확인하지 못한다.
+      x-implemented-by: B-40
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TotpCodeRequest'
+      responses:
+        '200':
+          description: 단계 승격
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotpStepUpResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/2fa/verify:
+    post:
+      tags: [admin]
+      operationId: verifyAdminTotp
+      summary: 관리자 2FA 검증
+      description: |
+        승격을 만들어 내는 유일한 경로다. 관리자 경로는 그 값을 `X-Admin-Step-Up` 으로 보낸다.
+
+        **같은 코드는 두 번 통하지 않는다** — 코드는 30초 동안 같으므로, 재사용을 막지 않으면
+        어깨너머로 본 여섯 자리가 그 창 안에서 몇 번이든 쓰인다.
+
+        실패는 전부 `403` 하나다. 등록 없음·확정 전·코드 불일치·재사용을 구분해 알리면 그것이
+        곧 단서다 (S-6).
+      x-implemented-by: B-40
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TotpCodeRequest'
+      responses:
+        '200':
+          description: 단계 승격
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotpStepUpResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
 components:
 
   securitySchemes:
@@ -775,6 +907,19 @@ components:
       description: '`Authorization: Bearer <accessToken>`'
 
   parameters:
+    AdminStepUp:
+      name: X-Admin-Step-Up
+      in: header
+      required: false
+      description: |
+        2FA 검증이 발급한 단계 승격 토큰 (S-4).
+
+        **`Authorization` 에 겹쳐 싣지 않는다** — 그 자리는 *누구인가*를 답하고 이것은 *방금
+        두 번째 요소를 통과했는가*를 답한다.
+
+        `required: false` 인 것은 등록 경로 때문이다. 없으면 대부분의 관리자 경로가 `403` 이다.
+      schema:
+        type: string
     StoryId:
       name: storyId
       in: path
@@ -1817,3 +1962,146 @@ components:
           type: string
         coverImage:
           type: [string, 'null']
+
+    # ── §14 Admin ────────────────────────────────────────────
+    AdminSessionDebugResponse:
+      type: object
+      description: |
+        두 모듈이 준 것을 나란히 둔다. 합쳐서 평평한 하나로 만들면 어느 쪽이 무엇을 준 것인지가
+        사라지고, 한쪽이 바뀔 때 다른 쪽 필드까지 흔들린다.
+      required: [session, aiCalls]
+      properties:
+        session:
+          $ref: '#/components/schemas/AdminSessionDebugSession'
+        aiCalls:
+          type: array
+          description: AI 호출 원문과 사용량. **최신이 앞이다**
+          items:
+            $ref: '#/components/schemas/AdminAiCall'
+
+    AdminSessionDebugSession:
+      type: object
+      description: |
+        세션의 현재 상태. **`playerRef` 가 없다** (I-3).
+
+        `gameState` 와 `storySummary` 는 저장된 그대로다 — 디버그는 *저장된 것*을 보는 자리이고,
+        다시 가공하면 무엇이 저장돼 있었는지가 흐려진다.
+      required: [sessionId, storyId, storyVersionId, status, providerId, modelId, turnNo, chapterNo, testSession, recentTurns, createdAt, updatedAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        storyId: { type: string, format: uuid }
+        storyVersionId:
+          type: string
+          format: uuid
+          description: 세션은 생성 시 이 버전에 고정된다 (I-4)
+        status:
+          type: string
+          enum: [active, completed, abandoned, expired]
+        providerId: { type: string }
+        modelId: { type: string }
+        turnNo:
+          type: integer
+          description: 지금 화면에 떠 있는 턴
+        chapterNo: { type: integer }
+        testSession:
+          type: boolean
+          description: 자유입력은 이 값이 `true` 일 때만 허용된다 (I-18, R14.3)
+        gameState:
+          type: [string, 'null']
+          description: 최신 스냅샷의 JSON 원문. 스냅샷은 append-only 다 (I-5)
+        storySummary:
+          type: [string, 'null']
+        summaryUptoTurnNo:
+          type: [integer, 'null']
+        recentTurns:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminDebugTurn'
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdminDebugTurn:
+      type: object
+      required: [turnNo, chapterNo, adminFreeInput, ending, createdAt]
+      properties:
+        turnNo: { type: integer }
+        chapterNo: { type: integer }
+        speakerName: { type: [string, 'null'] }
+        paragraphs:
+          type: [string, 'null']
+          description: 저장된 JSON 원문
+        choices:
+          type: [string, 'null']
+          description: 저장된 JSON 원문. `choiceId` 는 서버가 발급한 값이다 (I-1)
+        chosenChoiceId: { type: [string, 'null'] }
+        safetyVerdict:
+          type: [string, 'null']
+          description: 세이프티 판정 (R9.3). **왜 막혔는지**를 보는 자리다
+        adminFreeInput:
+          type: boolean
+          description: 관리자 자유입력으로 만들어진 턴인가 (R14.2)
+        ending: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    AdminAiCall:
+      type: object
+      description: |
+        AI 호출 한 건 — **원문을 포함한다**.
+
+        이 값을 받은 뒤에도 원문 보관처는 `ai_call_log` 뿐이라는 규칙은 유효하다 (S-3).
+      required: [id, purpose, providerId, modelId, requestRaw, attemptNo, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        purpose:
+          type: string
+          enum: [turn, summary, safety, outline]
+        providerId: { type: string }
+        modelId: { type: string }
+        fallbackFrom:
+          type: [string, 'null']
+          description: fallback 이 발동했을 때만 값이 있다 (R3.7). 세션의 provider 고정은 바뀌지 않는다 (I-4)
+        requestRaw: { type: string }
+        responseRaw: { type: [string, 'null'] }
+        inputTokens: { type: [integer, 'null'] }
+        outputTokens: { type: [integer, 'null'] }
+        latencyMs: { type: [integer, 'null'] }
+        costMicro: { type: [integer, 'null'] }
+        safetyFlags:
+          type: string
+          description: 세이프티 판정 결과 배열의 JSON 원문. 통과면 `[]`
+        attemptNo:
+          type: integer
+          description: 재요청은 같은 턴의 별도 호출이다 (R5.8). 1부터 센다
+        createdAt: { type: string, format: date-time }
+
+    TotpEnrollmentResponse:
+      type: object
+      description: 등록을 시작하며 **한 번만** 나가는 값
+      required: [secret, otpauthUri]
+      properties:
+        secret:
+          type: string
+          description: 인증기에 직접 입력하는 표기 (Base32)
+        otpauthUri:
+          type: string
+          description: QR 로 만들 표기. 같은 비밀을 담고 있다
+
+    TotpCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: 인증기가 보여 주는 여섯 자리
+
+    TotpStepUpResponse:
+      type: object
+      required: [stepUpToken, expiresIn]
+      properties:
+        stepUpToken:
+          type: string
+          description: 관리자 요청에 `X-Admin-Step-Up` 으로 함께 보낸다
+        expiresIn:
+          type: integer
+          description: 초. 모르면 만료를 `403` 으로 처음 겪고, 그때는 하던 작업이 이미 끊긴 뒤다

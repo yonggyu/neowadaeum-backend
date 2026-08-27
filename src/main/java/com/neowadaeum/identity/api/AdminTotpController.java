@@ -1,7 +1,7 @@
 package com.neowadaeum.identity.api;
 
 import com.neowadaeum.common.web.PlayerRefResolver;
-import com.neowadaeum.identity.auth.AdminAccessGuard;
+import com.neowadaeum.identity.access.AdminAccessGuard;
 import com.neowadaeum.identity.auth.AdminTotpService;
 import com.neowadaeum.identity.auth.AuthTokenService;
 import jakarta.servlet.http.HttpServletRequest;

@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.neowadaeum.ContainerTestBase;
-import com.neowadaeum.identity.auth.AdminAccessGuard;
+import com.neowadaeum.identity.access.AdminAccessGuard;
 import com.neowadaeum.identity.domain.User;
 import com.neowadaeum.identity.domain.UserRole;
 import com.neowadaeum.identity.repository.AdminTotpRepository;

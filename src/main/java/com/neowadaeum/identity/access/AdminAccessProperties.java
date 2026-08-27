@@ -1,4 +1,4 @@
-package com.neowadaeum.identity.auth;
+package com.neowadaeum.identity.access;
 
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
