@@ -12,6 +12,7 @@ import com.neowadaeum.identity.domain.ConsentType;
 import com.neowadaeum.identity.domain.User;
 import com.neowadaeum.identity.repository.AiNoticeImpressionRepository;
 import com.neowadaeum.identity.repository.ConsentLogRepository;
+import com.neowadaeum.identity.repository.OauthIdentityRepository;
 import com.neowadaeum.identity.repository.UserRepository;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
@@ -51,6 +52,9 @@ class AiNoticeExposureIntegrationTests extends ContainerTestBase {
 	private ConsentLogRepository consents;
 
 	@Autowired
+	private OauthIdentityRepository oauthIdentities;
+
+	@Autowired
 	private AiNoticeImpressionRepository impressions;
 
 	@Autowired
@@ -67,17 +71,27 @@ class AiNoticeExposureIntegrationTests extends ContainerTestBase {
 		this.snapshots.deleteAll();
 		this.turns.deleteAll();
 		this.sessions.deleteAll();
-		this.impressions.deleteAll();
-		this.consents.deleteAll();
-		this.users.deleteAll();
+		clearIdentity();
 		this.configs.deleteAll();
 	}
 
 	@AfterEach
 	void clear() {
-		this.impressions.deleteAll();
-		this.users.deleteAll();
+		clearIdentity();
 		this.configs.deleteAll();
+	}
+
+	/**
+	 * identity 를 비운다 — <b>FK 순서대로</b>.
+	 *
+	 * <p>{@code user} 를 먼저 지우면 {@code oauth_identity} 가 막는다. 그 FK 는 identity 안에만
+	 * 있으므로 (§5.3) DB 가 순서를 강제하는 것이 정상이다.
+	 */
+	private void clearIdentity() {
+		this.impressions.deleteAll();
+		this.consents.deleteAll();
+		this.oauthIdentities.deleteAll();
+		this.users.deleteAll();
 	}
 
 	/** R11.3 — 세션을 시작하면 그 판본을 봤다는 사실이 남는다. */

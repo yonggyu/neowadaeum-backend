@@ -185,8 +185,8 @@ class SessionConstraintTests extends ContainerTestBase {
 		try (Connection connection = this.dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
 						INSERT INTO turn (id, session_id, turn_no, chapter_no, paragraphs, choices,
-						                  safety_verdict, created_at)
-						VALUES (?, ?, ?, 1, '[]'::jsonb, '[]'::jsonb, ?, ?)
+						                  safety_verdict, is_ai_generated, created_at)
+						VALUES (?, ?, ?, 1, '[]'::jsonb, '[]'::jsonb, ?, TRUE, ?)
 						""")) {
 			statement.setObject(1, id);
 			statement.setObject(2, sessionId);
@@ -202,8 +202,9 @@ class SessionConstraintTests extends ContainerTestBase {
 	private void insertTurnWithoutVerdict(UUID sessionId, int turnNo) throws SQLException {
 		try (Connection connection = this.dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
-						INSERT INTO turn (id, session_id, turn_no, chapter_no, paragraphs, choices, created_at)
-						VALUES (?, ?, ?, 1, '[]'::jsonb, '[]'::jsonb, ?)
+						INSERT INTO turn (id, session_id, turn_no, chapter_no, paragraphs, choices,
+						                  is_ai_generated, created_at)
+						VALUES (?, ?, ?, 1, '[]'::jsonb, '[]'::jsonb, TRUE, ?)
 						""")) {
 			statement.setObject(1, UUID.randomUUID());
 			statement.setObject(2, sessionId);
