@@ -9,6 +9,7 @@ import com.neowadaeum.catalog.query.CharacterCardView;
 import com.neowadaeum.catalog.query.GenreView;
 import com.neowadaeum.catalog.query.StoryCardView;
 import com.neowadaeum.play.api.LibraryView;
+import com.neowadaeum.play.api.ResumeView;
 import com.neowadaeum.play.api.StoryDetailResponse;
 import com.neowadaeum.play.api.TurnView;
 import java.io.InputStream;
@@ -76,6 +77,14 @@ class OpenApiContractTests {
 	private static Set<String> propertiesOf(String schemaName) {
 		Map<String, Object> properties = (Map<String, Object>) schema(schemaName).get("properties");
 		return properties.keySet();
+	}
+
+	/** 스펙의 {@code enum} 값 목록. 코드의 열거형과 대조하는 데 쓴다. */
+	@SuppressWarnings("unchecked")
+	private static List<String> enumOf(String schemaName) {
+		List<String> values = (List<String>) schema(schemaName).get("enum");
+		assertThat(values).as("스펙의 %s 에 enum 이 없다", schemaName).isNotNull();
+		return values;
 	}
 
 	private static Set<String> recordComponentsOf(Class<?> type) {
@@ -225,6 +234,26 @@ class OpenApiContractTests {
 		assertThat(propertiesOf("MySessionBrief"))
 				.containsAll(recordComponentsOf(StoryDetailResponse.MySession.class));
 		assertThat(propertiesOf("CharacterCard")).containsAll(recordComponentsOf(CharacterCardView.class));
+	}
+
+	/** Resume 응답의 모든 필드가 계약에 선언되어 있다 (B-17). */
+	@Test
+	void B17_implemented_resume_fields_are_all_declared() {
+		assertThat(propertiesOf("ResumeResponse")).containsAll(recordComponentsOf(ResumeView.class));
+	}
+
+	/**
+	 * {@code sessionState} 의 다섯 값이 계약과 정확히 같다 (§4.7).
+	 *
+	 * <p>한쪽만 늘어나면 클라이언트가 모르는 상태를 받고, <b>모르는 상태의 기본 처리는 대개
+	 * "이어하기 가능"</b>이다 — 지운 세션을 이어가게 되는 방향이다.
+	 */
+	@Test
+	void B17_session_state_values_match_the_contract() {
+		assertThat(enumOf("SessionState")).containsExactlyInAnyOrderElementsOf(
+				java.util.Arrays.stream(ResumeView.State.values())
+						.map(state -> state.name().toLowerCase(java.util.Locale.ROOT))
+						.toList());
 	}
 
 	// ── 4. S-11 ──────────────────────────────────────────────

@@ -64,6 +64,23 @@ public class StoryCatalogFacade {
 	}
 
 	/**
+	 * 이어하기 판정에 필요한 작품 쪽 사실 (§13.4, §4.7, B-17).
+	 *
+	 * <p><b>노출 조건을 걸지 않는다.</b> 이 조회는 <b>이미 시작한 세션</b>이 어떤 상태인지 묻는
+	 * 것이고, 정지된 작품(R8.10)이야말로 답해야 할 경우다 — 가리면 {@code story_suspended} 를
+	 * 낼 수 없고 사용자는 이유 없이 404 를 본다.
+	 *
+	 * @return 작품이 없으면 비어 있다
+	 */
+	public Optional<StoryStatusView> status(UUID storyId) {
+		return this.jdbc.sql("SELECT current_version_id, review_status FROM story WHERE id = :id")
+				.param("id", storyId)
+				.query((rs, rowNum) -> new StoryStatusView(rs.getObject("current_version_id", UUID.class),
+						rs.getString("review_status")))
+				.optional();
+	}
+
+	/**
 	 * 작품 상세 (§13.3, B-16).
 	 *
 	 * <p><b>노출 조건은 목록과 같다</b> (R2.3, I-8). 상세만 느슨하면 목록에서 가린 작품을
