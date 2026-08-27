@@ -48,6 +48,15 @@ public class User {
 	@Column(name = "status", nullable = false)
 	private UserStatus status;
 
+	/**
+	 * 역할 (R14.6, S-4).
+	 *
+	 * <p><b>가입으로는 {@link UserRole#USER} 만 얻는다.</b> 승격 경로를 코드에 두지 않는다 —
+	 * 두는 순간 그것이 공개 레포에 적힌 승격 절차가 된다 (S-11).
+	 */
+	@Column(name = "role", nullable = false)
+	private UserRole role;
+
 	/** 가입 연령 게이트(B-13)가 쓰는 원본. 미확인 회원은 {@code null} 이다. */
 	@Column(name = "birth_date")
 	private LocalDate birthDate;
@@ -75,6 +84,7 @@ public class User {
 		User user = new User();
 		user.playerRef = playerRef;
 		user.status = UserStatus.ACTIVE;
+		user.role = UserRole.USER;
 		user.birthDate = birthDate;
 		user.createdAt = now;
 		return user;
@@ -95,6 +105,11 @@ public class User {
 
 	public UserStatus getStatus() {
 		return this.status;
+	}
+
+	/** R14.6 — 역할은 <b>세 조건 중 하나</b>다. 이것만으로 관리자가 되지 않는다. */
+	public UserRole getRole() {
+		return this.role;
 	}
 
 	public LocalDate getBirthDate() {

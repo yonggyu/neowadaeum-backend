@@ -31,7 +31,8 @@ class IdentityEnumContractTests {
 	/** 값 목록이 두 마이그레이션에 나뉘어 있다 — V2 는 회원·로그인, V3 는 동의·고지다. */
 	private static final List<String> MIGRATIONS = List.of(
 			"db/migration/identity/V2__identity_core.sql",
-			"db/migration/identity/V3__identity_consent.sql");
+			"db/migration/identity/V3__identity_consent.sql",
+			"db/migration/identity/V5__user_role.sql");
 
 	/** §2.2 — {@code user.status} 3종. */
 	@Test
@@ -58,6 +59,12 @@ class IdentityEnumContractTests {
 		assertThat(checkedValues("surface")).containsExactlyInAnyOrderElementsOf(dbNames(NoticeSurface.values()));
 	}
 
+	/** R14.6 — {@code user.role} 2종. 목록이 갈라지면 권한 판정이 조용히 달라진다. */
+	@Test
+	void R14_6_user_role_matches_the_check_constraint() {
+		assertThat(checkedValues("role")).containsExactlyInAnyOrderElementsOf(dbNames(UserRole.values()));
+	}
+
 	/** 변환은 한 곳에서만 한다. 모든 값이 소문자로 나갔다가 그대로 돌아온다. */
 	@Test
 	void every_value_round_trips_through_its_converter() {
@@ -65,6 +72,7 @@ class IdentityEnumContractTests {
 		assertRoundTrip(new OauthProviderConverter(), OauthProvider.values());
 		assertRoundTrip(new ConsentTypeConverter(), ConsentType.values());
 		assertRoundTrip(new NoticeSurfaceConverter(), NoticeSurface.values());
+		assertRoundTrip(new UserRoleConverter(), UserRole.values());
 	}
 
 	/**
