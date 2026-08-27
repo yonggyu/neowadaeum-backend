@@ -40,7 +40,7 @@ class AuthControllerTests {
 	/** §13-22 — 계약이 정한 응답 그대로. {@code playerRef} 는 없다. */
 	@Test
 	void S13_22_login_returns_the_contract_token_response() throws Exception {
-		given(this.login.login(OauthProvider.GOOGLE, "id-token")).willReturn(ISSUED);
+		given(this.login.login(eq(OauthProvider.GOOGLE), eq("id-token"), any(), any())).willReturn(ISSUED);
 
 		this.mvc.perform(post("/api/v1/auth/oauth/google")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -62,13 +62,13 @@ class AuthControllerTests {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
 
-		verify(this.login, never()).login(any(), any());
+		verify(this.login, never()).login(any(), any(), any(), any());
 	}
 
 	/** 검증 실패는 401 이고, 어느 검사에서 걸렸는지 알려주지 않는다 (S-6). */
 	@Test
 	void S13_1_a_rejected_id_token_is_a_401() throws Exception {
-		given(this.login.login(eq(OauthProvider.GOOGLE), any()))
+		given(this.login.login(eq(OauthProvider.GOOGLE), any(), any(), any()))
 				.willThrow(new ApiException(ErrorCode.UNAUTHENTICATED));
 
 		this.mvc.perform(post("/api/v1/auth/oauth/google")

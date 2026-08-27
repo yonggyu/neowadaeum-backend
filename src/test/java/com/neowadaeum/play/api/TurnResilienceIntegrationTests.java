@@ -40,6 +40,7 @@ import com.neowadaeum.play.port.GenerationTimedOutException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
@@ -223,7 +224,10 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 	 * 여기서 확인한다 — 예산을 0 에 가깝게 열고, 시간 제한 데코레이터가 위임을 <b>시작조차 하지
 	 * 않는</b> 상태를 만든다.
 	 *
-	 * <p>{@code Thread.sleep} 을 쓰지 않는다. 예산 자체를 1나노초로 두면 첫 호출 시점에 이미 지났다.
+	 * <p><b>{@code Thread.sleep} 을 쓰지 않는다.</b> 대신 <b>읽을 때마다 앞으로 가는 시계</b>를 준다 —
+	 * 고정 시계로는 아무리 작은 예산도 소진되지 않는다(남은 시간이 늘 그대로다). CI 가 그 사실을
+	 * 먼저 알려 줬다: 1나노초 예산에서 Provider 가 <b>한 번 시작됐다.</b> 남은 시간이 0 이 아니면
+	 * 데코레이터는 호출을 걸고 기다리다 끊을 뿐이고, 그때는 이미 어댑터가 시작한 뒤다.
 	 */
 	@Test
 	void S116_an_exhausted_turn_budget_leaves_the_session_untouched() {
@@ -246,12 +250,13 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 				"counting", "scenario", false, Instant.now(FIXED))).getId();
 
 		ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+		Clock passing = steppingClock();
 		try {
 			TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
-					new TimeLimitedStoryProvider(counting, executor, Duration.ofSeconds(25), FIXED),
+					new TimeLimitedStoryProvider(counting, executor, Duration.ofSeconds(25), passing),
 					this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine,
 					RecentTurnsProperties.defaults(), this.summaries, this.summaryTrigger,
-					this.playTransactionManager, FIXED, new TurnBudgetProperties(Duration.ofNanos(1)));
+					this.playTransactionManager, passing, new TurnBudgetProperties(Duration.ofMillis(1)));
 
 			assertThatThrownBy(() -> pipeline.advance(sessionId, null))
 					.isInstanceOf(GenerationTimedOutException.class);
@@ -261,8 +266,35 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 		}
 
 		assertThat(calls.get()).as("예산이 없으면 Provider 는 시작되지도 않는다").isZero();
-		assertThat(this.turns.count()).isZero();
+		assertThat(this.turns.findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(sessionId)).isEmpty();
 		assertThat(this.sessions.findById(sessionId).orElseThrow().getTurnNo()).isZero();
+	}
+
+	/**
+	 * 읽을 때마다 1초씩 가는 시계.
+	 *
+	 * <p>예산을 연 뒤 <b>다음 확인 시점에는 이미 지나 있다.</b> 실제 시간을 쓰지 않으므로 느려지지
+	 * 않고, {@code sleep} 처럼 값이 흔들리지도 않는다.
+	 */
+	private static Clock steppingClock() {
+		AtomicInteger reads = new AtomicInteger();
+		Instant base = Instant.now(FIXED);
+		return new Clock() {
+			@Override
+			public Instant instant() {
+				return base.plusSeconds(reads.getAndIncrement());
+			}
+
+			@Override
+			public ZoneId getZone() {
+				return ZoneOffset.UTC;
+			}
+
+			@Override
+			public Clock withZone(ZoneId zone) {
+				return this;
+			}
+		};
 	}
 
 	// ── 연속 실패 쿨다운 (R6.5) ─────────────────────────────
