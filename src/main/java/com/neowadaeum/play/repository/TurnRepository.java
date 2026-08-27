@@ -29,6 +29,17 @@ public interface TurnRepository extends JpaRepository<Turn, UUID> {
 	List<Turn> findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(UUID sessionId, Limit limit);
 
 	/**
+	 * 기록의 한 쪽 (§13.6, B-35).
+	 *
+	 * <p><b>역순이다.</b> 화면이 "위로 스크롤해 더 읽기"이므로 커서도 <b>지금 보고 있는 것보다
+	 * 과거</b>를 가리킨다.
+	 *
+	 * <p>되돌려진 턴은 빠진다 (R14.4) — 없던 일이 이야기에 남으면 안 된다.
+	 */
+	List<Turn> findBySessionIdAndTurnNoLessThanAndDeletedAtIsNullOrderByTurnNoDesc(UUID sessionId,
+			int turnNoExclusive, Limit limit);
+
+	/**
 	 * 요약에 병합할 구간의 턴들 (R4.5, B-34).
 	 *
 	 * <p><b>오래된 것이 앞이다.</b> 요약은 시간 순서를 유지해야 하며, 뒤집힌 순서로 압축하면

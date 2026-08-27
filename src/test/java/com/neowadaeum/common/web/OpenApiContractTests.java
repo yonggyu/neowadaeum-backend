@@ -8,6 +8,7 @@ import com.neowadaeum.play.api.TurnRequestBody;
 import com.neowadaeum.catalog.query.CharacterCardView;
 import com.neowadaeum.catalog.query.GenreView;
 import com.neowadaeum.catalog.query.StoryCardView;
+import com.neowadaeum.play.api.HistoryView;
 import com.neowadaeum.play.api.LibraryView;
 import com.neowadaeum.play.api.ResumeView;
 import com.neowadaeum.play.api.StoryDetailResponse;
@@ -254,6 +255,19 @@ class OpenApiContractTests {
 				java.util.Arrays.stream(ResumeView.State.values())
 						.map(state -> state.name().toLowerCase(java.util.Locale.ROOT))
 						.toList());
+	}
+
+	/**
+	 * 기록 응답의 모든 필드가 계약에 선언되어 있고, <b>{@code choiceId} 가 없다</b> (B-35, §13.6).
+	 *
+	 * <p>계약 쪽에서도 확인한다 — 구현이 주지 않아도 계약이 약속하면 그 자리가 언젠가 채워진다.
+	 */
+	@Test
+	void B35_history_carries_no_choice_id_on_either_side() {
+		assertThat(propertiesOf("HistoryResponse")).containsAll(recordComponentsOf(HistoryView.class));
+		assertThat(propertiesOf("HistoryItem")).containsAll(recordComponentsOf(HistoryView.Item.class));
+		assertThat(propertiesOf("HistoryItem")).doesNotContain("choiceId");
+		assertThat(recordComponentsOf(HistoryView.Item.class)).doesNotContain("choiceId");
 	}
 
 	// ── 4. S-11 ──────────────────────────────────────────────
