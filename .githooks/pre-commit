@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+# pre-commit — 스테이지된 변경에서 시크릿을 찾는다 (S-1, §7.5)
+#
+# S-1 은 "pre-commit 훅에 gitleaks 를 건다. CI 에도 시크릿 스캔 잡을 둔다. 둘 다 실패 시 머지 차단"
+# 이다. CI 잡은 B-04 에 있었고 이 훅이 없었다 (#26).
+#
+# **둘은 대체재가 아니라 직렬 방어다.** CI 는 이미 푸시된 뒤에 잡는데, 한 번 푸시된 자격 증명은
+# 삭제가 아니라 로테이션 대상이다 (§7.1-4). 이 레포는 공개이므로(S-11) 푸시와 동시에 읽힌다.
+#
+# 설치:  git config core.hooksPath .githooks
+#        (scripts/preflight.sh 가 안내하고, README 에도 적혀 있다)
+#
+# gitleaks 가 없으면 **막지 않고 경고만 한다.** 여기서 커밋을 막으면 도구를 설치할 때까지
+# 아무 작업도 못 하고, 그러면 --no-verify 가 습관이 된다. 막는 근거는 여전히 CI 다 (§8.9).
+# ─────────────────────────────────────────────────────────────
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+	echo "pre-commit: gitleaks 가 없어 로컬 스캔을 건너뛴다. CI 는 그대로 돈다." >&2
+	echo "            설치: https://github.com/gitleaks/gitleaks#installing" >&2
+	exit 0
+fi
+
+# --staged 는 커밋될 내용만 본다. --redact 는 발견된 값을 출력에 남기지 않는다 —
+# 터미널 스크롤백과 셸 로그도 유출 경로다 (S-3).
+gitleaks protect --staged --redact --no-banner

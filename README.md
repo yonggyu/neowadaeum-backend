@@ -55,11 +55,30 @@ cp src/main/resources/application.yml.template src/main/resources/application.ym
 
 `.env` 와 `application.yml` 은 **커밋되지 않는다**(§7.2). 실제 값은 절대 소스에 넣지 않는다.
 
+### 2. pre-commit 훅
+
+```bash
+git config core.hooksPath .githooks
+```
+
+스테이지된 변경에서 시크릿을 찾는다(S-1). **한 번 클론당 한 번** 해야 한다 — `.git/hooks` 는
+클론으로 전파되지 않는다. `gitleaks` 가 없으면 훅은 경고만 하고 넘어가며, 막는 근거는 여전히 CI 다.
+
 ## 실행
 
 ```bash
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
+
+**`dev` 프로파일을 지정해야 뜬다.** 결정론 Provider(`FixedStoryProvider`) · dev 플레이 콘솔 ·
+계약 문서 경로가 전부 `dev & !prod` 이고, Provider 가 하나도 등록되지 않으면 기동이 멈춘다.
+표현식이 셋 다 같으므로 **`dev` 하나만 켜면 전부 해결된다.**
+
+> **의도된 설계다.** dev 전용 경로는 *"명시적으로 켤 때만 존재"* 해야 한다(ADR-0004). 프로파일
+> 지정을 빠뜨린 배포에서 그것들이 조용히 살아나는 것을 막는다.
+>
+> 인증은 프로파일과 무관하다. **`dev` 에서도 토큰 없이는 401** 이다 — 고정 `player_ref` 우회는
+> B-12 가 제거했다(#34).
 
 `spring-boot-docker-compose`가 `docker compose up`을 대신 실행하고, `healthcheck`가 통과할 때까지
 기다린 뒤 애플리케이션을 띄운다. IDE의 Run 버튼도 동일하게 동작한다.
