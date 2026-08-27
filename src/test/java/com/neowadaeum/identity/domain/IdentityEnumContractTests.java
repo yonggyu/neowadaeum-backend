@@ -3,6 +3,7 @@ package com.neowadaeum.identity.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.neowadaeum.common.spi.NoticeSurface;
 import jakarta.persistence.AttributeConverter;
 import java.io.IOException;
 import java.io.UncheckedIOException;

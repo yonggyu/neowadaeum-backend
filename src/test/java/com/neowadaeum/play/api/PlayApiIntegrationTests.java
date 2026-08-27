@@ -124,6 +124,9 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 		// I-1 — choiceId 는 서버가 발급한다. §13-9 형식이다.
 		assertThat(body.path("turn").path("choices").get(0).path("choiceId").asString()).startsWith("1-1-");
 
+		// R11.2 · §11 — AI 생성 사실 표시. 저장된 사실을 그대로 읽는다.
+		assertThat(body.path("turn").path("isAiGenerated").asBoolean()).isTrue();
+
 		// I-11 · §13-3 — disabled 는 서버 판정이며 P0 에서는 항상 false 다. 필드는 유지한다.
 		assertThat(body.path("turn").path("choices").get(0).path("disabled").asBoolean()).isFalse();
 		assertThat(body.path("turn").path("choices").get(0).has("disabledReason")).isTrue();

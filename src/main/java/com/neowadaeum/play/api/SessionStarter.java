@@ -2,6 +2,8 @@ package com.neowadaeum.play.api;
 
 import com.neowadaeum.play.port.TurnGenerationPort;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
+import com.neowadaeum.common.spi.AiNoticeRecorder;
+import com.neowadaeum.common.spi.NoticeSurface;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.domain.PlaySession;
@@ -42,17 +44,19 @@ public class SessionStarter {
 	private final StoryVersionFacade storyVersions;
 	private final TurnPipeline pipeline;
 	private final TurnGenerationPort provider;
+	private final AiNoticeRecorder aiNotices;
 	private final Clock clock;
 	private final TransactionTemplate transactions;
 
 	public SessionStarter(PlaySessionRepository sessions, StoryVersionFacade storyVersions,
-			TurnPipeline pipeline, TurnGenerationPort provider, Clock clock,
+			TurnPipeline pipeline, TurnGenerationPort provider, AiNoticeRecorder aiNotices, Clock clock,
 			PlatformTransactionManager playTransactionManager) {
 		this.transactions = new TransactionTemplate(playTransactionManager);
 		this.sessions = sessions;
 		this.storyVersions = storyVersions;
 		this.pipeline = pipeline;
 		this.provider = provider;
+		this.aiNotices = aiNotices;
 		this.clock = clock;
 	}
 
@@ -64,6 +68,11 @@ public class SessionStarter {
 	 */
 	public StartedSession start(UUID playerRef, UUID storyId) {
 		UUID sessionId = this.transactions.execute(status -> createSession(playerRef, storyId));
+
+		// R11.3 — 플레이를 시작하는 순간이 사전 고지의 자리다 (§4.1 의 "사전"). 매 턴이 아니라
+		// 여기서 한 번 남긴다. 기록기는 실패해도 플레이를 막지 않는다.
+		this.aiNotices.recordExposure(playerRef, NoticeSurface.PLAY);
+
 		TurnOutcome first = this.pipeline.advance(sessionId, null);
 		return new StartedSession(sessionId, first);
 	}

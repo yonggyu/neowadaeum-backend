@@ -28,6 +28,8 @@ import java.util.UUID;
  * @param endingId      도달한 엔딩. 없으면 {@code null}
  * @param endingIndex   비시크릿 기준 순번. 시크릿이면 {@code null} (R7.11)
  * @param totalEndings  비시크릿 엔딩 수 (R7.11)
+ * @param isAiGenerated 이 턴의 본문이 AI 생성물인가 (R11.2, §11). <b>상수가 아니라 저장된 사실</b>이며
+ *                      턴을 만든 경로가 그 값을 넣는다
  */
 public record TurnView(
 		int turnNo,
@@ -41,7 +43,8 @@ public record TurnView(
 		boolean isEnding,
 		UUID endingId,
 		Integer endingIndex,
-		Integer totalEndings) {
+		Integer totalEndings,
+		boolean isAiGenerated) {
 
 	/**
 	 * 본문 한 문단 (R5.1, R5.2).
