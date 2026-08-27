@@ -2,6 +2,7 @@ package com.neowadaeum;
 
 import com.neowadaeum.config.StoreSchema;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Locale;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -130,6 +131,18 @@ public class TestcontainersConfiguration {
 	@Bean
 	DynamicPropertyRegistrar adminAccessRegistrar() {
 		return registry -> registry.add("admin.allowed-cidr", () -> "");
+	}
+
+	/**
+	 * TOTP 비밀을 감싸는 키.
+	 *
+	 * <b>테스트 값이며 어떤 실제 비밀도 감싸지 않는다</b> — 32바이트를 base64 로 적어야 한다는
+	 * 형식만 만족시킨다 (S-11).
+	 */
+	@Bean
+	DynamicPropertyRegistrar adminTotpRegistrar() {
+		return registry -> registry.add("admin.totp.secret-key",
+				() -> Base64.getEncoder().encodeToString(new byte[32]));
 	}
 
 	/** DataSourceConfiguration 이 {@code currentSchema} 를 요구한다. 빠지면 부팅이 실패한다. */

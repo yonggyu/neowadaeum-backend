@@ -59,7 +59,8 @@ class StoreIsolationTests extends ContainerTestBase {
 		assertThat(playEntities).contains("PlaySession", "Turn", "GameStateSnapshot");
 		assertThat(promptLogEntities).containsExactlyInAnyOrder("AiCallLog", "AdminAuditLog");
 		assertThat(identityEntities)
-				.containsExactlyInAnyOrder("User", "OauthIdentity", "ConsentLog", "AiNoticeImpression");
+				.containsExactlyInAnyOrder("User", "OauthIdentity", "ConsentLog", "AiNoticeImpression",
+						"AdminTotp");
 
 
 		assertThat(playEntities)
