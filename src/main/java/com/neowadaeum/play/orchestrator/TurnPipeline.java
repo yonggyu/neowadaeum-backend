@@ -1,6 +1,8 @@
 package com.neowadaeum.play.orchestrator;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
+import com.neowadaeum.common.support.TurnBudgetProperties;
+import com.neowadaeum.common.support.TurnDeadline;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GenerationContext;
 import com.neowadaeum.play.port.GeneratedParagraph;
@@ -86,11 +88,14 @@ public class TurnPipeline {
 
 	private final Clock clock;
 
+	private final TurnBudgetProperties turnBudget;
+
 	public TurnPipeline(PlaySessionRepository sessions, TurnRepository turns,
 			GameStateSnapshotRepository snapshots, StoryVersionFacade storyVersions, TurnGenerationPort provider,
 			SafetyL2Judge safetyJudge, GameStateEngine gameStateEngine, ChapterEngine chapterEngine,
 			EndingEngine endingEngine, RecentTurnsProperties recentTurns, StorySummaryRepository summaries,
-			AsyncSummaryTrigger summaryTrigger, PlatformTransactionManager playTransactionManager, Clock clock) {
+			AsyncSummaryTrigger summaryTrigger, PlatformTransactionManager playTransactionManager, Clock clock,
+			TurnBudgetProperties turnBudget) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.snapshots = snapshots;
@@ -105,6 +110,7 @@ public class TurnPipeline {
 		this.summaries = summaries;
 		this.summaryTrigger = summaryTrigger;
 		this.clock = clock;
+		this.turnBudget = turnBudget;
 	}
 
 	/**
@@ -117,7 +123,13 @@ public class TurnPipeline {
 		PipelineContext context = this.transactions.execute(status -> readContext(sessionId));
 
 		// ── 트랜잭션 밖 ── Provider 호출과 L2 검수 (§9.2, §13-14-a)
-		Generated generated = generateAndScreen(context, chosenChoiceOrder);
+		//
+		// #116 — 여기가 턴 예산이 열리는 유일한 자리다. 이 아래의 외부 호출은 최대 넷이고
+		// (생성 · 판정 · 재생성 · 재판정) 각각에 상한이 있어도 넷의 합에는 상한이 없었다.
+		// 남은 예산이 없으면 뒤 호출은 걸리지도 않는다 (TimeLimitedStoryProvider).
+		Generated generated = TurnDeadline.within(
+				TurnDeadline.startingNow(this.clock, this.turnBudget.budgetMs()),
+				() -> generateAndScreen(context, chosenChoiceOrder));
 		if (generated == null) {
 			// I-2 — 통과하지 못한 본문은 여기서 끝난다. 저장도 반환도 하지 않는다.
 			return blocked(context);

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
+import com.neowadaeum.common.support.TurnBudgetProperties;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
@@ -31,11 +32,19 @@ import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.StorySummaryRepository;
 import com.neowadaeum.play.repository.TurnRepository;
+import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.ai.provider.TimeLimitedStoryProvider;
+import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
+import com.neowadaeum.common.support.TurnBudgetProperties;
+import com.neowadaeum.play.port.GenerationTimedOutException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
@@ -91,6 +100,9 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private GameStateSnapshotRepository snapshots;
+
+	@Autowired
+	private SafetyL2Judge safetyJudge;
 
 	@BeforeEach
 	void clearPlayHistory() {
@@ -192,7 +204,7 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 
 		TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
 				offending, judge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
-				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED);
+				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED, TurnBudgetProperties.defaults());
 
 		TurnOutcome outcome = pipeline.advance(sessionId, null);
 
@@ -200,6 +212,55 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 		assertThat(calls.get()).as("즉시차단인데 재생성이 일어났다 (§9.2)").isEqualTo(1);
 
 		// I-2 · R6.6 — 통과하지 못한 본문은 저장되지 않고 세션도 움직이지 않는다.
+		assertThat(this.turns.count()).isZero();
+		assertThat(this.sessions.findById(sessionId).orElseThrow().getTurnNo()).isZero();
+	}
+
+	/**
+	 * <b>턴 예산이 소진되면 세션이 움직이지 않는다</b> (#116, R6.6).
+	 *
+	 * <p>예산 초과는 §4.3 의 8단계(상태 병합) <b>이전</b>에서 끊긴다. 그것이 구조적으로 그런지를
+	 * 여기서 확인한다 — 예산을 0 에 가깝게 열고, 시간 제한 데코레이터가 위임을 <b>시작조차 하지
+	 * 않는</b> 상태를 만든다.
+	 *
+	 * <p>{@code Thread.sleep} 을 쓰지 않는다. 예산 자체를 1나노초로 두면 첫 호출 시점에 이미 지났다.
+	 */
+	@Test
+	void S116_an_exhausted_turn_budget_leaves_the_session_untouched() {
+		AtomicInteger calls = new AtomicInteger();
+		StoryProvider counting = new TurnOnlyStoryProvider() {
+			@Override
+			public String providerId() {
+				return "counting";
+			}
+
+			@Override
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				calls.incrementAndGet();
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration("본문")),
+						List.of(new GeneratedChoice(1, "계속한다")), JSON.readTree("{}"), false, null);
+			}
+		};
+
+		UUID sessionId = this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY, SEED_VERSION,
+				"counting", "scenario", false, Instant.now(FIXED))).getId();
+
+		ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+		try {
+			TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
+					new TimeLimitedStoryProvider(counting, executor, Duration.ofSeconds(25), FIXED),
+					this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine,
+					RecentTurnsProperties.defaults(), this.summaries, this.summaryTrigger,
+					this.playTransactionManager, FIXED, new TurnBudgetProperties(Duration.ofNanos(1)));
+
+			assertThatThrownBy(() -> pipeline.advance(sessionId, null))
+					.isInstanceOf(GenerationTimedOutException.class);
+		}
+		finally {
+			executor.shutdownNow();
+		}
+
+		assertThat(calls.get()).as("예산이 없으면 Provider 는 시작되지도 않는다").isZero();
 		assertThat(this.turns.count()).isZero();
 		assertThat(this.sessions.findById(sessionId).orElseThrow().getTurnNo()).isZero();
 	}

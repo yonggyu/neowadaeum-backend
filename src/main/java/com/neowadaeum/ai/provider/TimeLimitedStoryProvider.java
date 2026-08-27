@@ -2,6 +2,7 @@ package com.neowadaeum.ai.provider;
 
 import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.support.TurnDeadline;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationTimedOutException;
@@ -33,6 +34,11 @@ import java.util.concurrent.TimeoutException;
  *
  * <p><b>네 메서드 전부에 같은 제한이 걸린다</b> — {@code capabilities()} 만 예외이며 그것은 호출이
  * 아니라 상수 조회다. 하나라도 빠지면 그 경로가 제한 밖으로 나간다.
+ *
+ * <p><b>턴 예산이 열려 있으면 그것이 더 짧은 쪽을 이긴다</b> (#116). 한 턴의 외부 호출은 최대
+ * 넷이고(생성 · 판정 · 재생성 · 재판정) 각각에 상한이 있어도 <b>넷을 합친 값에는 상한이
+ * 없었다.</b> 여기서 {@link TurnDeadline#allowedFor} 를 거치면 앞 단계가 예산의 대부분을 쓴
+ * 만큼 뒤 단계에 남는 시간이 줄어든다.
  */
 public class TimeLimitedStoryProvider implements StoryProvider {
 
@@ -114,7 +120,13 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 	 * 시작되는지에 예산의 시작점이 흔들리지 않아야 한다.
 	 */
 	private <T> T withinLimit(Callable<T> call) {
-		GenerationBudget budget = GenerationBudget.startingNow(this.clock, this.timeout);
+		if (TurnDeadline.exhausted()) {
+			// 이미 끝난 예산으로 호출을 걸어 놓고 취소하는 것보다 걸지 않는 편이 싸다 (#116).
+			// 스레드도 쓰지 않는다 — 여기서 submit 하면 취소해도 어댑터가 한 번은 시작된다.
+			throw new GenerationTimedOutException(TurnDeadline.currentTotal(this.timeout));
+		}
+		Duration allowed = TurnDeadline.allowedFor(this.timeout);
+		GenerationBudget budget = GenerationBudget.startingNow(this.clock, allowed);
 		Future<T> pending = this.executor.submit(() -> GenerationBudget.within(budget, call));
 
 		try {
@@ -123,7 +135,7 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 		catch (TimeoutException ex) {
 			// 취소하지 않으면 뒤에서 계속 돌고 그 비용이 청구된다.
 			pending.cancel(true);
-			throw new GenerationTimedOutException(this.timeout);
+			throw new GenerationTimedOutException(allowed);
 		}
 		catch (ExecutionException ex) {
 			Throwable cause = ex.getCause();
@@ -135,7 +147,7 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 		catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
 			pending.cancel(true);
-			throw new GenerationTimedOutException(this.timeout);
+			throw new GenerationTimedOutException(allowed);
 		}
 	}
 }
