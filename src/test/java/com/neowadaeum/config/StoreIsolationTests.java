@@ -36,6 +36,10 @@ class StoreIsolationTests extends ContainerTestBase {
 	@Qualifier("promptLogEntityManagerFactory")
 	private EntityManagerFactory promptLogEntityManagerFactory;
 
+	@Autowired
+	@Qualifier("identityEntityManagerFactory")
+	private EntityManagerFactory identityEntityManagerFactory;
+
 	/**
 	 * <b>EMF 는 자기 스토어의 엔티티만 안다.</b>
 	 *
@@ -45,13 +49,17 @@ class StoreIsolationTests extends ContainerTestBase {
 	void S5_3_each_entity_manager_factory_knows_only_its_own_store() {
 		Set<String> playEntities = entityNames(this.playEntityManagerFactory);
 		Set<String> promptLogEntities = entityNames(this.promptLogEntityManagerFactory);
+		Set<String> identityEntities = entityNames(this.identityEntityManagerFactory);
 
 		assertThat(playEntities).contains("PlaySession", "Turn", "GameStateSnapshot");
 		assertThat(promptLogEntities).containsExactly("AiCallLog");
+		assertThat(identityEntities).containsExactlyInAnyOrder("User", "OauthIdentity");
 
 		assertThat(playEntities)
 				.as("한 EMF 가 두 스토어의 엔티티를 알면 JPQL 한 줄로 크로스 스키마 조인이 된다")
-				.doesNotContainAnyElementsOf(promptLogEntities);
+				.doesNotContainAnyElementsOf(promptLogEntities)
+				.doesNotContainAnyElementsOf(identityEntities);
+		assertThat(promptLogEntities).doesNotContainAnyElementsOf(identityEntities);
 	}
 
 	/**
@@ -70,6 +78,17 @@ class StoreIsolationTests extends ContainerTestBase {
 		assertThatThrownBy(() -> this.promptLogEntityManagerFactory.createEntityManager()
 				.createQuery("SELECT session FROM PlaySession session"))
 				.as("promptlog EMF 가 play 엔티티를 알고 있다 — 스캔 범위가 넓다")
+				.isInstanceOf(IllegalArgumentException.class);
+
+		// B-07 — 회원이 실재하게 됐다. play 가 user 를 물 수 있으면 I-3 의 한 겹이 사라진다.
+		assertThatThrownBy(() -> this.playEntityManagerFactory.createEntityManager()
+				.createQuery("SELECT u FROM User u"))
+				.as("play EMF 가 identity 엔티티를 알고 있다 — playerRef 우회 경로가 열린다")
+				.isInstanceOf(IllegalArgumentException.class);
+
+		assertThatThrownBy(() -> this.identityEntityManagerFactory.createEntityManager()
+				.createQuery("SELECT session FROM PlaySession session"))
+				.as("identity EMF 가 play 엔티티를 알고 있다 — 스캔 범위가 넓다")
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 
@@ -97,9 +116,13 @@ class StoreIsolationTests extends ContainerTestBase {
 	@Test
 	void S5_3_each_store_has_its_own_transaction_manager() {
 		assertThat(this.playEntityManagerFactory)
-				.isNotSameAs(this.promptLogEntityManagerFactory);
-		assertThat(this.playEntityManagerFactory.getProperties().get("hibernate.hbm2ddl.auto"))
+				.isNotSameAs(this.promptLogEntityManagerFactory)
+				.isNotSameAs(this.identityEntityManagerFactory);
+		assertThat(this.promptLogEntityManagerFactory).isNotSameAs(this.identityEntityManagerFactory);
+		assertThat(this.identityEntityManagerFactory.getProperties().get("hibernate.hbm2ddl.auto"))
 				.as("엔티티와 마이그레이션이 어긋나면 부팅에서 잡혀야 한다")
+				.isEqualTo("validate");
+		assertThat(this.playEntityManagerFactory.getProperties().get("hibernate.hbm2ddl.auto"))
 				.isEqualTo("validate");
 	}
 
