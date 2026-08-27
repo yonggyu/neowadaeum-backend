@@ -1,5 +1,7 @@
-package com.neowadaeum.identity.auth;
+package com.neowadaeum.identity.access;
 
+import com.neowadaeum.identity.auth.AuthTokenService;
+import com.neowadaeum.identity.auth.JwtProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;

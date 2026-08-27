@@ -1,5 +1,6 @@
-package com.neowadaeum.identity.auth;
+package com.neowadaeum.identity.access;
 
+import com.neowadaeum.identity.auth.AuthTokenService;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.common.spi.AdminAuditRecorder;
