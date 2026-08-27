@@ -6,7 +6,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
@@ -20,16 +22,23 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * <p>{@code config} 가 아니라 {@code identity} 에 있다 — 인증 필터는 identity 의 내부 타입이고,
  * {@code config} 에 두면 모듈 경계 검증이 잡는다 (§5.4).
  *
- * <p><b>CSRF 를 끈다.</b> 이 체인은 세션도 쿠키도 쓰지 않는다({@code STATELESS}). 자격 증명이
- * {@code Authorization} 헤더로만 오므로 <b>브라우저가 자동으로 실어 보내는 것이 없고</b>, 위조할
- * 요청이 성립하지 않는다. 이전 체인이 CSRF 를 켠 이유는 그때 <b>인증이 우회된 상태</b>였기
- * 때문이며(남의 사이트가 고정 {@code player_ref} 로 세션을 만들 수 있었다) 그 조건이 사라졌다.
+ * <p><b>CSRF 는 끄지 않고 면제 대상을 명시한다.</b> 이 체인은 세션도 쿠키도 쓰지 않으므로
+ * ({@code STATELESS}) 자격 증명이 {@code Authorization} 헤더로만 온다 — 브라우저가 자동으로 실어
+ * 보내는 것이 없어 위조할 요청이 성립하지 않는다. 그래도 통째로 끄지 않는 이유는 <b>나중에 쿠키
+ * 기반 경로가 하나라도 생기면 그 순간 무방비가 되기</b> 때문이다. 이전 체인이 CSRF 를 켠 이유는
+ * 그때 <b>인증이 우회된 상태</b>였기 때문이며, 그 조건이 사라졌다.
  */
 @Configuration(proxyBeanMethods = false)
 public class ApiSecurityConfiguration {
 
 	/** 인증 없이 여는 경로 (§13.1). */
 	private static final String[] PUBLIC_PATHS = { "/api/v1/auth/oauth/*", "/api/v1/auth/refresh" };
+
+	/** {@code Bearer} 를 실은 요청 — 브라우저가 자동으로 붙이지 않으므로 쿠키 자격 증명이 아니다. */
+	private static final RequestMatcher BEARER_AUTHENTICATED = request -> {
+		String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+		return header != null && header.startsWith("Bearer ");
+	};
 
 	@Bean
 	@Order(0)
@@ -38,7 +47,8 @@ public class ApiSecurityConfiguration {
 			ErrorResponseSecurityHandler errorHandler) throws Exception {
 		return http
 				.securityMatcher("/api/v1/**")
-				.csrf(csrf -> csrf.disable())
+				.csrf(csrf -> csrf.ignoringRequestMatchers(BEARER_AUTHENTICATED)
+						.ignoringRequestMatchers(PUBLIC_PATHS))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers(PUBLIC_PATHS).permitAll().anyRequest().authenticated())

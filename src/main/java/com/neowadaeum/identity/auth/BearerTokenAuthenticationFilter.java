@@ -17,11 +17,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * {@code Authorization: Bearer} 를 요청 주체로 바꾼다 (B-12, §13-22).
  *
  * <p><b>검증은 {@link AuthTokenService} 한 곳에서만 한다.</b> 필터가 자기 디코더를 따로 가지면
- * {@code token_use} 확인 같은 규칙이 한쪽에만 남는 날이 온다.
- *
- * <p><b>실패해도 여기서 응답을 쓰지 않는다.</b> 토큰이 없는 것과 위조·만료된 것을 똑같이
- * <b>인증되지 않음</b>으로 두고, 거절은 {@code AuthenticationEntryPoint} 가 한 형태로 낸다 (S-6).
- * 주체는 {@code playerRef} 다 (I-3) — {@code user.id} 도 이메일도 올리지 않는다.
+ * {@code token_use} 확인 같은 규칙이 한쪽에만 남는 날이 온다. <b>실패해도 여기서 응답을 쓰지
+ * 않는다</b> — 없는 것과 위조·만료된 것을 똑같이 인증되지 않음으로 두고, 거절은
+ * {@code AuthenticationEntryPoint} 가 한 형태로 낸다 (S-6). 주체는 {@code playerRef} 다 (I-3).
  */
 @Component
 public class BearerTokenAuthenticationFilter extends OncePerRequestFilter {

@@ -11,13 +11,10 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * {@code dev} 에서만 존재하는 경로들의 보안 구성 — 콘솔(B-47)과 계약 문서(B-06).
  *
- * <p><b>플레이 API 는 더 이상 여기에 없다.</b> 이 클래스의 이전 이름은
- * {@code DevPlayApiSecurityConfiguration} 이었고 {@code /api/v1/**} 를 {@code permitAll} 했다 —
- * 인증 우회의 나머지 절반이었다 (ADR-0004). B-12 가 {@code ApiSecurityConfiguration} 으로 그 자리를
- * 대체했으므로 <b>남는 것은 dev 전용 읽기 경로뿐</b>이다.
- *
- * <p><b>CSRF 구성도 함께 사라졌다.</b> 여기 남은 경로는 전부 조회이고, 상태를 바꾸는 요청은
- * 토큰 인증 체인으로 간다 — 위조할 쿠키 자격 증명이 없다.
+ * <p><b>플레이 API 는 더 이상 여기에 없다.</b> 이전 이름은 {@code DevPlayApiSecurityConfiguration}
+ * 이었고 {@code /api/v1/**} 를 {@code permitAll} 했다 — 인증 우회의 나머지 절반이었다 (ADR-0004).
+ * B-12 가 {@code ApiSecurityConfiguration} 으로 그 자리를 대체했으므로 <b>남는 것은 dev 전용 읽기
+ * 경로뿐</b>이며, 여기 남은 경로는 전부 조회라 CSRF 구성도 함께 사라졌다.
  *
  * <p><b>{@code @Profile("dev & !prod")} 다.</b> {@code "!prod"} 는 프로파일 미지정 배포에서 참이 되고,
  * {@code "dev"} 만 쓰면 둘이 함께 켜진 조합에서 열린다 (#47, #34 에서 확인한 함정).
