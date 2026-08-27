@@ -31,6 +31,10 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("org.flywaydb:flyway-database-postgresql")
 	implementation("org.springframework.modulith:spring-modulith-starter-core")
+	// B-06 — 계약 우선. springdoc 은 **수기 계약 파일을 보여 주는 UI** 로만 쓴다.
+	// 런타임 자동 생성(springdoc.api-docs)은 꺼 둔다 — 생성본이 두 번째 진실이 되면
+	// docs/openapi.yaml 이 진실의 원천이라는 규칙이 무너진다 (CLAUDE.md Source of Truth).
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
 	implementation("org.springframework.modulith:spring-modulith-starter-insight")
 	compileOnly("org.projectlombok:lombok")
 	developmentOnly("org.springframework.boot:spring-boot-docker-compose")
@@ -63,6 +67,19 @@ dependencies {
 dependencyManagement {
 	imports {
 		mavenBom("org.springframework.modulith:spring-modulith-bom:${property("springModulithVersion")}")
+	}
+}
+
+// ── 계약 파일을 산출물에 싣는다 (B-06) ───────────────────────
+// docs/openapi.yaml 은 레포의 문서이면서 동시에 런타임이 서빙하는 계약이다. 두 벌로 두면
+// 반드시 갈라지므로 **원본 하나를 빌드가 복사한다.**
+//
+// 도착지는 `openapi/` 다 — `static/` 도 `public/` 도 아니다. 그 둘은 Spring Boot 가 프로파일과
+// 무관하게 서빙하므로, 계약 문서를 거기 두면 dev 전용 게이트를 통째로 우회한다
+// (dev 콘솔 HTML 을 devconsole/ 에 둔 것과 같은 이유다, B-47).
+tasks.processResources {
+	from(layout.projectDirectory.file("docs/openapi.yaml")) {
+		into("openapi")
 	}
 }
 

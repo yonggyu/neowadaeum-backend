@@ -30,7 +30,7 @@ CLAUDE.md(헌법) > docs/corrections.md > docs/openapi.yaml > backend-requiremen
 3. **원문에 없는 값·문법·정책은 추측하지 않는다.** `docs/corrections.md` 에 `[결정 필요]` 로 올리고 기본 채택안을 PR 본문에 명시한다.
 4. **`docs/internal/` 의 내용을 공개물에 옮기지 않는다** — 커밋·이슈·PR·코드 주석 어디에도. 인용이 필요하면 **조항 번호로만 지목한다**(예: "R4.2 의 기본 델타 상한"). 구현에 쓴 공개 가능한 결정만 `docs/corrections.md` 또는 ADR 에 남긴다 (S-11).
 
-`docs/openapi.yaml` 은 아직 없다 — B-06 이다. **없는 문서를 근거로 결론을 내지 않는다.**
+`docs/openapi.yaml` 은 **B-06 에서 작성됐다.** 수기 계약이며 §13 전체를 담는다 — 아직 구현되지 않은 엔드포인트가 먼저 존재한다(각 자리의 `x-implemented-by` 가 담당 작업을 가리킨다). 관리자(§14)는 **B-41 에서 더한다.**
 
 ## 작업 시작 전
 
@@ -199,7 +199,7 @@ inspect → minimal change → targeted test → fast test → (필요 시) inte
 | `docs/engineering-guide.md` | 제품 개요 · 기술 스택 · 용어 사전 · 핵심 플로우 · 아키텍처 · 코딩 컨벤션 · 테스트 규칙 · 에러 코드 · 자주 하는 실수 |
 | `docs/git-workflow.md` | Git 규칙 전문(§8) |
 | `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 / **0006 턴 생성 포트 소유(0005 일부 대체)** / **0007 fallback 과 세션 provider 고정** |
-| `docs/openapi.yaml` | API 계약 — 런타임 진실의 원천. **아직 없다(B-06).** `.gitignore` 예외는 처리됨(#36) |
+| `docs/openapi.yaml` | API 계약 — 런타임 진실의 원천(B-06). 계약을 바꾸면 이 파일을 함께 고친다. `OpenApiContractTests` 가 구현과의 표류를 잡는다 |
 | `README.md` | 로컬 실행 · 스키마 4개 · 마이그레이션 명명 규칙 |
 
 ## 코드 영역별 규칙 — `.claude/rules/`

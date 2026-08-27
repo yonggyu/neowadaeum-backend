@@ -189,3 +189,36 @@ logging:
   structured:
     format:
       console: ecs
+
+# ── API 계약 문서 (§12 B-06) ─────────────────────────────────
+# docs/openapi.yaml 이 런타임 진실의 원천이다. springdoc 은 **그 파일을 보여 주는 UI** 로만 쓴다.
+#
+# 기본값은 전부 꺼진 상태다 — springdoc 의 자동설정은 둘 다 matchIfMissing = true 라
+# **프로퍼티가 없으면 열린다.** 닫힌 쪽을 기본값으로 못박는 이유가 이것이다.
+# `swagger-ui` 자동설정은 `@ConditionalOnBean(SpringDocConfiguration)` 이므로
+# `api-docs.enabled: false` 하나로 UI 까지 함께 닫힌다(실측 확인).
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+---
+# ── dev 에서만 계약 UI 를 연다 ───────────────────────────────
+# 표현식은 dev 콘솔(B-47)·인증 우회 리졸버(#34)와 같은 `dev & !prod` 다.
+# `!prod` 가 없으면 프로파일 미지정 배포에서 열리고, `dev` 만 쓰면 둘이 함께 켜진 조합에서 열린다.
+#
+# `swagger-ui.url` 이 수기 계약 파일을 가리킨다. 런타임 생성본(/v3/api-docs)은 dev 안에 존재하지만
+# **UI 가 보여 주는 것은 계약 파일이다.** 생성본은 계약이 아니다.
+spring:
+  config:
+    activate:
+      on-profile: "dev & !prod"
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    url: /openapi.yaml
+    path: /swagger-ui.html
