@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.api.PlayController;
 import com.neowadaeum.play.api.TurnRequestBody;
+import com.neowadaeum.catalog.query.CharacterCardView;
 import com.neowadaeum.catalog.query.GenreView;
 import com.neowadaeum.catalog.query.StoryCardView;
 import com.neowadaeum.play.api.LibraryView;
+import com.neowadaeum.play.api.StoryDetailResponse;
 import com.neowadaeum.play.api.TurnView;
 import java.io.InputStream;
 import java.util.Arrays;
@@ -206,6 +208,23 @@ class OpenApiContractTests {
 				.containsAll(recordComponentsOf(LibraryView.ContinueSessionView.class));
 		assertThat(propertiesOf("StoryCard")).containsAll(recordComponentsOf(StoryCardView.class));
 		assertThat(propertiesOf("Genre")).containsAll(recordComponentsOf(GenreView.class));
+	}
+
+	/**
+	 * 작품 상세 응답의 모든 필드가 계약에 선언되어 있다 (B-16).
+	 *
+	 * <p><b>{@code ageRating} 이 계약에서 {@code const} 다.</b> 구현이 상수를 돌려주는지는
+	 * {@code StoryDetailApiIntegrationTests} 가 값으로 확인한다 (I-19).
+	 */
+	@Test
+	void B16_implemented_story_detail_fields_are_all_declared() {
+		assertThat(propertiesOf("StoryDetailResponse"))
+				.containsAll(recordComponentsOf(StoryDetailResponse.class));
+		assertThat(propertiesOf("StoryDetail"))
+				.containsAll(recordComponentsOf(StoryDetailResponse.Story.class));
+		assertThat(propertiesOf("MySessionBrief"))
+				.containsAll(recordComponentsOf(StoryDetailResponse.MySession.class));
+		assertThat(propertiesOf("CharacterCard")).containsAll(recordComponentsOf(CharacterCardView.class));
 	}
 
 	// ── 4. S-11 ──────────────────────────────────────────────
