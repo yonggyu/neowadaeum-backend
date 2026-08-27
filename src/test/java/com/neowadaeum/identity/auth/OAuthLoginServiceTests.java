@@ -51,7 +51,7 @@ class OAuthLoginServiceTests {
 
 	private final AuthTokenService tokens = new AuthTokenService(
 			new JwtProperties("test-only-jwt-signing-material-not-a-real-secret",
-					Duration.ofMinutes(30), Duration.ofDays(30)),
+					Duration.ofMinutes(30), Duration.ofDays(30), Duration.ofMinutes(15)),
 			this.clock);
 
 	private final GoogleIdTokenVerifier verifier = mock(GoogleIdTokenVerifier.class);

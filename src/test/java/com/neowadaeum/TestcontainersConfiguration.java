@@ -125,12 +125,15 @@ public class TestcontainersConfiguration {
 	 * 관리자 허용목록도 런타임 전용이다 (B-40).
 	 *
 	 * <p>{@code ${ADMIN_ALLOWED_CIDR}} 는 테스트에 {@code .env} 가 없어 플레이스홀더 문자열로
-	 * 남고, 그러면 <b>목록에 그 문자열 하나가 든 상태</b>가 된다. 명시적으로 비워 둔다 —
-	 * <b>비어 있으면 아무도 통과하지 못한다</b>는 것이 이 설정의 기본 성질이다.
+	 * 남고, 그러면 <b>목록에 그 문자열 하나가 든 상태</b>가 된다. 명시적으로 정한다.
+	 *
+	 * <p>값은 루프백이다 — MockMvc 요청이 그 주소에서 온다. <b>비어 있으면 아무도 통과하지
+	 * 못한다</b>는 성질은 여기가 아니라 {@code AdminAccessGuardTests} 가 지킨다: 컨텍스트를
+	 * 나누지 않고 두 상태를 다 보려면 그 판단은 단위 테스트에 있어야 한다.
 	 */
 	@Bean
 	DynamicPropertyRegistrar adminAccessRegistrar() {
-		return registry -> registry.add("admin.allowed-cidr", () -> "");
+		return registry -> registry.add("admin.allowed-cidr", () -> "127.0.0.1/32");
 	}
 
 	/**

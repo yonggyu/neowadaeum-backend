@@ -47,16 +47,28 @@ class AdminAccessGuardTests {
 
 	private final UUID playerRef = UUID.randomUUID();
 
+	/**
+	 * 승격 토큰은 <b>실제로 발급해서</b> 쓴다.
+	 *
+	 * <p>가짜로 통과시키면 <b>용도 구분이 실제로 있는지</b>를 확인하지 못한다 — 액세스 토큰이
+	 * 관리자 문을 열지 않는다는 것이 이 층의 핵심이다.
+	 */
+	private final AuthTokenService tokens = new AuthTokenService(
+			new JwtProperties("test-only-secret-that-is-long-enough-32", java.time.Duration.ofMinutes(30),
+					java.time.Duration.ofDays(30), java.time.Duration.ofMinutes(15)),
+			java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC));
+
 	private AdminAccessGuard guardWith(List<String> allowedIps) {
-		return new AdminAccessGuard(this.users, new AdminAccessProperties(allowedIps), this.audit);
+		return new AdminAccessGuard(this.users, new AdminAccessProperties(allowedIps), this.audit,
+				this.tokens);
 	}
 
-	/** 셋이 다 맞으면 통과하고, 행위자의 {@code user.id} 가 나온다 (R14.5). */
+	/** 역할과 허용목록이 맞으면 그 층은 통과하고, 행위자의 {@code user.id} 가 나온다 (R14.5). */
 	@Test
 	void S4_an_admin_from_an_allowed_ip_passes() {
 		UUID userId = givenUser(UserRole.ADMIN);
 
-		assertThat(guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef, requestFrom(ALLOWED_IP)))
+		assertThat(guardWith(List.of(ALLOWED_CIDR)).requireRoleAndNetwork(this.playerRef, requestFrom(ALLOWED_IP)))
 				.isEqualTo(userId);
 		verify(this.audit, never()).record(any(), any(), any(), any(), any(), any());
 	}
@@ -66,7 +78,7 @@ class AdminAccessGuardTests {
 	void S4_a_normal_user_is_denied_even_from_an_allowed_ip() {
 		givenUser(UserRole.USER);
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireRoleAndNetwork(this.playerRef,
 				requestFrom(ALLOWED_IP)))
 				.isInstanceOf(ApiException.class)
 				.extracting(ex -> ((ApiException) ex).errorCode())
@@ -78,7 +90,7 @@ class AdminAccessGuardTests {
 	void S4_an_admin_from_another_ip_is_denied() {
 		givenUser(UserRole.ADMIN);
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireRoleAndNetwork(this.playerRef,
 				requestFrom(OTHER_IP)))
 				.isInstanceOf(ApiException.class);
 	}
@@ -92,7 +104,7 @@ class AdminAccessGuardTests {
 	void S4_an_empty_allowlist_denies_everyone() {
 		givenUser(UserRole.ADMIN);
 
-		assertThatThrownBy(() -> guardWith(List.of()).requireAdmin(this.playerRef, requestFrom(ALLOWED_IP)))
+		assertThatThrownBy(() -> guardWith(List.of()).requireRoleAndNetwork(this.playerRef, requestFrom(ALLOWED_IP)))
 				.isInstanceOf(ApiException.class);
 	}
 
@@ -106,7 +118,7 @@ class AdminAccessGuardTests {
 	void R14_5_a_denied_attempt_is_recorded() {
 		UUID userId = givenUser(UserRole.USER);
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireRoleAndNetwork(this.playerRef,
 				requestFrom(OTHER_IP))).isInstanceOf(ApiException.class);
 
 		verify(this.audit).record(eq(userId), eq(AdminAccessGuard.DENIED_ACTION), eq("admin"), any(),
@@ -118,7 +130,7 @@ class AdminAccessGuardTests {
 	void R14_5_an_unknown_player_ref_is_denied_without_an_audit_row() {
 		given(this.users.findByPlayerRef(this.playerRef)).willReturn(Optional.empty());
 
-		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireRoleAndNetwork(this.playerRef,
 				requestFrom(ALLOWED_IP))).isInstanceOf(ApiException.class);
 		verify(this.audit, never()).record(any(), any(), any(), any(), any(), any());
 	}
@@ -128,7 +140,7 @@ class AdminAccessGuardTests {
 	void S4_any_address_inside_the_range_passes() {
 		UUID userId = givenUser(UserRole.ADMIN);
 
-		assertThat(guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+		assertThat(guardWith(List.of(ALLOWED_CIDR)).requireRoleAndNetwork(this.playerRef,
 				requestFrom("203.0.113.200"))).isEqualTo(userId);
 	}
 
@@ -137,8 +149,83 @@ class AdminAccessGuardTests {
 	void S4_a_malformed_range_does_not_open_the_door() {
 		givenUser(UserRole.ADMIN);
 
-		assertThatThrownBy(() -> guardWith(List.of("not-a-cidr")).requireAdmin(this.playerRef,
+		assertThatThrownBy(() -> guardWith(List.of("not-a-cidr")).requireRoleAndNetwork(this.playerRef,
 				requestFrom(ALLOWED_IP))).isInstanceOf(ApiException.class);
+	}
+
+	/** 셋이 다 맞으면 통과한다 — 승격까지 있어야 {@code requireAdmin} 이 열린다. */
+	@Test
+	void S4_all_three_conditions_together_pass() {
+		UUID userId = givenUser(UserRole.ADMIN);
+		String stepUp = this.tokens.issueAdminStepUp(this.playerRef).token();
+
+		assertThat(guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+				requestFrom(ALLOWED_IP, stepUp))).isEqualTo(userId);
+	}
+
+	/**
+	 * <b>승격이 없으면 역할과 IP 가 맞아도 막힌다.</b>
+	 *
+	 * <p>이것이 없으면 세 조건이라고 적어 놓고 <b>둘만 요구하는</b> 상태가 된다 — 관리자 계정
+	 * 하나가 새면 허용목록 안에서 그대로 열린다.
+	 */
+	@Test
+	void S4_without_a_step_up_an_admin_is_still_denied() {
+		givenUser(UserRole.ADMIN);
+
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+				requestFrom(ALLOWED_IP)))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.FORBIDDEN);
+	}
+
+	/** <b>액세스 토큰으로는 승격이 되지 않는다.</b> 용도를 나누지 않으면 로그인이 곧 관리자다. */
+	@Test
+	void S4_an_access_token_is_not_a_step_up() {
+		givenUser(UserRole.ADMIN);
+		String access = this.tokens.issue(this.playerRef).accessToken();
+
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+				requestFrom(ALLOWED_IP, access))).isInstanceOf(ApiException.class);
+	}
+
+	/**
+	 * <b>남의 승격은 내 요청을 통과시키지 못한다.</b>
+	 *
+	 * <p>주인을 보지 않으면 승격이 계정이 아니라 <b>조직 전체</b>에 붙는 것이 된다.
+	 */
+	@Test
+	void S4_a_step_up_issued_to_someone_else_is_rejected() {
+		givenUser(UserRole.ADMIN);
+		String otherStepUp = this.tokens.issueAdminStepUp(UUID.randomUUID()).token();
+
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+				requestFrom(ALLOWED_IP, otherStepUp))).isInstanceOf(ApiException.class);
+	}
+
+	/** 위조된 값도 403 이다 — 401 로 답하면 <b>토큰만 고치면 된다</b>는 신호가 된다. */
+	@Test
+	void S4_a_forged_step_up_is_rejected() {
+		givenUser(UserRole.ADMIN);
+
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+				requestFrom(ALLOWED_IP, "not-a-token")))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.FORBIDDEN);
+	}
+
+	/** 승격이 없어 막힌 것도 감사에 남는다 (R14.5). */
+	@Test
+	void R14_5_a_missing_step_up_is_recorded() {
+		UUID userId = givenUser(UserRole.ADMIN);
+
+		assertThatThrownBy(() -> guardWith(List.of(ALLOWED_CIDR)).requireAdmin(this.playerRef,
+				requestFrom(ALLOWED_IP))).isInstanceOf(ApiException.class);
+
+		verify(this.audit).record(eq(userId), eq(AdminAccessGuard.DENIED_ACTION), eq("admin"), any(),
+				any(), any());
 	}
 
 	/** <b>IP 원문이 감사로 넘어가지 않는다</b> (§12) — 해시만 간다. */
@@ -166,6 +253,12 @@ class AdminAccessGuardTests {
 	private static MockHttpServletRequest requestFrom(String ip) {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.setRemoteAddr(ip);
+		return request;
+	}
+
+	private MockHttpServletRequest requestFrom(String ip, String stepUpToken) {
+		MockHttpServletRequest request = requestFrom(ip);
+		request.addHeader(AdminAccessGuard.STEP_UP_HEADER, stepUpToken);
 		return request;
 	}
 

@@ -29,7 +29,16 @@ public record JwtProperties(
 		@NotNull Duration accessTokenTtl,
 
 		/** 리프레시 토큰 수명. 이 기간이 지나면 다시 로그인한다. */
-		@NotNull Duration refreshTokenTtl) {
+		@NotNull Duration refreshTokenTtl,
+
+		/**
+		 * 관리자 단계 승격 수명 (B-40, S-4).
+		 *
+		 * <p><b>액세스 토큰보다 짧다.</b> 승격은 "방금 두 번째 요소를 통과했다"는 사실이며, 그
+		 * 사실은 시간이 지나면 더 이상 참이 아니다 — 길게 잡으면 2FA 가 <b>로그인 때 한 번</b> 하는
+		 * 절차가 되고, 자리를 비운 사이의 화면이 그대로 관리자 콘솔이 된다.
+		 */
+		@NotNull Duration adminStepUpTtl) {
 
 	/** HS256 이 요구하는 최소 키 길이. 이보다 짧으면 서명 자체가 신뢰의 근거가 되지 못한다. */
 	private static final int MINIMUM_SECRET_BYTES = 32;

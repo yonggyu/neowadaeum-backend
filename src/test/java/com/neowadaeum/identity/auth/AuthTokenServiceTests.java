@@ -31,10 +31,13 @@ class AuthTokenServiceTests {
 
 	private static final Duration REFRESH_TTL = Duration.ofDays(30);
 
+	/** 승격은 액세스보다 짧다 — 그것이 이 토큰을 따로 둔 이유다 (B-40, S-4). */
+	private static final Duration STEP_UP_TTL = Duration.ofMinutes(15);
+
 	private final UUID playerRef = UUID.randomUUID();
 
 	private AuthTokenService serviceAt(Instant instant) {
-		return new AuthTokenService(new JwtProperties(SECRET, ACCESS_TTL, REFRESH_TTL),
+		return new AuthTokenService(new JwtProperties(SECRET, ACCESS_TTL, REFRESH_TTL, STEP_UP_TTL),
 				Clock.fixed(instant, ZoneOffset.UTC));
 	}
 
@@ -129,7 +132,8 @@ class AuthTokenServiceTests {
 	@Test
 	void a_token_signed_with_another_key_is_rejected() {
 		AuthTokens forged = new AuthTokenService(
-				new JwtProperties("another-secret-that-is-long-enough-to-sign", ACCESS_TTL, REFRESH_TTL),
+				new JwtProperties("another-secret-that-is-long-enough-to-sign", ACCESS_TTL, REFRESH_TTL,
+						STEP_UP_TTL),
 				Clock.fixed(NOW, ZoneOffset.UTC)).issue(this.playerRef);
 
 		assertThatThrownBy(() -> serviceAt(NOW).authenticate(forged.accessToken()))
@@ -154,7 +158,7 @@ class AuthTokenServiceTests {
 	 */
 	@Test
 	void S7_3_a_short_secret_fails_fast() {
-		assertThatThrownBy(() -> new JwtProperties("${JWT_SECRET}", ACCESS_TTL, REFRESH_TTL))
+		assertThatThrownBy(() -> new JwtProperties("${JWT_SECRET}", ACCESS_TTL, REFRESH_TTL, STEP_UP_TTL))
 				.isInstanceOf(IllegalArgumentException.class)
 				.as("메시지에 값 자체를 싣지 않는다 (S-3)")
 				.hasMessageNotContaining("${JWT_SECRET}");
@@ -164,5 +168,55 @@ class AuthTokenServiceTests {
 		String[] parts = jwt.split("\\.");
 		assertThat(parts).hasSize(3);
 		return new String(Base64.getUrlDecoder().decode(parts[1]));
+	}
+
+	/**
+	 * <b>승격은 별개의 용도다</b> (B-40, S-4).
+	 *
+	 * <p>액세스 토큰으로 관리자 문이 열리면 2FA 를 둔 이유가 사라진다 — 로그인 하나로 끝난다.
+	 */
+	@Test
+	void S4_an_access_token_does_not_resolve_as_a_step_up() {
+		AuthTokenService tokens = serviceAt(NOW);
+
+		assertThatThrownBy(() -> tokens.resolveAdminStepUp(tokens.issue(this.playerRef).accessToken()))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.UNAUTHENTICATED);
+	}
+
+	/** 반대도 같다 — 승격 토큰이 일반 API 를 여는 만능 열쇠가 되면 안 된다. */
+	@Test
+	void S4_a_step_up_does_not_authenticate_ordinary_requests() {
+		AuthTokenService tokens = serviceAt(NOW);
+		String stepUp = tokens.issueAdminStepUp(this.playerRef).token();
+
+		assertThatThrownBy(() -> tokens.authenticate(stepUp)).isInstanceOf(ApiException.class);
+		assertThatThrownBy(() -> tokens.resolveRefresh(stepUp)).isInstanceOf(ApiException.class);
+	}
+
+	/** 승격의 주인은 발급받은 그 사람이다. */
+	@Test
+	void S4_a_step_up_resolves_to_its_owner() {
+		AuthTokenService tokens = serviceAt(NOW);
+
+		assertThat(tokens.resolveAdminStepUp(tokens.issueAdminStepUp(this.playerRef).token()))
+				.isEqualTo(this.playerRef);
+	}
+
+	/** <b>수명이 지나면 더 이상 참이 아니다.</b> 승격은 "방금 통과했다"는 사실이다. */
+	@Test
+	void S4_a_step_up_expires() {
+		String stepUp = serviceAt(NOW).issueAdminStepUp(this.playerRef).token();
+		AuthTokenService later = serviceAt(NOW.plus(STEP_UP_TTL).plusSeconds(1));
+
+		assertThatThrownBy(() -> later.resolveAdminStepUp(stepUp)).isInstanceOf(ApiException.class);
+	}
+
+	/** 클라이언트가 <b>언제 다시 코드를 물어야 하는지</b> 알아야 한다. */
+	@Test
+	void S4_a_step_up_reports_its_lifetime() {
+		assertThat(serviceAt(NOW).issueAdminStepUp(this.playerRef).expiresIn())
+				.isEqualTo(STEP_UP_TTL.toSeconds());
 	}
 }
