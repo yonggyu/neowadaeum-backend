@@ -79,6 +79,19 @@ app:
       username: ${PROMPTLOG_DB_USER}
       password: ${PROMPTLOG_DB_PASSWORD}
 
+# ── 호출 한도 (§15, S-8, #157) ───────────────────────────────
+# 값의 출처는 §15 다 — 턴 생성 분당 10회, precheck 분당 20회, 계정당 일일 한도.
+# auth-per-minute-per-ip 는 S-8 이다: 인증 전 경로는 계정 기준으로 셀 수 없다.
+# turn-per-day 는 "일일 토큰 한도"를 턴 수로 대리한다 (§13-28) — 토큰 원장에는
+# playerRef 가 없고(I-3) 그것이 의도된 설계다.
+# 값이 없으면 코드가 §15 의 값을 쓴다. B-46 실측 후 조정한다.
+# app:
+#   rate-limit:
+#     turn-per-minute: 10
+#     precheck-per-minute: 20
+#     auth-per-minute-per-ip: 20
+#     turn-per-day: 200
+
 # ── 턴 예산 (§6.3, #116) ─────────────────────────────────────
 # ai.provider.timeout-ms 와 다른 것을 가리킨다 — 그쪽은 호출 하나의 상한이고, 이쪽은
 # 한 턴의 외부 호출을 전부 합친 상한이다. 한 턴에 생성·판정·재생성·재판정 넷이 돌 수 있고

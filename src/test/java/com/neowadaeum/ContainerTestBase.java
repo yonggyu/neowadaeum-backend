@@ -1,9 +1,12 @@
 package com.neowadaeum;
 
 import com.neowadaeum.identity.auth.AuthTokenService;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,6 +58,26 @@ public abstract class ContainerTestBase {
 
 	@Autowired
 	private AuthTokenService authTokens;
+
+	@Autowired
+	private StringRedisTemplate redis;
+
+	/**
+	 * 호출 한도 카운터를 테스트마다 비운다 (B-38).
+	 *
+	 * <p>컨텍스트가 한 벌이므로 <b>앞 테스트가 쓴 창이 다음 테스트에 남는다.</b> 한도는 계정
+	 * 기준이고 테스트는 대부분 같은 회원을 쓰므로, 비우지 않으면 실행 순서에 따라 429 가 난다.
+	 *
+	 * <p>지우는 것은 {@code rate:} 접두어뿐이다 — 멱등 키나 락까지 지우면 그것을 검증하는
+	 * 테스트가 무의미해진다.
+	 */
+	@BeforeEach
+	void resetRateLimitWindows() {
+		Set<String> keys = this.redis.keys("rate:*");
+		if (keys != null && !keys.isEmpty()) {
+			this.redis.delete(keys);
+		}
+	}
 
 	/** 기본 회원으로 요청한다. */
 	protected RequestPostProcessor asPlayer() {

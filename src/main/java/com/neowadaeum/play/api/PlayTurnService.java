@@ -77,6 +77,10 @@ public class PlayTurnService {
 		// R6.5 — 서버가 강제하는 쿨다운. 클라이언트 쿨다운과 별개다.
 		this.guards.requireNotCoolingDown(sessionId);
 
+		// §15 — 분당·일일 한도 (B-38). 멱등 예약보다 **앞**이다: 한도에 걸린 요청이 예약을
+		// 잡으면 그 키가 TTL 동안 남아, 한도가 풀린 뒤에도 같은 요청이 막힌다.
+		this.guards.requireWithinLimits(playerRef);
+
 		int chosenOrder = resolveChoiceOrder(sessionId, request.choiceId());
 		String key = idempotencyKey(playerRef, sessionId, request);
 

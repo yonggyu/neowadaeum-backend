@@ -2,6 +2,8 @@ package com.neowadaeum.play.api;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.support.RateLimitProperties;
+import com.neowadaeum.common.support.RateLimiter;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
@@ -41,8 +43,39 @@ public class TurnGuards {
 
 	private final StringRedisTemplate redis;
 
-	public TurnGuards(StringRedisTemplate redis) {
+	private final RateLimiter rateLimiter;
+
+	private final RateLimitProperties limits;
+
+	public TurnGuards(StringRedisTemplate redis, RateLimiter rateLimiter, RateLimitProperties limits) {
 		this.redis = redis;
+		this.rateLimiter = rateLimiter;
+		this.limits = limits;
+	}
+
+	/**
+	 * 분당·일일 한도 (§15, B-38).
+	 *
+	 * <p><b>세 종류의 429 를 나눠 둔 이유가 여기서 드러난다</b> (§11). 연속 실패 쿨다운은
+	 * "이 세션이 계속 실패한다", 분당 한도는 "너무 빠르다", 일일 한도는 "오늘 다 썼다" 이며
+	 * <b>클라이언트가 할 일이 각각 다르다</b> — 잠시 기다린다 / 조금 늦춘다 / 내일 온다.
+	 *
+	 * <p><b>가장 긴 것부터 본다.</b> 오늘 다 쓴 사용자에게 "조금 늦춰 주세요"를 안내하면
+	 * 그 안내대로 해도 통과하지 못한다.
+	 *
+	 * @throws ApiException {@code QUOTA_EXCEEDED} 또는 {@code RATE_LIMITED}
+	 */
+	public void requireWithinLimits(UUID playerRef) {
+		if (!this.rateLimiter.tryAcquire("turn-day", playerRef.toString(), this.limits.turnPerDay(),
+				RateLimitProperties.DAY)) {
+			throw new ApiException(ErrorCode.QUOTA_EXCEEDED, Map.of("retryAfterSeconds",
+					this.rateLimiter.retryAfterSeconds(RateLimitProperties.DAY)));
+		}
+		if (!this.rateLimiter.tryAcquire("turn-minute", playerRef.toString(), this.limits.turnPerMinute(),
+				RateLimitProperties.MINUTE)) {
+			throw new ApiException(ErrorCode.RATE_LIMITED, Map.of("retryAfterSeconds",
+					this.rateLimiter.retryAfterSeconds(RateLimitProperties.MINUTE)));
+		}
 	}
 
 	/**
