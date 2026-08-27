@@ -121,6 +121,31 @@ class SessionLifecycleIntegrationTests extends ContainerTestBase {
 		assertThat(startSession(false)).isNotEqualTo(sessionId);
 	}
 
+	/**
+	 * <b>끝난 세션을 지워도 완주 사실이 남는다.</b>
+	 *
+	 * <p>상태를 함께 바꾸면 {@code completed} 와 {@code completed_at} 이 어긋나 DB 가 거부한다
+	 * (V2 의 CHECK). 그리고 무엇보다 <b>완주했다는 사실이 사라진다</b> — B-39 의 도달률이
+	 * 그 값을 센다.
+	 */
+	@Test
+	void S13_4_deleting_a_completed_session_keeps_its_completion() {
+		PlaySession session = this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY,
+				UUID.fromString("11111111-1111-4111-8111-111111111111"), "fixed", "scenario", false,
+				java.time.Instant.parse("2026-08-27T00:00:00Z")));
+		session.complete(UUID.fromString("11111111-1111-4111-8111-0000000000e4"),
+				java.time.Instant.parse("2026-08-27T00:00:00Z"));
+		this.sessions.saveAndFlush(session);
+
+		session.deleteBy(java.time.Instant.parse("2026-08-27T01:00:00Z"));
+		this.sessions.saveAndFlush(session);
+
+		PlaySession deleted = this.sessions.findById(session.getId()).orElseThrow();
+		assertThat(deleted.getStatus()).isEqualTo(SessionStatus.COMPLETED);
+		assertThat(deleted.getCompletedAt()).isNotNull();
+		assertThat(deleted.getDeletedAt()).isNotNull();
+	}
+
 	/** 두 번 지워도 204 다 — 삭제는 상태를 맞추는 요청이다. */
 	@Test
 	void S13_4_deleting_twice_is_still_success() throws Exception {
