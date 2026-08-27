@@ -28,6 +28,9 @@ class ErrorCodeTests {
 		catalog.put("TURN_CONFLICT", HttpStatus.CONFLICT);
 		catalog.put("CONCURRENT_GENERATION", HttpStatus.CONFLICT);
 		catalog.put("SESSION_ALREADY_ACTIVE", HttpStatus.CONFLICT);
+		// B-49 — 운영자에게만 나간다. 유일 제약 위반이 500 으로 나가면 등록한 사람은 실패의
+		// 이유를 모른 채 다시 시도한다.
+		catalog.put("ALREADY_EXISTS", HttpStatus.CONFLICT);
 		catalog.put("SAFETY_BLOCKED", HttpStatus.UNPROCESSABLE_CONTENT);
 		catalog.put("STORY_SUSPENDED", HttpStatus.LOCKED);
 		catalog.put("RETRY_COOLDOWN", HttpStatus.TOO_MANY_REQUESTS);

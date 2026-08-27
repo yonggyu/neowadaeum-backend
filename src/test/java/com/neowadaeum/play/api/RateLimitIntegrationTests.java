@@ -125,27 +125,36 @@ class RateLimitIntegrationTests extends ContainerTestBase {
 				.isEqualTo("RATE_LIMITED");
 	}
 
-	/** 한도 안에서는 통과한다 — 막는 것이 목적이 아니라 폭주를 막는 것이 목적이다. */
+	/**
+	 * 한도 안에서는 통과한다 — 막는 것이 목적이 아니라 폭주를 막는 것이 목적이다.
+	 *
+	 * <p><b>설정된 한도가 아니라 작은 한도로 잰다.</b> 창은 고정이므로(§13-28) 호출이
+	 * 경계를 넘으면 카운터가 리셋된다 — 수백 번을 도는 동안 경계를 넘으면 <b>막혀야 할
+	 * 호출이 통과</b>하고, 그 실패는 CI 가 느린 날에만 나타난다. 여기서 확인할 것은
+	 * "한도만큼 통과하고 그 다음이 막힌다"이지 그 값이 얼마인가가 아니다.
+	 */
 	@Test
 	void S15_requests_within_the_limit_pass() {
 		UUID playerRef = UUID.randomUUID();
+		int limit = 3;
 
-		for (int attempt = 0; attempt < this.limits.turnPerMinute(); attempt++) {
-			assertThat(this.rateLimiter.tryAcquire("probe", playerRef.toString(),
-					this.limits.turnPerMinute(), RateLimitProperties.MINUTE)).isTrue();
+		for (int attempt = 0; attempt < limit; attempt++) {
+			assertThat(this.rateLimiter.tryAcquire("probe", playerRef.toString(), limit,
+					RateLimitProperties.MINUTE)).isTrue();
 		}
-		assertThat(this.rateLimiter.tryAcquire("probe", playerRef.toString(),
-				this.limits.turnPerMinute(), RateLimitProperties.MINUTE)).isFalse();
+		assertThat(this.rateLimiter.tryAcquire("probe", playerRef.toString(), limit,
+				RateLimitProperties.MINUTE)).isFalse();
 	}
 
 	/** 계정이 다르면 한도도 다르다 — 한 사용자가 다른 사용자를 막지 못한다. */
 	@Test
 	void S15_the_limit_is_per_account() {
-		UUID first = UUID.randomUUID();
-		exhaust("probe-scope", first, this.limits.turnPerMinute());
+		// 설정된 한도가 아니라 작은 한도로 잰다 — 위와 같은 이유다 (고정 창).
+		int limit = 3;
+		exhaust("probe-scope", UUID.randomUUID(), limit);
 
-		assertThat(this.rateLimiter.tryAcquire("probe-scope", UUID.randomUUID().toString(),
-				this.limits.turnPerMinute(), RateLimitProperties.MINUTE)).isTrue();
+		assertThat(this.rateLimiter.tryAcquire("probe-scope", UUID.randomUUID().toString(), limit,
+				RateLimitProperties.MINUTE)).isTrue();
 	}
 
 	// ── 보조 ────────────────────────────────────────────────

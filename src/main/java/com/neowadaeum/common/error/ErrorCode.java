@@ -41,6 +41,14 @@ public enum ErrorCode {
 	/** [§13-9] 작품당 active 세션은 1개다. */
 	SESSION_ALREADY_ACTIVE(HttpStatus.CONFLICT, "이미 진행 중인 이야기가 있어요."),
 
+	/**
+	 * 같은 것이 이미 있다 (B-49).
+	 *
+	 * <p><b>운영자에게만 나간다.</b> 유일 제약 위반이 500 으로 나가면 등록한 사람은 실패의
+	 * 이유를 모른 채 다시 시도한다.
+	 */
+	ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 등록되어 있어요."),
+
 	// ── 422 / 423 ────────────────────────────────────────────
 	/**
 	 * [I-2, R9.5, R9.6] Safety L2 차단 (§4.8).
