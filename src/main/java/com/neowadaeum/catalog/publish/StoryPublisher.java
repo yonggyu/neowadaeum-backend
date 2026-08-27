@@ -105,6 +105,26 @@ public class StoryPublisher {
 				.params(versionId, at(Instant.now(this.clock)), storyId).update();
 	}
 
+	/**
+	 * 검수 결과를 작품에 반영한다 (R8.6, R8.8).
+	 *
+	 * <p><b>승인이 곧 게시다</b> — 승인하면서 가시성을 함께 정한다. 나누면 <b>승인됐는데 아무도
+	 * 볼 수 없는</b> 작품이 남는다.
+	 *
+	 * <p>발행 시각은 <b>처음 공개될 때만</b> 찍는다 — 재승인 때마다 갱신하면 라이브러리의
+	 * "새로 나온 작품"(§13-25)이 옛 작품으로 채워진다.
+	 */
+	@Transactional("catalogTransactionManager")
+	public void applyReview(UUID storyId, String reviewStatus, String visibility) {
+		this.jdbc.sql("""
+						UPDATE story SET review_status = ?, visibility = ?,
+								published_at = COALESCE(published_at, ?)
+						WHERE id = ?
+						""")
+				.params(reviewStatus, visibility, at(Instant.now(this.clock)), storyId)
+				.update();
+	}
+
 	private UUID insertVersion(UUID storyId, int versionNo, StoryDefinition definition,
 			String stateSchemaJson, Instant now) {
 		UUID versionId = UUID.randomUUID();
