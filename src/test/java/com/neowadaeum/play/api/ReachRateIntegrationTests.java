@@ -48,6 +48,10 @@ class ReachRateIntegrationTests extends ContainerTestBase {
 	private EndingStatRepository stats;
 
 	@Autowired
+	@org.springframework.beans.factory.annotation.Qualifier("playDataSource")
+	private javax.sql.DataSource play;
+
+	@Autowired
 	private PlaySessionRepository sessions;
 
 	@Autowired
@@ -142,11 +146,19 @@ class ReachRateIntegrationTests extends ContainerTestBase {
 		UUID sessionId = startSession();
 		UUID endingId = endingIdOf(endingNo);
 
-		com.neowadaeum.play.domain.Turn turn = this.turns
-				.findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(sessionId).orElseThrow();
-		setField(turn, "ending", true);
-		setField(turn, "endingId", endingId);
-		this.turns.saveAndFlush(turn);
+		// is_ending · ending_id 는 엔티티에서 updatable = false 다 (I-5 계열의 append-only 성질).
+		// 리플렉션으로 필드를 바꿔도 Hibernate 가 UPDATE 에 싣지 않는다 — CI 가 그것을 알려 줬다.
+		// 그래서 SQL 로 직접 만든다. 여기서 보는 것은 도달률이지 엔딩 판정이 아니다(S-7 이 본다).
+		try (java.sql.Connection connection = this.play.getConnection();
+				java.sql.PreparedStatement statement = connection.prepareStatement(
+						"UPDATE turn SET is_ending = TRUE, ending_id = ? WHERE session_id = ?")) {
+			statement.setObject(1, endingId);
+			statement.setObject(2, sessionId);
+			statement.executeUpdate();
+		}
+		catch (java.sql.SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
 
 		PlaySession session = this.sessions.findById(sessionId).orElseThrow();
 		session.complete(endingId, NOW);
@@ -170,15 +182,4 @@ class ReachRateIntegrationTests extends ContainerTestBase {
 		return JSON.readTree(result.getResponse().getContentAsString());
 	}
 
-	/** 엔딩 턴을 만드는 공개 경로는 파이프라인뿐이다. 여기서는 그 결과 상태만 만든다. */
-	private static void setField(Object target, String name, Object value) {
-		try {
-			java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
-			field.setAccessible(true);
-			field.set(target, value);
-		}
-		catch (ReflectiveOperationException ex) {
-			throw new IllegalStateException(ex);
-		}
-	}
 }
