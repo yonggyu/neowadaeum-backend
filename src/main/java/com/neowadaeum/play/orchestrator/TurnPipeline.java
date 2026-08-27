@@ -2,6 +2,8 @@ package com.neowadaeum.play.orchestrator;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.common.support.TurnBudgetProperties;
+import com.neowadaeum.common.observability.SafetyMetrics;
+import com.neowadaeum.common.observability.TurnMetrics;
 import com.neowadaeum.common.support.TurnDeadline;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GenerationContext;
@@ -90,12 +92,16 @@ public class TurnPipeline {
 
 	private final TurnBudgetProperties turnBudget;
 
+	private final TurnMetrics turnMetrics;
+
+	private final SafetyMetrics safetyMetrics;
+
 	public TurnPipeline(PlaySessionRepository sessions, TurnRepository turns,
 			GameStateSnapshotRepository snapshots, StoryVersionFacade storyVersions, TurnGenerationPort provider,
 			SafetyL2Judge safetyJudge, GameStateEngine gameStateEngine, ChapterEngine chapterEngine,
 			EndingEngine endingEngine, RecentTurnsProperties recentTurns, StorySummaryRepository summaries,
 			AsyncSummaryTrigger summaryTrigger, PlatformTransactionManager playTransactionManager, Clock clock,
-			TurnBudgetProperties turnBudget) {
+			TurnBudgetProperties turnBudget, TurnMetrics turnMetrics, SafetyMetrics safetyMetrics) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.snapshots = snapshots;
@@ -111,6 +117,8 @@ public class TurnPipeline {
 		this.summaryTrigger = summaryTrigger;
 		this.clock = clock;
 		this.turnBudget = turnBudget;
+		this.turnMetrics = turnMetrics;
+		this.safetyMetrics = safetyMetrics;
 	}
 
 	/**
@@ -149,6 +157,9 @@ public class TurnPipeline {
 
 	private TurnOutcome advance(UUID sessionId, Integer chosenChoiceOrder, String chosenChoiceId,
 			String freeInput) {
+		// B-48 — 파이프라인 전체를 잰다. Provider 호출만 재면 느린 원인이 모델인지 우리인지
+		// 알 수 없고, 그 구분이 스트리밍 도입 판단(B-46)의 근거다.
+		Instant startedAt = Instant.now(this.clock);
 		PipelineContext context = this.transactions.execute(status -> readContext(sessionId));
 
 		// ── 트랜잭션 밖 ── Provider 호출과 L2 검수 (§9.2, §13-14-a)
@@ -161,7 +172,7 @@ public class TurnPipeline {
 				() -> generateAndScreen(context, chosenChoiceOrder, freeInput));
 		if (generated == null) {
 			// I-2 — 통과하지 못한 본문은 여기서 끝난다. 저장도 반환도 하지 않는다.
-			return blocked(context);
+			return metered(blocked(context), startedAt);
 		}
 
 		TurnOutcome outcome = this.transactions.execute(status -> {
@@ -174,6 +185,7 @@ public class TurnPipeline {
 			}
 			return commit(context, generated, freeInput != null);
 		});
+		outcome = metered(outcome, startedAt);
 
 		// R4.6 — 여기서부터는 사용자 대기 시간이 아니다. 요약은 응답이 나간 뒤에 갱신된다.
 		this.summaryTrigger.afterTurn(context.sessionId(), outcome.turnNo());
@@ -326,7 +338,22 @@ public class TurnPipeline {
 	private SafetyJudgement screen(GeneratedTurn result) {
 		List<String> choiceTexts = result.choices().stream().map(GeneratedChoice::text).toList();
 		List<String> paragraphTexts = result.paragraphs().stream().map(GeneratedParagraph::text).toList();
-		return this.safetyJudge.judge(paragraphTexts, choiceTexts);
+
+		SafetyJudgement judgement = this.safetyJudge.judge(paragraphTexts, choiceTexts);
+		// B-48 — 계측을 판정기가 아니라 부르는 쪽에 둔다. 판정기는 fail-fast 생성자로 조여
+		// 두었고(ADR-0002), 거기에 관측용 의존을 더하면 그 조임이 흐려진다.
+		this.safetyMetrics.record("l2", judgement.blocked(), judgement.categories());
+		return judgement;
+	}
+
+	/**
+	 * <b>차단도 하나의 결과다</b> (B-48). 실패로 세면 에러율과 섞이고, 그러면 "모델이 자주
+	 * 막힌다"와 "서버가 자주 터진다"를 구분할 수 없다.
+	 */
+	private TurnOutcome metered(TurnOutcome outcome, Instant startedAt) {
+		this.turnMetrics.recordTurn(outcome.status().name().toLowerCase(java.util.Locale.ROOT),
+				java.time.Duration.between(startedAt, Instant.now(this.clock)));
+		return outcome;
 	}
 
 	// ── 3) 짧은 TX — 판정과 저장 ─────────────────────────────
