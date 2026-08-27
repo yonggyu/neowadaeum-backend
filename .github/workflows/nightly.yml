@@ -55,6 +55,17 @@ jobs:
       - name: nightly 테스트
         run: ./gradlew nightlyTest --no-daemon
 
+      # 성공해도 올린다 — 실측치는 **실패의 증거가 아니라 결과물**이다 (B-46).
+      # 실패 시에만 올리면 잰 값을 아무도 보지 못한다.
+      - name: 부하 실측 결과
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-report
+          path: build/perf
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: 테스트 리포트 (실패 시에만)
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
