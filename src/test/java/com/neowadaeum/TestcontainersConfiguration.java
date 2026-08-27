@@ -120,6 +120,18 @@ public class TestcontainersConfiguration {
 		};
 	}
 
+	/**
+	 * 관리자 허용목록도 런타임 전용이다 (B-40).
+	 *
+	 * <p>{@code ${ADMIN_ALLOWED_CIDR}} 는 테스트에 {@code .env} 가 없어 플레이스홀더 문자열로
+	 * 남고, 그러면 <b>목록에 그 문자열 하나가 든 상태</b>가 된다. 명시적으로 비워 둔다 —
+	 * <b>비어 있으면 아무도 통과하지 못한다</b>는 것이 이 설정의 기본 성질이다.
+	 */
+	@Bean
+	DynamicPropertyRegistrar adminAccessRegistrar() {
+		return registry -> registry.add("admin.allowed-cidr", () -> "");
+	}
+
 	/** DataSourceConfiguration 이 {@code currentSchema} 를 요구한다. 빠지면 부팅이 실패한다. */
 	private static String jdbcUrl(PostgreSQLContainer container, StoreSchema store) {
 		String url = container.getJdbcUrl();

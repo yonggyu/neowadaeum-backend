@@ -10,7 +10,8 @@ import org.springframework.context.annotation.Configuration;
  * {@code ai.provider.*}). {@code config} 는 스토어 배선만 갖는다.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({ JwtProperties.class, GoogleOAuthProperties.class })
+@EnableConfigurationProperties({ JwtProperties.class, GoogleOAuthProperties.class,
+		AdminAccessProperties.class })
 public class AuthConfiguration {
 
 }
