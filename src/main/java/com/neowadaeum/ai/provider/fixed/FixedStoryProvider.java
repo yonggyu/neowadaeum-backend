@@ -140,10 +140,26 @@ public class FixedStoryProvider implements StoryProvider {
 		return turn.turnNo() + "턴" + chosen + ": " + turn.paragraphsDigest().strip();
 	}
 
-	/** <b>아웃라인 초안도 이 Provider 의 일이 아니다</b> (B-52). 위와 같은 이유다. */
+	/**
+	 * 결정론 초안 (B-52).
+	 *
+	 * <p><b>세계관에서 만들어 낸 것이 아니라 자리를 채운 것이다.</b> 이 Provider 는 시나리오를
+	 * 읽어 답하는 개발 도구이며(S-3), 초안에는 시나리오가 없다 — 그래도 <b>구조는 진짜여야</b>
+	 * 작성 흐름(B-52)을 끝까지 눌러 볼 수 있다.
+	 *
+	 * <p><b>난수가 없다</b> (I-15). 같은 요청에는 언제나 같은 초안이다.
+	 */
 	@Override
 	public OutlineResult draftOutline(OutlineRequest request) {
-		throw new UnsupportedOperationException("draftOutline is B-52; the fixed provider does not draft outlines");
+		List<String> chapters = new java.util.ArrayList<>();
+		for (int no = 1; no <= request.chapterCount(); no++) {
+			chapters.add("%d장 초안\n이 장에서 무슨 일이 일어나는지 작성자가 채운다.".formatted(no));
+		}
+		List<String> endings = new java.util.ArrayList<>();
+		for (int no = 1; no <= request.endingCount(); no++) {
+			endings.add("엔딩 %d 초안\n마지막에 붙는 글을 작성자가 채운다.".formatted(no));
+		}
+		return new OutlineResult(chapters, endings);
 	}
 
 	/**

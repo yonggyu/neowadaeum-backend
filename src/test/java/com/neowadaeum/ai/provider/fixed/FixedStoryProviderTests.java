@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ai.provider.OutlineRequest;
+import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
 import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.play.port.GenerationContexts;
@@ -189,15 +190,24 @@ class FixedStoryProviderTests {
 	}
 
 	/**
-	 * §0.2 — <b>구현하지 않은 용도를 스텁으로 통과시키지 않는다.</b>
+	 * B-52 — <b>초안은 결정론이다</b> (I-15, S-3).
 	 *
-	 * <p>빈 문자열을 돌려주는 {@code summarize} 하나면 요약 파이프라인(B-34)이 없는데도 초록이 된다.
+	 * <p>이 자리는 원래 §0.2 의 *"구현하지 않은 용도를 스텁으로 통과시키지 않는다"* 를 지켰다 —
+	 * {@code draftOutline} 이 던졌기 때문이다. B-52 가 그것을 구현했으므로 이제 확인할 것은
+	 * <b>구현된 것의 성질</b>이다: 요청한 수만큼 나오고, 같은 요청에는 같은 답이 나온다.
+	 *
+	 * <p>세계관에서 만들어 낸 것이 아니라 <b>자리를 채운 것</b>이다 — 이 Provider 는 시나리오를
+	 * 읽어 답하는 개발 도구이며 초안에는 시나리오가 없다. 그래도 구조가 진짜여야 작성 흐름을
+	 * 끝까지 눌러 볼 수 있다.
 	 */
 	@Test
-	void B18_unimplemented_uses_throw_instead_of_returning_something_plausible() {
-		// 요약은 B-34 에서 발췌 요약으로 구현됐다 — 아래 R4_5_* 가 그 성질을 본다.
-		assertThatThrownBy(() -> provider().draftOutline(new OutlineRequest("세계관", 5, 3)))
-				.isInstanceOf(UnsupportedOperationException.class);
+	void B52_the_outline_is_deterministic_and_sized_as_asked() {
+		OutlineResult first = provider().draftOutline(new OutlineRequest("세계관", 5, 3));
+		OutlineResult again = provider().draftOutline(new OutlineRequest("세계관", 5, 3));
+
+		assertThat(first.chapterOutlines()).hasSize(5);
+		assertThat(first.endingOutlines()).hasSize(3);
+		assertThat(first).isEqualTo(again);
 	}
 
 	/**
