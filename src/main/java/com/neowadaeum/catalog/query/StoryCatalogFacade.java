@@ -64,6 +64,94 @@ public class StoryCatalogFacade {
 	}
 
 	/**
+	 * 작품 상세 (§13.3, B-16).
+	 *
+	 * <p><b>노출 조건은 목록과 같다</b> (R2.3, I-8). 상세만 느슨하면 목록에서 가린 작품을
+	 * <b>id 를 아는 사람이 그대로 읽는다</b> — 가린 의미가 사라진다. 그래서 조건이 이 클래스의
+	 * 같은 규칙을 쓴다.
+	 *
+	 * <p>{@code current_version_id} 를 기준으로 읽는다. 상세는 <b>지금 시작하면 무엇을
+	 * 플레이하게 되는가</b>를 보여 주는 화면이므로 세션이 고정한 버전이 아니라 최신이다 (R2.1).
+	 *
+	 * @return 없거나 <b>보이지 않아야 하는</b> 작품이면 비어 있다 — 둘을 구분하지 않는다
+	 */
+	public Optional<StoryDetailView> detail(UUID storyId) {
+		Optional<DetailRow> row = this.jdbc.sql("""
+						SELECT s.id, s.title, s.hero_url, s.description, s.world_intro, s.author_type,
+						       s.author_ref, s.current_version_id
+						FROM story s
+						WHERE s.id = :storyId
+						  AND s.review_status = 'approved'
+						  AND s.visibility <> 'private'
+						  AND s.published_at IS NOT NULL
+						  AND s.current_version_id IS NOT NULL
+						""")
+				.param("storyId", storyId)
+				.query((rs, rowNum) -> new DetailRow(rs.getString("title"), rs.getString("hero_url"),
+						rs.getString("description"), rs.getString("world_intro"), rs.getString("author_type"),
+						rs.getObject("author_ref", UUID.class),
+						rs.getObject("current_version_id", UUID.class)))
+				.optional();
+
+		if (row.isEmpty()) {
+			return Optional.empty();
+		}
+		DetailRow detail = row.get();
+		UUID versionId = detail.currentVersionId();
+		return Optional.of(new StoryDetailView(storyId, detail.title(), detail.heroUrl(),
+				genresOf(List.of(storyId)).getOrDefault(storyId, List.of()), detail.description(),
+				detail.worldIntro(), detail.authorType(), displayNameOf(detail.authorRef()),
+				countOf("SELECT COUNT(*) FROM chapter_def WHERE story_version_id = :id", versionId),
+				// R7.11 — 시크릿은 세지 않는다. 개수만으로도 존재가 새면 안 된다.
+				countOf("SELECT COUNT(*) FROM ending_def WHERE story_version_id = :id AND is_secret = FALSE",
+						versionId),
+				charactersOf(versionId)));
+	}
+
+	/**
+	 * 상세에 보이는 인물만 (§13.3).
+	 *
+	 * <p>{@code persona_prompt} 를 읽지 않는다 — 프롬프트의 재료이지 화면의 것이 아니다.
+	 */
+	private List<CharacterCardView> charactersOf(UUID storyVersionId) {
+		return this.jdbc.sql("""
+						SELECT id, name, role, portrait_url, one_line FROM character
+						WHERE story_version_id = :id AND is_visible_in_detail = TRUE
+						ORDER BY display_order
+						""")
+				.param("id", storyVersionId)
+				.query((rs, rowNum) -> new CharacterCardView(rs.getObject("id", UUID.class),
+						rs.getString("name"), rs.getString("role"), rs.getString("portrait_url"),
+						rs.getString("one_line")))
+				.list();
+	}
+
+	/**
+	 * 작성자 표시명 (§13-7).
+	 *
+	 * <p><b>{@code playerRef} 는 여기서 끝난다.</b> 밖으로 나가는 것은 닉네임뿐이며, 프로필이
+	 * 없으면 {@code null} 이다 — 식별자를 대신 내보내지 않는다 (I-3).
+	 */
+	private String displayNameOf(UUID authorRef) {
+		if (authorRef == null) {
+			return null;
+		}
+		return this.jdbc.sql("SELECT display_name FROM author_profile WHERE player_ref = :ref")
+				.param("ref", authorRef)
+				.query(String.class)
+				.optional()
+				.orElse(null);
+	}
+
+	private int countOf(String sql, UUID versionId) {
+		return this.jdbc.sql(sql).param("id", versionId).query(Integer.class).single();
+	}
+
+	private record DetailRow(String title, String heroUrl, String description, String worldIntro,
+			String authorType, UUID authorRef, UUID currentVersionId) {
+	}
+
+	/**
 	 * <b>공식 카탈로그가 실제로 쓰는 장르만</b> (§13.2, B-15).
 	 *
 	 * <p>라이브러리 개요가 장르 섹션을 전부 만들면 비어 있는 섹션이 화면에 남는다. 여기서

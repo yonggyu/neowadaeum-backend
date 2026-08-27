@@ -36,4 +36,14 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 	 */
 	List<PlaySession> findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(UUID playerRef,
 			SessionStatus status, Limit limit);
+
+	/**
+	 * 이 작품의 내 진행 중 세션 (§13.3).
+	 *
+	 * <p>작품당 {@code active} 는 1개지만(§13-9) 목록으로 받는다 — {@code Optional} 로 받으면
+	 * 제약이 깨진 날 조회가 예외로 터지고, 그 예외는 화면 전체를 죽인다. 여기서는 <b>가장 최근
+	 * 하나</b>를 보여 주는 것으로 충분하다.
+	 */
+	List<PlaySession> findByPlayerRefAndStoryIdAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(
+			UUID playerRef, UUID storyId, SessionStatus status, Limit limit);
 }
