@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -31,11 +32,14 @@ public class PlayController {
 	private final PlayerRefResolver playerRefs;
 	private final SessionStarter sessionStarter;
 	private final PlayTurnService turns;
+	private final SessionResumeService resumeService;
 
-	public PlayController(PlayerRefResolver playerRefs, SessionStarter sessionStarter, PlayTurnService turns) {
+	public PlayController(PlayerRefResolver playerRefs, SessionStarter sessionStarter, PlayTurnService turns,
+			SessionResumeService resumeService) {
 		this.playerRefs = playerRefs;
 		this.sessionStarter = sessionStarter;
 		this.turns = turns;
+		this.resumeService = resumeService;
 	}
 
 	/**
@@ -72,6 +76,27 @@ public class PlayController {
 			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
 		return this.turns.advance(this.playerRefs.currentPlayerRef(), sessionId,
 				request.withIdempotencyKey(idempotencyKey));
+	}
+
+	/**
+	 * Resume 요약 (§13.4, 화면 2e).
+	 *
+	 * <p><b>{@code sessionState} 가 이어하기 가능 여부를 정한다</b> (§4.7). 200 이 곧
+	 * "이어갈 수 있다"는 뜻이 아니다 — 상태를 알려면 조회가 성공해야 하기 때문이다.
+	 */
+	@GetMapping("/sessions/{sessionId}/resume")
+	public ResumeView resume(@PathVariable UUID sessionId) {
+		return this.resumeService.resume(this.playerRefs.currentPlayerRef(), sessionId);
+	}
+
+	/**
+	 * 마지막 턴 복원 (§13.4). 턴 응답과 같은 형태다.
+	 *
+	 * <p>진행 중이 아닌 세션도 답한다 — 끝난 이야기의 마지막 장면이 새로고침에서 사라지면 안 된다.
+	 */
+	@GetMapping("/sessions/{sessionId}/current")
+	public TurnView current(@PathVariable UUID sessionId) {
+		return this.turns.current(this.playerRefs.currentPlayerRef(), sessionId);
 	}
 
 	/**

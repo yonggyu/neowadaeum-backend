@@ -164,6 +164,54 @@ public class PlayTurnService {
 		StoryVersionView version = this.storyVersions.findByVersionId(storyVersionId)
 				.orElseThrow(() -> new IllegalStateException("작품 버전을 찾지 못했다: " + storyVersionId));
 
+		return toView(turn, version, outcome.endingIndex(),
+				turn.isEnding() ? outcome.totalEndings() : null);
+	}
+
+	/**
+	 * 마지막 턴을 다시 그린다 (§13.4 의 {@code GET /sessions/{id}/current}).
+	 *
+	 * <p><b>진행 중이 아닌 세션도 답한다.</b> 화면을 다시 그리는 요청이며, 끝난 이야기의 마지막
+	 * 장면을 보여 주지 못하면 엔딩 화면이 새로고침에서 사라진다.
+	 *
+	 * <p>엔딩 순번은 <b>저장된 값이 아니라 지금 계산한다</b> — 턴에 남는 것은 어떤 엔딩에
+	 * 도달했는가이고, 그것이 비시크릿 중 몇 번째인지는 작품 버전이 정한다 (R7.11).
+	 */
+	public TurnView current(UUID playerRef, UUID sessionId) {
+		PlaySession session = requireOwnedSession(playerRef, sessionId);
+		Turn turn = this.turns.findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(sessionId)
+				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		StoryVersionView version = this.storyVersions.findByVersionId(session.getStoryVersionId())
+				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+
+		List<StoryVersionView.EndingView> visible = version.endings().stream()
+				.filter(ending -> !ending.secret())
+				.sorted(java.util.Comparator.comparingInt(StoryVersionView.EndingView::endingNo))
+				.toList();
+
+		return toView(turn, version, endingIndexOf(visible, turn.getEndingId()),
+				turn.isEnding() ? visible.size() : null);
+	}
+
+	/**
+	 * R7.11 — 비시크릿 중 1-based 순번. <b>시크릿 엔딩이면 {@code null}</b> 이다.
+	 *
+	 * <p>셀 자리가 없는데 번호를 주면 시크릿을 숨긴 목적이 깨진다.
+	 */
+	private static Integer endingIndexOf(List<StoryVersionView.EndingView> visible, UUID endingId) {
+		if (endingId == null) {
+			return null;
+		}
+		for (int index = 0; index < visible.size(); index++) {
+			if (visible.get(index).id().equals(endingId)) {
+				return index + 1;
+			}
+		}
+		return null;
+	}
+
+	private static TurnView toView(Turn turn, StoryVersionView version, Integer endingIndex,
+			Integer totalEndings) {
 		return new TurnView(
 				turn.getTurnNo(),
 				turn.getChapterNo(),
@@ -175,10 +223,26 @@ public class PlayTurnService {
 				readChoices(turn.getChoices()),
 				turn.isEnding(),
 				turn.getEndingId(),
-				outcome.endingIndex(),
-				turn.isEnding() ? outcome.totalEndings() : null,
+				endingIndex,
+				totalEndings,
 				// R11.2 — 저장된 사실을 그대로 읽는다. 여기서 판단하지 않는다.
 				turn.isAiGenerated());
+	}
+
+	/**
+	 * 소유 확인만 한다 — 상태는 보지 않는다.
+	 *
+	 * <p>{@code requireOwnedActiveSession} 과 나눈 이유는 <b>다시 그리기가 진행 중을 요구하지
+	 * 않기 때문</b>이다. 끝난 세션의 마지막 장면은 여전히 보여 줘야 한다.
+	 */
+	private PlaySession requireOwnedSession(UUID playerRef, UUID sessionId) {
+		PlaySession session = this.sessions.findById(sessionId)
+				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		if (!session.getPlayerRef().equals(playerRef)) {
+			// 남의 세션은 "없는 것"과 구분되지 않아야 한다 (I-3).
+			throw new ApiException(ErrorCode.NOT_FOUND);
+		}
+		return session;
 	}
 
 	// ── 검증 ────────────────────────────────────────────────
