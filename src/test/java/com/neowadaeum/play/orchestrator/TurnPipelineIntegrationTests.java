@@ -3,6 +3,7 @@ package com.neowadaeum.play.orchestrator;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
+import com.neowadaeum.common.support.TurnBudgetProperties;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
@@ -409,6 +410,6 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 	private TurnPipeline pipelineWith(StoryProvider storyProvider) {
 		return new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions, storyProvider,
 				this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
-				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED);
+				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED, TurnBudgetProperties.defaults());
 	}
 }

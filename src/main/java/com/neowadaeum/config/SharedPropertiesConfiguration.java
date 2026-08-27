@@ -1,6 +1,7 @@
 package com.neowadaeum.config;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
+import com.neowadaeum.common.support.TurnBudgetProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,8 +14,12 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>설정 접두어는 {@code ai.prompt.recent-turns} 그대로다. §13-2 가 그 이름으로 부르며, 값이
  * 사는 모듈이 바뀌었다고 배포 설정 키를 바꿀 이유는 없다.
+ *
+ * <p>{@link TurnBudgetProperties} 도 같은 성질이다 (#116). 턴 예산을 <b>여는</b> 것은 {@code play}
+ * 이고 <b>읽는</b> 것은 {@code ai} 의 시간 제한 데코레이터다 — 어느 한쪽에 두면 다른 쪽이
+ * 참조할 수 없다 (ADR-0006).
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(RecentTurnsProperties.class)
+@EnableConfigurationProperties({ RecentTurnsProperties.class, TurnBudgetProperties.class })
 public class SharedPropertiesConfiguration {
 }

@@ -3,6 +3,7 @@ package com.neowadaeum.play.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
+import com.neowadaeum.common.support.TurnBudgetProperties;
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
@@ -206,7 +207,7 @@ class TurnConcurrencyNightlyTests extends ContainerTestBase {
 
 		TurnPipeline pipeline = new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
 				counting, this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
-				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED);
+				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED, TurnBudgetProperties.defaults());
 		PlayTurnService service = new PlayTurnService(this.sessions, this.turns, this.storyVersions, pipeline,
 				this.guards, this.idempotency);
 
