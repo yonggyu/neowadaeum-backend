@@ -124,11 +124,31 @@ public class TurnPipeline {
 	}
 
 	/**
+	 * 관리자 자유입력으로 다음 턴을 만든다 (R14.2, B-43).
+	 *
+	 * <p><b>선택지를 대신하는 행동 문장이다.</b> 파이프라인은 이 뒤로 같은 길을 간다 — 검수도
+	 * 상태 병합도 Chapter·Ending 판정도 그대로다. 자유입력 전용 경로를 만들면 두 곳이 갈라지고,
+	 * 그러면 <b>관리자가 재현한 것이 사용자가 겪는 것과 달라진다.</b>
+	 *
+	 * <p><b>L1 은 여기서 하지 않는다.</b> 부르는 쪽이 통과시킨 것만 온다 (I-17) — 검수를
+	 * 파이프라인 안에 두면 <b>검수를 건너뛰는 다른 호출자</b>가 생길 자리가 없어 보이지만,
+	 * 세션 종류 판정(I-18)과 함께 있어야 의미가 있으므로 그 둘을 한 자리에 둔다.
+	 */
+	public TurnOutcome advanceWithFreeInput(UUID sessionId, String freeInput) {
+		return advance(sessionId, null, null, freeInput);
+	}
+
+	/**
 	 * 다음 턴을 만들되 <b>직전 턴에 무엇을 골랐는지 함께 기록한다</b> (§4.3-3, B-35).
 	 *
 	 * @param chosenChoiceId 직전 턴이 발급한 식별자. 첫 턴이면 {@code null}
 	 */
 	public TurnOutcome advance(UUID sessionId, Integer chosenChoiceOrder, String chosenChoiceId) {
+		return advance(sessionId, chosenChoiceOrder, chosenChoiceId, null);
+	}
+
+	private TurnOutcome advance(UUID sessionId, Integer chosenChoiceOrder, String chosenChoiceId,
+			String freeInput) {
 		PipelineContext context = this.transactions.execute(status -> readContext(sessionId));
 
 		// ── 트랜잭션 밖 ── Provider 호출과 L2 검수 (§9.2, §13-14-a)
@@ -138,7 +158,7 @@ public class TurnPipeline {
 		// 남은 예산이 없으면 뒤 호출은 걸리지도 않는다 (TimeLimitedStoryProvider).
 		Generated generated = TurnDeadline.within(
 				TurnDeadline.startingNow(this.clock, this.turnBudget.budgetMs()),
-				() -> generateAndScreen(context, chosenChoiceOrder));
+				() -> generateAndScreen(context, chosenChoiceOrder, freeInput));
 		if (generated == null) {
 			// I-2 — 통과하지 못한 본문은 여기서 끝난다. 저장도 반환도 하지 않는다.
 			return blocked(context);
@@ -152,7 +172,7 @@ public class TurnPipeline {
 						.ifPresent(previous -> previous.recordChoice(chosenChoiceId,
 								Instant.now(this.clock)));
 			}
-			return commit(context, generated);
+			return commit(context, generated, freeInput != null);
 		});
 
 		// R4.6 — 여기서부터는 사용자 대기 시간이 아니다. 요약은 응답이 나간 뒤에 갱신된다.
@@ -195,9 +215,10 @@ public class TurnPipeline {
 	 *
 	 * @return 통과한 결과. 차단이면 {@code null}
 	 */
-	private Generated generateAndScreen(PipelineContext context, Integer chosenChoiceOrder) {
+	private Generated generateAndScreen(PipelineContext context, Integer chosenChoiceOrder,
+			String freeInput) {
 		TurnRequest request = new TurnRequest(context.storyVersionId(), context.turnNo(), chosenChoiceOrder,
-				generationContext(context, chosenChoiceOrder));
+				freeInput, generationContext(context, chosenChoiceOrder, freeInput));
 
 		GeneratedTurn result = this.provider.generateTurn(request);
 		SafetyJudgement judgement = screen(result);
@@ -230,7 +251,8 @@ public class TurnPipeline {
 	 * 크게 설정했을 때 <b>조립기가 있는 만큼만 받고 그 사실을 알지 못했다.</b> 세 값은
 	 * {@code RecentTurnsProperties} 가 부팅에서 함께 검증한다 ({@code verbatim ≤ inPrompt ≤ summaryMerge}).
 	 */
-	private GenerationContext generationContext(PipelineContext context, Integer chosenChoiceOrder) {
+	private GenerationContext generationContext(PipelineContext context, Integer chosenChoiceOrder,
+			String freeInput) {
 		List<Turn> recent = this.turns
 				.findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(context.sessionId(), Limit.of(this.recentTurns.summaryMerge()));
 
@@ -244,7 +266,10 @@ public class TurnPipeline {
 				this.summaries.findFirstBySessionIdAndDeletedAtIsNullOrderByUptoTurnNoDescCreatedAtDesc(
 						context.sessionId()).map(StorySummary::getSummaryText).orElse(null),
 				recent.reversed().stream().map(TurnPipeline::toRecentTurn).toList(),
-				userAction(recent, chosenChoiceOrder));
+				// R14.2 — 자유입력은 선택지 자리에 그대로 들어간다. 프롬프트가 보는 것은
+				// "이번 턴에 사용자가 한 행동" 하나이며, 그것이 선택지에서 왔는지 관리자
+				// 자유입력에서 왔는지는 프롬프트의 관심사가 아니다.
+				(freeInput != null) ? freeInput : userAction(recent, chosenChoiceOrder));
 	}
 
 	/**
@@ -306,7 +331,7 @@ public class TurnPipeline {
 
 	// ── 3) 짧은 TX — 판정과 저장 ─────────────────────────────
 
-	private TurnOutcome commit(PipelineContext context, Generated generated) {
+	private TurnOutcome commit(PipelineContext context, Generated generated, boolean adminFreeInput) {
 		Instant now = Instant.now(this.clock);
 		int newTurnNo = context.turnNo() + 1;
 
@@ -332,12 +357,13 @@ public class TurnPipeline {
 						chapterDecision.changed() ? 1 : context.turnsInChapter() + 1));
 
 		// 11 — 저장
-		return persist(context, generated, afterChapter, chapterDecision, endingDecision, newTurnNo, now);
+		return persist(context, generated, afterChapter, chapterDecision, endingDecision, newTurnNo,
+				adminFreeInput, now);
 	}
 
 	private TurnOutcome persist(PipelineContext context, Generated generated, GameState state,
 			ChapterEngine.ChapterDecision chapterDecision, EndingEngine.EndingDecision endingDecision,
-			int newTurnNo, Instant now) {
+			int newTurnNo, boolean adminFreeInput, Instant now) {
 
 		boolean ended = endingDecision.reached();
 		UUID endingId = ended ? endingIdOf(context.version(), endingDecision) : null;
@@ -355,7 +381,7 @@ public class TurnPipeline {
 				chapterDecision.changed(), ended, endingId,
 				// R11.2 — 이 경로는 Provider 가 만든 본문만 저장한다 (§4.3-5·6). 다른 경로가
 				// 생기면 그 경로가 자기 사실을 넣는다. 여기서 정하는 것은 이 경로의 사실이다.
-				generated.verdict(), true), now));
+				generated.verdict(), true, adminFreeInput), now));
 
 		// I-5 — append. 덮어쓰지 않는다.
 		this.snapshots.save(GameStateSnapshot.capture(context.sessionId(), newTurnNo,

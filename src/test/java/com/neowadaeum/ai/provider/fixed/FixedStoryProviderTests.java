@@ -44,11 +44,11 @@ class FixedStoryProviderTests {
 	@Test
 	void I15_same_request_always_yields_the_same_result() {
 		FixedStoryProvider provider = provider();
-		TurnRequest request = new TurnRequest(FIXTURE_STORY, 1, 1, GenerationContexts.sample());
+		TurnRequest request = TurnRequest.of(FIXTURE_STORY, 1, 1, GenerationContexts.sample());
 
 		GeneratedTurn first = provider.generateTurn(request);
 		GeneratedTurn second = provider.generateTurn(request);
-		GeneratedTurn third = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1, GenerationContexts.sample()));
+		GeneratedTurn third = provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 1, 1, GenerationContexts.sample()));
 
 		assertThat(first).isEqualTo(second).isEqualTo(third);
 	}
@@ -58,8 +58,8 @@ class FixedStoryProviderTests {
 	void I15_branching_is_decided_only_by_the_chosen_choice() {
 		FixedStoryProvider provider = provider();
 
-		GeneratedTurn left = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1, GenerationContexts.sample()));
-		GeneratedTurn right = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 2, GenerationContexts.sample()));
+		GeneratedTurn left = provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 1, 1, GenerationContexts.sample()));
+		GeneratedTurn right = provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 1, 2, GenerationContexts.sample()));
 
 		assertThat(left.paragraphs()).isNotEqualTo(right.paragraphs());
 	}
@@ -73,10 +73,10 @@ class FixedStoryProviderTests {
 		assertThat(opening.choices()).hasSize(2);
 		assertThat(opening.endingSuggested()).isNull();
 
-		GeneratedTurn middle = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 1, 1, GenerationContexts.sample()));
+		GeneratedTurn middle = provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 1, 1, GenerationContexts.sample()));
 		assertThat(middle.choices()).hasSize(1);
 
-		GeneratedTurn ending = provider.generateTurn(new TurnRequest(FIXTURE_STORY, 2, 1, GenerationContexts.sample()));
+		GeneratedTurn ending = provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 2, 1, GenerationContexts.sample()));
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-test");
 	}
@@ -93,11 +93,11 @@ class FixedStoryProviderTests {
 		FixedStoryProvider provider = demoProvider();
 
 		assertThat(provider.generateTurn(TurnRequest.opening(DEMO_STORY, GenerationContexts.sample())).choices()).hasSize(2);
-		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 1, 1, GenerationContexts.sample())).endingSuggested()).isNull();
-		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 2, 1, GenerationContexts.sample())).chapterAdvanceSuggested()).isTrue();
-		assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, 3, 1, GenerationContexts.sample())).endingSuggested()).isNull();
+		assertThat(provider.generateTurn(TurnRequest.of(DEMO_STORY, 1, 1, GenerationContexts.sample())).endingSuggested()).isNull();
+		assertThat(provider.generateTurn(TurnRequest.of(DEMO_STORY, 2, 1, GenerationContexts.sample())).chapterAdvanceSuggested()).isTrue();
+		assertThat(provider.generateTurn(TurnRequest.of(DEMO_STORY, 3, 1, GenerationContexts.sample())).endingSuggested()).isNull();
 
-		GeneratedTurn ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 4, 1, GenerationContexts.sample()));
+		GeneratedTurn ending = provider.generateTurn(TurnRequest.of(DEMO_STORY, 4, 1, GenerationContexts.sample()));
 
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-first-light");
@@ -114,12 +114,12 @@ class FixedStoryProviderTests {
 		FixedStoryProvider provider = demoProvider();
 
 		for (int turnNo = 1; turnNo <= 7; turnNo++) {
-			assertThat(provider.generateTurn(new TurnRequest(DEMO_STORY, turnNo, 2, GenerationContexts.sample())).endingSuggested())
+			assertThat(provider.generateTurn(TurnRequest.of(DEMO_STORY, turnNo, 2, GenerationContexts.sample())).endingSuggested())
 					.as("%d 턴에서 끝나면 안 된다", turnNo)
 					.isNull();
 		}
 
-		GeneratedTurn ending = provider.generateTurn(new TurnRequest(DEMO_STORY, 8, 2, GenerationContexts.sample()));
+		GeneratedTurn ending = provider.generateTurn(TurnRequest.of(DEMO_STORY, 8, 2, GenerationContexts.sample()));
 
 		assertThat(ending.choices()).isEmpty();
 		assertThat(ending.endingSuggested()).isEqualTo("ending-quiet-exit");
@@ -137,7 +137,7 @@ class FixedStoryProviderTests {
 	void S0_2_unknown_request_throws_instead_of_inventing_a_turn() {
 		FixedStoryProvider provider = provider();
 
-		assertThatThrownBy(() -> provider.generateTurn(new TurnRequest(FIXTURE_STORY, 9, 1, GenerationContexts.sample())))
+		assertThatThrownBy(() -> provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 9, 1, GenerationContexts.sample())))
 				.isInstanceOf(UnsupportedOperationException.class);
 	}
 
@@ -146,7 +146,7 @@ class FixedStoryProviderTests {
 	void S3_failure_message_carries_coordinates_not_narrative_text() {
 		FixedStoryProvider provider = provider();
 
-		assertThatThrownBy(() -> provider.generateTurn(new TurnRequest(FIXTURE_STORY, 9, 1, GenerationContexts.sample())))
+		assertThatThrownBy(() -> provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 9, 1, GenerationContexts.sample())))
 				.hasMessageContaining("turnNo=9")
 				.hasMessageNotContaining("왼쪽 길")
 				.hasMessageNotContaining("길이 끝났다");
@@ -168,9 +168,9 @@ class FixedStoryProviderTests {
 	/** §4.3 턴 번호 계약 — 첫 턴에는 고른 선택지가 없고, 이후 턴에는 반드시 있다. */
 	@Test
 	void S4_3_turn_number_contract_is_enforced_by_the_request_itself() {
-		assertThatThrownBy(() -> new TurnRequest(FIXTURE_STORY, 0, 1, GenerationContexts.sample()))
+		assertThatThrownBy(() -> TurnRequest.of(FIXTURE_STORY, 0, 1, GenerationContexts.sample()))
 				.isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> new TurnRequest(FIXTURE_STORY, 1, null, GenerationContexts.sample()))
+		assertThatThrownBy(() -> TurnRequest.of(FIXTURE_STORY, 1, null, GenerationContexts.sample()))
 				.isInstanceOf(IllegalArgumentException.class);
 
 		assertThat(TurnRequest.opening(FIXTURE_STORY, GenerationContexts.sample()).chosenChoiceOrder()).isNull();

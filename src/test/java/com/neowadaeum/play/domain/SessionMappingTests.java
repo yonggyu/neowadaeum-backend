@@ -79,7 +79,7 @@ class SessionMappingTests extends ContainerTestBase {
 				[{"choiceId": "1-0-a1b2c3", "text": "문을 연다"}, {"choiceId": "1-1-d4e5f6", "text": "돌아선다"}]""";
 
 		Turn saved = this.turns.save(Turn.create(new Turn.TurnDraft(session.getId(), 1, 1, paragraphs, choices,
-				null, false, false, null, SafetyVerdict.PASS, true), NOW));
+				null, false, false, null, SafetyVerdict.PASS, true, false), NOW));
 		Turn found = this.turns.findById(saved.getId()).orElseThrow();
 
 		assertThat(JSON.readTree(found.getParagraphs())).isEqualTo(JSON.readTree(paragraphs));
@@ -109,7 +109,7 @@ class SessionMappingTests extends ContainerTestBase {
 	@Test
 	void I2_turn_cannot_be_created_without_a_safety_verdict() {
 		assertThatThrownBy(() -> Turn.create(new Turn.TurnDraft(UUID.randomUUID(), 1, 1, "[]", "[]",
-				null, false, false, null, null, true), NOW))
+				null, false, false, null, null, true, false), NOW))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 

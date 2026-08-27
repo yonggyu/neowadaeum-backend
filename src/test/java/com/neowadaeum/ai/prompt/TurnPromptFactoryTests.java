@@ -70,7 +70,7 @@ class TurnPromptFactoryTests {
 				"고맙다고 말한다");
 
 		String rendered = this.factory.create(
-				new TurnRequest(STORY_VERSION, 3, 1, context)).render();
+				TurnRequest.of(STORY_VERSION, 3, 1, context)).render();
 
 		assertThat(rendered).contains("복도에서 마주쳤다.", "우산을 내밀었다.", "말없이 걸었다.");
 	}
@@ -90,6 +90,6 @@ class TurnPromptFactoryTests {
 								"유나가 우산을 내밀었다.")),
 				"고맙다고 말한다");
 
-		return new TurnRequest(STORY_VERSION, 7, 1, context);
+		return TurnRequest.of(STORY_VERSION, 7, 1, context);
 	}
 }

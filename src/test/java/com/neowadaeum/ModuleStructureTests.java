@@ -48,7 +48,9 @@ class ModuleStructureTests {
 	void ADR0006_turn_generation_is_owned_by_play_and_implemented_by_ai() {
 		assertThat(allowedDependenciesOf("play"))
 				.as("ADR-0006 — ai 가 여기 들어오면 양방향이다. 턴 생성은 play :: port 로 뒤집었다")
-				.containsExactlyInAnyOrder("common", "catalog :: query", "safety :: l2");
+				// B-43 으로 safety :: l1 이 늘었다. 관리자 자유입력은 **사람이 넣은 텍스트**이며,
+				// L2 가 보는 것(AI 가 내놓은 것)과 다른 문을 지난다 (I-17).
+				.containsExactlyInAnyOrder("common", "catalog :: query", "safety :: l1", "safety :: l2");
 
 		assertThat(allowedDependenciesOf("ai"))
 				.as("ADR-0006 — ai 는 play 의 계약 패키지 하나만 본다. 도메인 엔티티는 여전히 닫혀 있다")

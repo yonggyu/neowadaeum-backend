@@ -20,9 +20,12 @@ import java.util.UUID;
  * @param storyVersionRef 작품 버전 참조. 스키마 간 FK 가 아니라 애플리케이션 레벨 UUID 참조다 (§5.3)
  * @param turnNo          요청 시점의 현재 턴 번호. 세션 첫 턴 생성은 {@code 0}
  * @param chosenChoiceOrder 직전 턴에서 고른 선택지의 표시 순서. 세션 첫 턴이면 {@code null}
+ * @param freeInput       관리자 자유입력 (R14.2, B-43). <b>선택지를 대신하는 행동 문장</b>이며,
+ *                        <b>L1 을 통과한 것만</b> 여기 온다 (I-17). 보통은 {@code null} 이다
  * @param context         이 턴을 쓰는 데 필요한 재료 (§5.1)
  */
-public record TurnRequest(UUID storyVersionRef, int turnNo, Integer chosenChoiceOrder, GenerationContext context) {
+public record TurnRequest(UUID storyVersionRef, int turnNo, Integer chosenChoiceOrder, String freeInput,
+		GenerationContext context) {
 
 	public TurnRequest {
 		if (context == null) {
@@ -37,13 +40,26 @@ public record TurnRequest(UUID storyVersionRef, int turnNo, Integer chosenChoice
 		if (turnNo == 0 && chosenChoiceOrder != null) {
 			throw new IllegalArgumentException("the opening turn has no chosen choice");
 		}
-		if (turnNo > 0 && chosenChoiceOrder == null) {
-			throw new IllegalArgumentException("a non-opening turn requires the chosen choice order");
+		if (chosenChoiceOrder != null && freeInput != null) {
+			// 둘 다 오면 어느 것이 이번 턴의 행동인지가 정해지지 않는다. 고르게 하지 않고 거절한다.
+			throw new IllegalArgumentException("a turn is driven by a choice or by free input, not both");
 		}
+		if (turnNo > 0 && chosenChoiceOrder == null && freeInput == null) {
+			throw new IllegalArgumentException("a non-opening turn requires a choice or free input");
+		}
+		if (turnNo == 0 && freeInput != null) {
+			throw new IllegalArgumentException("the opening turn has no user action");
+		}
+	}
+
+	/** 선택지로 이어지는 보통의 턴. */
+	public static TurnRequest of(UUID storyVersionRef, int turnNo, Integer chosenChoiceOrder,
+			GenerationContext context) {
+		return new TurnRequest(storyVersionRef, turnNo, chosenChoiceOrder, null, context);
 	}
 
 	/** 세션의 첫 턴 생성 요청. */
 	public static TurnRequest opening(UUID storyVersionRef, GenerationContext context) {
-		return new TurnRequest(storyVersionRef, 0, null, context);
+		return new TurnRequest(storyVersionRef, 0, null, null, context);
 	}
 }

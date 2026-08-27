@@ -85,7 +85,7 @@ class StorySummarizerIntegrationTests extends ContainerTestBase {
 			this.turns.save(Turn.create(new Turn.TurnDraft(sessionId, turnNo, 1,
 					"[{\"type\":\"NARRATION\",\"speakerName\":null,\"text\":\"%d턴의 본문\"}]".formatted(turnNo),
 					"[{\"choiceId\":\"c%d\",\"order\":1,\"text\":\"%d턴의 선택지\"}]".formatted(turnNo, turnNo),
-					null, false, false, null, SafetyVerdict.PASS, true), NOW));
+					null, false, false, null, SafetyVerdict.PASS, true, false), NOW));
 		}
 		return sessionId;
 	}

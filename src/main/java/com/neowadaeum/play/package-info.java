@@ -15,7 +15,8 @@
  * <p><b>{@code safety} 는 ADR-0005 대로 남는다.</b> §4.3 파이프라인이 L2 를 부르고, {@code safety} 는
  * {@code play} 의 도메인 엔티티를 알지 못하므로 순환이 생기지 않는다.
  */
-@ApplicationModule(allowedDependencies = { "common", "catalog :: query", "safety :: l2" })
+@ApplicationModule(allowedDependencies = { "common", "catalog :: query", "safety :: l1",
+		"safety :: l2" })
 package com.neowadaeum.play;
 
 import org.springframework.modulith.ApplicationModule;

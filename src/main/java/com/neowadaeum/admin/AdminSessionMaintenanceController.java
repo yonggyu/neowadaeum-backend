@@ -2,6 +2,7 @@ package com.neowadaeum.admin;
 
 import com.neowadaeum.common.web.PlayerRefResolver;
 import com.neowadaeum.identity.access.AdminAccessGuard;
+import com.neowadaeum.play.debug.AdminFreeInputFacade;
 import com.neowadaeum.play.debug.SessionRegenerateFacade;
 import com.neowadaeum.play.debug.SessionRollbackFacade;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,16 +32,40 @@ public class AdminSessionMaintenanceController {
 
 	private final SessionRegenerateFacade regenerate;
 
+	private final AdminFreeInputFacade freeInput;
+
 	private final AdminAccessGuard guard;
 
 	private final PlayerRefResolver playerRefs;
 
 	public AdminSessionMaintenanceController(SessionRollbackFacade rollback,
-			SessionRegenerateFacade regenerate, AdminAccessGuard guard, PlayerRefResolver playerRefs) {
+			SessionRegenerateFacade regenerate, AdminFreeInputFacade freeInput, AdminAccessGuard guard,
+			PlayerRefResolver playerRefs) {
 		this.rollback = rollback;
 		this.regenerate = regenerate;
+		this.freeInput = freeInput;
 		this.guard = guard;
 		this.playerRefs = playerRefs;
+	}
+
+	/**
+	 * 임의의 행동 문장으로 턴을 만든다 (R14.1~R14.3).
+	 *
+	 * <p><b>테스트 세션에서만 열린다</b> (I-18) — 남의 이야기에 관리자가 문장을 넣는 것은
+	 * 디버그가 아니라 개입이다. 그리고 <b>L1 을 지난다</b> (I-17).
+	 *
+	 * <p><b>행동 문장을 감사에 싣지 않는다</b> (S-3, S-11). 남는 것은 "언제 누가 자유입력을
+	 * 썼는가"이며, 무엇을 넣었는지는 원문 보관처(`ai_call_log`)에서 디버그로 본다.
+	 */
+	@PostMapping("/{sessionId}/turns/free")
+	public AdminFreeInputFacade.FreeInputResult free(@PathVariable UUID sessionId,
+			@Valid @RequestBody FreeInputRequest body, HttpServletRequest request) {
+		UUID adminUserId = this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
+
+		AdminFreeInputFacade.FreeInputResult result = this.freeInput.submit(sessionId, body.action());
+		this.guard.recordAction(adminUserId, "admin.session.freeInput", "session", sessionId,
+				Map.of("turnNo", result.turnNo(), "blocked", result.blocked()), request);
+		return result;
 	}
 
 	/** {@code toTurnNo} 까지 되돌린다. 그 턴은 남는다 — 되돌린 뒤 화면에 떠 있을 턴이다. */

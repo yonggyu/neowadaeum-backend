@@ -193,7 +193,7 @@ class SessionRollbackIntegrationTests extends ContainerTestBase {
 		for (int no = 1; no <= turnNo; no++) {
 			session.recordTurn(no, 1, now);
 			this.turns.save(Turn.create(new Turn.TurnDraft(sessionId, no, 1, "[\"본문\"]", "[]", null,
-					false, false, null, SafetyVerdict.PASS, true), now));
+					false, false, null, SafetyVerdict.PASS, true, false), now));
 			this.snapshots.save(GameStateSnapshot.capture(sessionId, no, "{\"turn\":%d}".formatted(no), now));
 			this.summaries.save(StorySummary.of(sessionId, no, "요약 " + no, 10, now));
 		}
