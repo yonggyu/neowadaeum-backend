@@ -137,7 +137,7 @@ class AdminFreeInputApiIntegrationTests extends ContainerTestBase {
 		UUID sessionId = givenSession(true);
 		String stepUp = stepUpToken();
 
-		this.mvc.perform(freeInput(sessionId, "창밖을 본다", stepUp)).andExpect(status().isOk());
+		succeed(freeInput(sessionId, "창밖을 본다", stepUp));
 
 		assertThat(this.turns.findBySessionIdAndTurnNoAndDeletedAtIsNull(sessionId, 2)).get()
 				.satisfies(turn -> {
@@ -155,10 +155,28 @@ class AdminFreeInputApiIntegrationTests extends ContainerTestBase {
 		UUID sessionId = givenSession(true);
 		String stepUp = stepUpToken();
 
-		this.mvc.perform(freeInput(sessionId, "창밖을 본다", stepUp)).andExpect(status().isOk());
+		succeed(freeInput(sessionId, "창밖을 본다", stepUp));
 
 		assertThat(this.auditLogs.findByAdminUserIdOrderByCreatedAtDesc(adminUserId, Limit.of(10)))
 				.allSatisfy(log -> assertThat(log.getPayload()).doesNotContain("창밖을 본다"));
+	}
+
+	/**
+	 * 200 을 기대하되, <b>아니면 응답 본문을 실패 메시지에 싣는다.</b>
+	 *
+	 * <p>{@code status().isOk()} 만 걸면 CI 로그에 "AssertionError" 한 줄만 남고, 컨테이너
+	 * 테스트를 로컬에서 돌릴 수 없는 상황에서는 그 한 줄로 원인을 좁힐 수 없다.
+	 *
+	 * <p>본문에 원문이 실리지 않는다는 것은 별도 테스트가 지킨다 (S-3).
+	 */
+	private void succeed(
+			org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder)
+			throws Exception {
+		var response = this.mvc.perform(builder).andReturn().getResponse();
+		assertThat(response.getStatus())
+				.withFailMessage("expected 200 but was %d: %s", response.getStatus(),
+						response.getContentAsString())
+				.isEqualTo(200);
 	}
 
 	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder freeInput(
