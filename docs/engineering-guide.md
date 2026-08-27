@@ -700,6 +700,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | 409 | `TURN_CONFLICT` | `turnNo` 불일치 | 현재 턴으로 동기화 |
 | 409 | `CONCURRENT_GENERATION` | 계정당 동시 생성 1개 초과 | 대기 안내 |
 | 409 | `SESSION_ALREADY_ACTIVE` | 작품당 active 세션 중복 | 이어하기 유도 |
+| 409 | `ALREADY_EXISTS` | 같은 것이 이미 있다 (B-49 블록리스트) | 운영자에게만 나간다 |
 | 422 | `SAFETY_BLOCKED` | L2 차단 | **SafetyBlocked 화면 (§4.8)** |
 | 423 | `STORY_SUSPENDED` | 작품 정지 | 읽기 전용 안내 |
 | 429 | `RETRY_COOLDOWN` | 연속 실패 3회 (`retryAfterSeconds`) | 재시도 비활성 |
