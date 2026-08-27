@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.common.error.GlobalExceptionHandler;
+import com.neowadaeum.common.support.RateLimitProperties;
+import com.neowadaeum.common.support.RateLimiter;
 import com.neowadaeum.identity.auth.AuthTokens;
 import com.neowadaeum.identity.auth.OAuthLoginService;
 import com.neowadaeum.identity.domain.OauthProvider;
@@ -33,7 +35,12 @@ class AuthControllerTests {
 
 	private final OAuthLoginService login = mock(OAuthLoginService.class);
 
-	private final MockMvc mvc = MockMvcBuilders.standaloneSetup(new AuthController(this.login))
+	/** 한도는 여기서 검사 대상이 아니다 — 늘 통과시킨다 (B-38 은 통합 테스트가 본다). */
+	private final RateLimiter alwaysAllows = mock(RateLimiter.class, invocation ->
+			invocation.getMethod().getReturnType() == boolean.class ? Boolean.TRUE : 0L);
+
+	private final MockMvc mvc = MockMvcBuilders.standaloneSetup(
+					new AuthController(this.login, this.alwaysAllows, RateLimitProperties.defaults()))
 			.setControllerAdvice(new GlobalExceptionHandler())
 			.build();
 

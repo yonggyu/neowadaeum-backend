@@ -2,6 +2,8 @@ package com.neowadaeum.identity.api;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.support.RateLimitProperties;
+import com.neowadaeum.common.support.RateLimiter;
 import com.neowadaeum.common.support.Sha256;
 import com.neowadaeum.identity.auth.AuthTokens;
 import com.neowadaeum.identity.auth.OAuthLoginService;
@@ -30,8 +32,34 @@ public class AuthController {
 
 	private final OAuthLoginService login;
 
-	public AuthController(OAuthLoginService login) {
+	private final RateLimiter rateLimiter;
+
+	private final RateLimitProperties limits;
+
+	public AuthController(OAuthLoginService login, RateLimiter rateLimiter, RateLimitProperties limits) {
 		this.login = login;
+		this.rateLimiter = rateLimiter;
+		this.limits = limits;
+	}
+
+	/**
+	 * <b>S-8 — 계정 없이 부를 수 있는 경로는 IP 로 센다.</b>
+	 *
+	 * <p>이 두 경로는 인증 전이므로 계정 기준 한도를 걸 수 없다. 걸지 않으면 <b>ID 토큰을
+	 * 무작위로 던져 보는 요청</b>과 리프레시 토큰 추측이 무제한이 된다.
+	 *
+	 * <p>IP 는 <b>해시로만</b> 센다 (§12) — 키에 원문을 넣으면 Redis 가 접속자 목록이 된다.
+	 */
+	private void requireWithinIpLimit(HttpServletRequest request) {
+		String ipHash = Sha256.hex(request.getRemoteAddr());
+		if (ipHash == null) {
+			return;
+		}
+		if (!this.rateLimiter.tryAcquire("auth-ip", ipHash, this.limits.authPerMinutePerIp(),
+				RateLimitProperties.MINUTE)) {
+			throw new ApiException(ErrorCode.RATE_LIMITED, java.util.Map.of("retryAfterSeconds",
+					this.rateLimiter.retryAfterSeconds(RateLimitProperties.MINUTE)));
+		}
 	}
 
 	/**
@@ -47,13 +75,16 @@ public class AuthController {
 	@PostMapping("/oauth/{provider}")
 	public TokenResponse loginWithOAuth(@PathVariable String provider,
 			@Valid @RequestBody OAuthLoginRequest request, HttpServletRequest httpRequest) {
+		requireWithinIpLimit(httpRequest);
 		return TokenResponse.of(this.login.login(providerOf(provider), request.idToken(),
 				request.toSignupInfo(), Sha256.hex(httpRequest.getRemoteAddr())));
 	}
 
 	/** 액세스 토큰 재발급 (§13.1). 액세스 토큰으로는 통하지 않는다. */
 	@PostMapping("/refresh")
-	public TokenResponse refresh(@Valid @RequestBody RefreshRequest request) {
+	public TokenResponse refresh(@Valid @RequestBody RefreshRequest request,
+			HttpServletRequest httpRequest) {
+		requireWithinIpLimit(httpRequest);
 		return TokenResponse.of(this.login.refresh(request.refreshToken()));
 	}
 

@@ -1,6 +1,7 @@
 package com.neowadaeum.config;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
+import com.neowadaeum.common.support.RateLimitProperties;
 import com.neowadaeum.common.support.TurnBudgetProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -18,8 +19,12 @@ import org.springframework.context.annotation.Configuration;
  * <p>{@link TurnBudgetProperties} 도 같은 성질이다 (#116). 턴 예산을 <b>여는</b> 것은 {@code play}
  * 이고 <b>읽는</b> 것은 {@code ai} 의 시간 제한 데코레이터다 — 어느 한쪽에 두면 다른 쪽이
  * 참조할 수 없다 (ADR-0006).
+ *
+ * <p>{@link RateLimitProperties} 도 마찬가지다 (#157). 턴은 {@code play}, precheck 는
+ * {@code authoring}(B-50), 인증 경로는 {@code identity} 가 읽는다 — <b>셋이 같은 표를 봐야 한다.</b>
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({ RecentTurnsProperties.class, TurnBudgetProperties.class })
+@EnableConfigurationProperties({ RecentTurnsProperties.class, TurnBudgetProperties.class,
+		RateLimitProperties.class })
 public class SharedPropertiesConfiguration {
 }
