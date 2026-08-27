@@ -142,6 +142,32 @@ public class PlaySession {
 	 * <p>{@code completed_at} 을 함께 채운다 — 마이그레이션의 CHECK 가 {@code status = 'completed'} 와
 	 * 짝을 강제하므로, 한쪽만 세우면 저장에서 거절된다.
 	 */
+	/**
+	 * 다시 시작으로 버려진다 (§13-9).
+	 *
+	 * <p><b>지우지 않는다.</b> 지나간 플레이는 기록이며, 그 위에 요약·스냅샷·턴이 매달려 있다.
+	 * 상태만 바꾸면 "작품당 active 1개" 인덱스가 새 세션에 자리를 내준다.
+	 */
+	public void abandon(Instant now) {
+		this.status = SessionStatus.ABANDONED;
+		this.updatedAt = now;
+	}
+
+	/**
+	 * 사용자가 지운다 (§13.4, §4.7).
+	 *
+	 * <p><b>soft delete 다</b> — {@code deleted_at} 을 채울 뿐 행을 지우지 않는다. 롤백(R14.4)과
+	 * 같은 이유이며, 실제 파기는 보관 주기를 지키는 배치의 몫이다 (R12.4, B-61).
+	 *
+	 * <p>상태도 {@code abandoned} 로 바꾼다. 남겨 두면 "작품당 active 1개" 인덱스가 지운 세션
+	 * 때문에 새 세션을 막는다 — 사용자가 보기에는 지웠는데 다시 시작할 수 없는 상태다.
+	 */
+	public void deleteBy(Instant now) {
+		this.status = SessionStatus.ABANDONED;
+		this.deletedAt = now;
+		this.updatedAt = now;
+	}
+
 	public void complete(UUID endingId, Instant now) {
 		this.status = SessionStatus.COMPLETED;
 		this.currentEndingId = endingId;
