@@ -9,6 +9,7 @@ import com.neowadaeum.catalog.query.CharacterCardView;
 import com.neowadaeum.catalog.query.GenreView;
 import com.neowadaeum.catalog.query.StoryCardView;
 import com.neowadaeum.play.api.HistoryView;
+import com.neowadaeum.play.api.LandingView;
 import com.neowadaeum.play.api.LibraryView;
 import com.neowadaeum.play.api.MyStoriesView;
 import com.neowadaeum.play.api.ResumeView;
@@ -295,6 +296,18 @@ class OpenApiContractTests {
 		assertThat(propertiesOf("MySessionItem")).contains("status");
 		assertThat(schema("MySessionItem").toString()).contains("active").contains("completed")
 				.doesNotContain("in_progress]");
+	}
+
+	/**
+	 * 랜딩 응답의 모든 필드가 계약에 선언되어 있고 <b>{@code isLoggedIn} 이 없다</b> (B-37, §13.10).
+	 */
+	@Test
+	void B37_landing_carries_no_is_logged_in_on_either_side() {
+		assertThat(propertiesOf("LandingResponse")).containsAll(recordComponentsOf(LandingView.class));
+		assertThat(propertiesOf("FeaturedStory"))
+				.containsAll(recordComponentsOf(LandingView.FeaturedStory.class));
+		assertThat(propertiesOf("LandingResponse")).doesNotContain("isLoggedIn");
+		assertThat(recordComponentsOf(LandingView.class)).doesNotContain("isLoggedIn");
 	}
 
 	// ── 4. S-11 ──────────────────────────────────────────────

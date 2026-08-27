@@ -36,8 +36,14 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration(proxyBeanMethods = false)
 public class ApiSecurityConfiguration {
 
-	/** 인증 없이 여는 경로 (§13.1). */
-	private static final String[] PUBLIC_PATHS = { "/api/v1/auth/oauth/*", "/api/v1/auth/refresh" };
+	/**
+	 * 인증 없이 여는 경로.
+	 *
+	 * <p>로그인 둘(§13.1)과 랜딩(§13.10)이다. 계약이 {@code security: []} 로 표시한 것과 같은
+	 * 목록이며, <b>여기 없는 경로는 토큰을 요구한다.</b>
+	 */
+	private static final String[] PUBLIC_PATHS = { "/api/v1/auth/oauth/*", "/api/v1/auth/refresh",
+			"/api/v1/landing" };
 
 	/** 이 체인이 맡는 범위. {@code securityMatcher} 와 CSRF 면제가 같은 값을 봐야 한다. */
 	private static final String API_PATHS = "/api/v1/**";
