@@ -67,8 +67,11 @@ class StoreIsolationTests extends ContainerTestBase {
 				.as("한 EMF 가 두 스토어의 엔티티를 알면 JPQL 한 줄로 크로스 스키마 조인이 된다")
 				.doesNotContainAnyElementsOf(promptLogEntities)
 				.doesNotContainAnyElementsOf(identityEntities);
-		assertThat(catalogEntities)
-				.containsExactlyInAnyOrder("Genre", "StoryGenre", "AuthorProfile", "EndingStat", "ServiceConfig");
+		// B-49 로 authoring 의 첫 엔티티가 들어왔다. **catalog 스토어에 살지만 소유는
+		// authoring 이다** (ADR-0002) — 목록이 느는 것은 의식적인 결정이어야 하므로
+		// containsExactlyInAnyOrder 를 유지한다.
+		assertThat(catalogEntities).containsExactlyInAnyOrder("Genre", "StoryGenre", "AuthorProfile",
+				"EndingStat", "ServiceConfig", "BlocklistEntryRow");
 
 		assertThat(promptLogEntities).doesNotContainAnyElementsOf(identityEntities);
 		assertThat(catalogEntities)

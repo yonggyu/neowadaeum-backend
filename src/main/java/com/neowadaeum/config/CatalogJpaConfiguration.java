@@ -32,7 +32,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  */
 @Configuration(proxyBeanMethods = false)
 @EnableJpaRepositories(
-		basePackages = CatalogJpaConfiguration.CATALOG_PACKAGE,
+		basePackages = { CatalogJpaConfiguration.CATALOG_PACKAGE,
+				CatalogJpaConfiguration.AUTHORING_PACKAGE },
 		entityManagerFactoryRef = "catalogEntityManagerFactory",
 		transactionManagerRef = "catalogTransactionManager")
 public class CatalogJpaConfiguration {
@@ -43,6 +44,15 @@ public class CatalogJpaConfiguration {
 	 */
 	static final String CATALOG_PACKAGE = "com.neowadaeum.catalog";
 
+	/**
+	 * <b>authoring 은 catalog 스토어에 산다</b> (ADR-0002, B-10).
+	 *
+	 * <p>스키마를 나누지 않은 이유는 작품과 원고가 <b>같은 트랜잭션에서 움직이는 순간</b>이
+	 * 있기 때문이다 — 승인이 곧 버전 발행이다 (B-56). 소유는 여전히 authoring 이며, 그것은
+	 * 어느 모듈이 그 표를 고치는가의 문제다.
+	 */
+	static final String AUTHORING_PACKAGE = "com.neowadaeum.authoring";
+
 	/** 엔티티와 마이그레이션이 어긋나면 부팅이 실패한다. 다른 세 스토어와 같은 값이다. */
 	private static final Map<String, Object> JPA_PROPERTIES = Map.of("hibernate.hbm2ddl.auto", "validate");
 
@@ -52,7 +62,7 @@ public class CatalogJpaConfiguration {
 			@Qualifier("catalogDataSource") DataSource dataSource) {
 		LocalContainerEntityManagerFactoryBean factory = new LocalContainerEntityManagerFactoryBean();
 		factory.setDataSource(dataSource);
-		factory.setPackagesToScan(CATALOG_PACKAGE);
+		factory.setPackagesToScan(CATALOG_PACKAGE, AUTHORING_PACKAGE);
 		factory.setPersistenceUnitName(StoreSchema.CATALOG.schema());
 		factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
 		factory.setJpaPropertyMap(JPA_PROPERTIES);
