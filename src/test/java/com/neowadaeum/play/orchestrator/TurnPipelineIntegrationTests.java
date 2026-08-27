@@ -308,6 +308,62 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 		};
 	}
 
+	// ── 관리자 자유입력 (B-43) ───────────────────────────────
+
+	/**
+	 * <b>자유입력이 프롬프트의 사용자 행동 자리에 그대로 들어간다</b> (R14.2).
+	 *
+	 * <p>Provider 를 들여다보는 이유는 <b>그 자리에 무엇이 실려 갔는지</b>가 이 기능의 전부이기
+	 * 때문이다 — 선택지에서 왔든 자유입력에서 왔든 프롬프트가 보는 것은 하나여야 한다.
+	 */
+	@Test
+	void R14_2_free_input_reaches_the_prompt_as_the_user_action() {
+		UUID sessionId = newSession();
+		java.util.List<String> seen = new java.util.ArrayList<>();
+		StoryProvider watching = new TurnOnlyStoryProvider() {
+			@Override
+			public String providerId() {
+				return "watching";
+			}
+
+			@Override
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				seen.add(request.context().userAction());
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration("자유입력에 이어지는 장면.")),
+						List.of(new GeneratedChoice(1, "계속한다")), JSON.readTree("{}"), false, null);
+			}
+		};
+		TurnPipeline pipeline = pipelineWith(watching);
+		pipeline.advance(sessionId, null);
+
+		pipeline.advanceWithFreeInput(sessionId, "창밖을 본다");
+
+		assertThat(seen).containsExactly(null, "창밖을 본다");
+	}
+
+	/**
+	 * <b>만들어진 턴이 자유입력으로 표시된다</b> (R14.2).
+	 *
+	 * <p>표시가 없으면 나중에 그 턴이 <b>사람이 넣은 것</b>임을 알 수 없다. 본문을 만든 것은
+	 * 여전히 AI 이므로 {@code is_ai_generated} 도 함께 참이다 — 둘은 다른 축이다.
+	 */
+	@Test
+	void R14_2_a_free_input_turn_is_marked_and_an_ordinary_turn_is_not() {
+		UUID sessionId = newSession();
+		TurnPipeline pipeline = pipelineWith(this.provider);
+		pipeline.advance(sessionId, null);
+
+		pipeline.advanceWithFreeInput(sessionId, "창밖을 본다");
+
+		assertThat(this.turns.findBySessionIdAndTurnNoAndDeletedAtIsNull(sessionId, 1)).get()
+				.satisfies(ordinary -> assertThat(ordinary.isAdminFreeInput()).isFalse());
+		assertThat(this.turns.findBySessionIdAndTurnNoAndDeletedAtIsNull(sessionId, 2)).get()
+				.satisfies(free -> {
+					assertThat(free.isAdminFreeInput()).isTrue();
+					assertThat(free.isAiGenerated()).isTrue();
+				});
+	}
+
 	private UUID newSession() {
 		return this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY, SEED_VERSION,
 				"fixed", "scenario-v1", false, Instant.now(FIXED))).getId();

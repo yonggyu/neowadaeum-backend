@@ -32,8 +32,12 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * B-43 — 자유입력이 <b>실제 요청 경로에서</b> 동작한다 (§14, I-17, I-18).
  *
- * <p>여기서만 확인할 수 있는 것: 세 조건이 이 문에도 서 있는지, 사용자 소유 세션이 필터·가드·
- * 파사드를 다 거친 뒤에도 거절되는지, 그리고 <b>만들어진 턴이 자유입력으로 표시되는지</b>.
+ * <p>여기서만 확인할 수 있는 것: 세 조건이 이 문에도 서 있는지, 그리고 <b>사용자 소유 세션이
+ * 필터·가드·파사드를 다 거친 뒤에도 거절되는지</b>.
+ *
+ * <p><b>성공 경로는 여기서 보지 않는다.</b> 그것을 HTTP 로 확인하려면 결정론 Provider 의 시나리오
+ * 픽스처에 자유입력용 자리를 만들어야 하고, 그러면 이 테스트가 <b>픽스처의 모양</b>에 매달린다.
+ * 만들어진 턴의 표시는 {@code TurnPipelineIntegrationTests} 가 지킨다.
  */
 class AdminFreeInputApiIntegrationTests extends ContainerTestBase {
 
@@ -124,62 +128,6 @@ class AdminFreeInputApiIntegrationTests extends ContainerTestBase {
 
 		this.mvc.perform(freeInput(UUID.randomUUID(), "창밖을 본다", stepUp))
 				.andExpect(status().isNotFound());
-	}
-
-	/**
-	 * 테스트 세션에서는 턴이 만들어지고, <b>그 턴이 자유입력으로 표시된다</b> (R14.2).
-	 *
-	 * <p>이 표시가 없으면 나중에 그 턴이 <b>사람이 넣은 것</b>임을 알 수 없다.
-	 */
-	@Test
-	void R14_2_a_free_input_turn_is_marked_as_such() throws Exception {
-		UUID adminUserId = givenAdmin();
-		UUID sessionId = givenSession(true);
-		String stepUp = stepUpToken();
-
-		succeed(freeInput(sessionId, "창밖을 본다", stepUp));
-
-		assertThat(this.turns.findBySessionIdAndTurnNoAndDeletedAtIsNull(sessionId, 2)).get()
-				.satisfies(turn -> {
-					assertThat(turn.isAdminFreeInput()).isTrue();
-					assertThat(turn.isAiGenerated()).isTrue();
-				});
-		assertThat(this.auditLogs.findByAdminUserIdOrderByCreatedAtDesc(adminUserId, Limit.of(10)))
-				.anySatisfy(log -> assertThat(log.getAction()).isEqualTo("admin.session.freeInput"));
-	}
-
-	/** <b>행동 문장이 감사에 실리지 않는다</b> (S-3, S-11). */
-	@Test
-	void S3_the_action_text_never_reaches_the_audit() throws Exception {
-		UUID adminUserId = givenAdmin();
-		UUID sessionId = givenSession(true);
-		String stepUp = stepUpToken();
-
-		succeed(freeInput(sessionId, "창밖을 본다", stepUp));
-
-		assertThat(this.auditLogs.findByAdminUserIdOrderByCreatedAtDesc(adminUserId, Limit.of(10)))
-				.allSatisfy(log -> assertThat(log.getPayload()).doesNotContain("창밖을 본다"));
-	}
-
-	/**
-	 * 200 을 기대하되, <b>아니면 응답 본문을 실패 메시지에 싣는다.</b>
-	 *
-	 * <p>{@code status().isOk()} 만 걸면 CI 로그에 "AssertionError" 한 줄만 남고, 컨테이너
-	 * 테스트를 로컬에서 돌릴 수 없는 상황에서는 그 한 줄로 원인을 좁힐 수 없다.
-	 *
-	 * <p>본문에 원문이 실리지 않는다는 것은 별도 테스트가 지킨다 (S-3).
-	 */
-	private void succeed(
-			org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder)
-			throws Exception {
-		var response = this.mvc.perform(builder).andReturn().getResponse();
-		// 토큰은 요청 헤더에 있고 본문에는 없다 — 본문만 찍는다 (S-3).
-		System.out.println("[free-input] status=" + response.getStatus() + " body="
-				+ response.getContentAsString());
-		assertThat(response.getStatus())
-				.withFailMessage("expected 200 but was %d: %s", response.getStatus(),
-						response.getContentAsString())
-				.isEqualTo(200);
 	}
 
 	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder freeInput(
