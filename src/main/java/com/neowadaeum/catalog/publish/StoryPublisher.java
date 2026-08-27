@@ -125,6 +125,25 @@ public class StoryPublisher {
 				.update();
 	}
 
+	/**
+	 * 작품의 현재 검수 상태 (§13.8).
+	 *
+	 * <p>작성자가 <b>지금 어디까지 왔는지</b>를 보는 자리다. 값은 작품에 있고, 그 이유는
+	 * 검수 이력에 있다 (R8.7).
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public StoryStatus statusOf(UUID storyId) {
+		return this.jdbc.sql("SELECT review_status, visibility FROM story WHERE id = ?")
+				.param(storyId)
+				.query((rs, rowNum) -> new StoryStatus(rs.getString("review_status"),
+						rs.getString("visibility")))
+				.single();
+	}
+
+	/** 작품의 상태 한 벌. */
+	public record StoryStatus(String reviewStatus, String visibility) {
+	}
+
 	private UUID insertVersion(UUID storyId, int versionNo, StoryDefinition definition,
 			String stateSchemaJson, Instant now) {
 		UUID versionId = UUID.randomUUID();

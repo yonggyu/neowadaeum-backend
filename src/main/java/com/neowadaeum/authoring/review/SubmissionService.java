@@ -37,6 +37,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class SubmissionService {
 
+	private static final tools.jackson.databind.json.JsonMapper JSON =
+			tools.jackson.databind.json.JsonMapper.builder().build();
+
 	private final DraftService drafts;
 
 	private final PrecheckScreen screen;
@@ -74,7 +77,46 @@ public class SubmissionService {
 		if (screened.state() == com.neowadaeum.authoring.draft.DraftSafetyState.BLOCKED) {
 			return rejected(screened.findings());
 		}
-		return approve(definition, visibility);
+
+		SubmissionOutcome outcome = approve(definition, visibility);
+		// R8.8 — 재제출은 같은 작품을 가리켜야 한다. 원고가 자기 작품을 기억한다.
+		this.drafts.linkStory(authorRef, draftId, outcome.storyId());
+		return outcome;
+	}
+
+	/**
+	 * 검수 상태를 다시 본다.
+	 *
+	 * <p><b>제출한 적이 없으면 {@code draft} 다</b> — 없는 것이 아니라 아직 내지 않은 것이며,
+	 * 404 로 답하면 작성자는 원고가 사라졌다고 읽는다.
+	 *
+	 * <p><b>반려 사유를 다시 계산하지 않는다.</b> 마지막 검수 이력에 담긴 것을 그대로 준다 —
+	 * 다시 검사하면 그 사이 블록리스트가 바뀌었을 때 <b>작성자가 보는 이유가 달라진다.</b>
+	 */
+	public SubmissionOutcome reviewStatus(UUID authorRef, UUID draftId) {
+		StoryDraft draft = this.drafts.read(authorRef, draftId);
+		if (draft.getStoryId() == null) {
+			return new SubmissionOutcome(null, ReviewStatus.DRAFT, Visibility.PRIVATE, List.of());
+		}
+		return this.transactions.execute(status -> {
+			StoryPublisher.StoryStatus stored = this.publisher.statusOf(draft.getStoryId());
+			List<String> reasons = this.reviews
+					.findFirstByStoryIdOrderByReviewedAtDesc(draft.getStoryId())
+					.map(review -> reasonsOf(review.getReasons())).orElse(List.of());
+			return new SubmissionOutcome(draft.getStoryId(),
+					ReviewStatus.valueOf(stored.reviewStatus().toUpperCase(java.util.Locale.ROOT)),
+					Visibility.valueOf(stored.visibility().toUpperCase(java.util.Locale.ROOT)),
+					reasons);
+		});
+	}
+
+	/** 저장된 것은 카테고리 배열이다 (R8.7). 파싱기를 들이지 않고 그대로 읽는다. */
+	private static List<String> reasonsOf(String reasonsJson) {
+		List<String> reasons = new java.util.ArrayList<>();
+		for (var node : JSON.readTree(reasonsJson)) {
+			reasons.add(node.asString());
+		}
+		return List.copyOf(reasons);
 	}
 
 	/**
