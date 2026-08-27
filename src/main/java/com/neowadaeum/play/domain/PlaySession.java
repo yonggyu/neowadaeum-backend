@@ -174,6 +174,36 @@ public class PlaySession {
 		this.updatedAt = now;
 	}
 
+	/**
+	 * 관리자가 되돌린다 (R14.4, B-42).
+	 *
+	 * <p><b>{@code turn_no} 가 줄어드는 유일한 자리다.</b> {@link #recordTurn} 이 "하나씩만
+	 * 오른다"를 지키는 것과 짝이며, 되돌리기는 그 규칙의 예외가 아니라 <b>별도의 사건</b>이다 —
+	 * 그래서 메서드를 나눈다. 한 메서드가 양방향을 다루면 오타 하나가 조용한 되감기가 된다.
+	 *
+	 * <p><b>끝났다는 사실을 함께 지운다.</b> 엔딩 뒤로 되돌리면서 {@code completed} 를 남기면
+	 * 마이그레이션의 CHECK 가 거절하고, 통과하더라도 <b>끝난 세션이 계속 진행되는</b> 상태가
+	 * 된다. {@code completed_at} 과 {@code current_ending_id} 도 같이 비운다.
+	 *
+	 * <p><b>지워진 세션은 되돌리지 않는다.</b> 되살릴 대상이 아니라 파기를 기다리는 것이다.
+	 */
+	public void rewindTo(int targetTurnNo, int targetChapterNo, Instant now) {
+		if (this.deletedAt != null) {
+			throw new IllegalStateException("지워진 세션은 되돌리지 않는다: " + this.id);
+		}
+		if (targetTurnNo < 0 || targetTurnNo >= this.turnNo) {
+			throw new IllegalArgumentException(
+					"되돌릴 지점은 현재보다 앞이어야 한다 (I-6): 현재 %d, 요청 %d"
+							.formatted(this.turnNo, targetTurnNo));
+		}
+		this.turnNo = targetTurnNo;
+		this.chapterNo = targetChapterNo;
+		this.status = SessionStatus.ACTIVE;
+		this.currentEndingId = null;
+		this.completedAt = null;
+		this.updatedAt = now;
+	}
+
 	public void complete(UUID endingId, Instant now) {
 		this.status = SessionStatus.COMPLETED;
 		this.currentEndingId = endingId;

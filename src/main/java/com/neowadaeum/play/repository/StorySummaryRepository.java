@@ -22,4 +22,13 @@ public interface StorySummaryRepository extends JpaRepository<StorySummary, UUID
 	 * <p>되돌려진 요약은 제외한다 — 롤백은 soft delete 이므로 행은 남아 있다 (§13-9).
 	 */
 	Optional<StorySummary> findFirstBySessionIdAndDeletedAtIsNullOrderByUptoTurnNoDescCreatedAtDesc(UUID sessionId);
+
+	/**
+	 * 되돌리기가 접을 대상 (R14.4, B-42).
+	 *
+	 * <p><b>스냅샷과 같은 기준으로 자른다.</b> 요약만 남으면 상태가 어긋난다 — R14.4 가
+	 * "함께"라고 적은 것이 이것이다.
+	 */
+	java.util.List<StorySummary> findBySessionIdAndUptoTurnNoGreaterThanAndDeletedAtIsNull(
+			UUID sessionId, int uptoTurnNo);
 }

@@ -18,4 +18,13 @@ public interface GameStateSnapshotRepository extends JpaRepository<GameStateSnap
 	 * <p>되돌려진 스냅샷은 제외한다 — 롤백은 soft delete 이므로 행은 남아 있다 (§13-9, I-5).
 	 */
 	java.util.Optional<GameStateSnapshot> findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(UUID sessionId);
+
+	/**
+	 * 되돌리기가 접을 대상 (R14.4, B-42).
+	 *
+	 * <p><b>요약과 같은 기준으로 자른다.</b> 기준이 어긋나면 상태와 이야기가 다른 지점을
+	 * 가리킨 채 다음 턴이 만들어진다.
+	 */
+	java.util.List<GameStateSnapshot> findBySessionIdAndTurnNoGreaterThanAndDeletedAtIsNull(
+			UUID sessionId, int turnNo);
 }

@@ -57,4 +57,10 @@ public interface TurnRepository extends JpaRepository<Turn, UUID> {
 	 * 어긋날 자리가 하나 는다 (S-9 요구사항 2).
 	 */
 	int countBySessionIdAndChapterNoAndDeletedAtIsNull(UUID sessionId, int chapterNo);
+
+	/** 되돌리기가 접을 대상 (R14.4, B-42). 지목한 지점보다 <b>뒤</b>의 살아 있는 턴이다. */
+	List<Turn> findBySessionIdAndTurnNoGreaterThanAndDeletedAtIsNull(UUID sessionId, int turnNo);
+
+	/** 되돌린 지점의 턴. 세션의 chapter 를 그 턴에 맞춰야 한다. */
+	Optional<Turn> findBySessionIdAndTurnNoAndDeletedAtIsNull(UUID sessionId, int turnNo);
 }
