@@ -1,5 +1,6 @@
 package com.neowadaeum.play.api;
 
+import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
 import com.neowadaeum.common.error.ApiException;
@@ -48,16 +49,18 @@ public class PlayTurnService {
 	private final TurnPipeline pipeline;
 	private final TurnGuards guards;
 	private final IdempotencyStore idempotency;
+	private final StoryCatalogFacade stories;
 
 	public PlayTurnService(PlaySessionRepository sessions, TurnRepository turns,
 			StoryVersionFacade storyVersions, TurnPipeline pipeline, TurnGuards guards,
-			IdempotencyStore idempotency) {
+			IdempotencyStore idempotency, StoryCatalogFacade stories) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.storyVersions = storyVersions;
 		this.pipeline = pipeline;
 		this.guards = guards;
 		this.idempotency = idempotency;
+		this.stories = stories;
 	}
 
 	/**
@@ -170,7 +173,7 @@ public class PlayTurnService {
 				.orElseThrow(() -> new IllegalStateException("작품 버전을 찾지 못했다: " + storyVersionId));
 
 		return toView(turn, version, outcome.endingIndex(),
-				turn.isEnding() ? outcome.totalEndings() : null);
+				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session(turn), turn));
 	}
 
 	/**
@@ -195,7 +198,33 @@ public class PlayTurnService {
 				.toList();
 
 		return toView(turn, version, endingIndexOf(visible, turn.getEndingId()),
-				turn.isEnding() ? visible.size() : null);
+				turn.isEnding() ? visible.size() : null, reachRateOf(session, turn));
+	}
+
+	/**
+	 * 도달률 (R2.7, R2.8, I-20).
+	 *
+	 * <p><b>엔딩 턴에만 있다.</b> 그리고 <b>계산하지 않는다</b> — 배치가 갱신한 값을 읽을 뿐이다.
+	 *
+	 * <p>엔딩 번호는 저장돼 있지 않다. 턴이 든 것은 엔딩 식별자이므로 그 버전의 정의에서 번호를
+	 * 찾는다 — 집계 키가 {@code (작품, 번호)} 이기 때문이다 (§2.6).
+	 */
+	private Double reachRateOf(PlaySession session, Turn turn) {
+		if (!turn.isEnding() || turn.getEndingId() == null) {
+			return null;
+		}
+		return this.storyVersions.findByVersionId(session.getStoryVersionId())
+				.flatMap(version -> version.endings().stream()
+						.filter(ending -> ending.id().equals(turn.getEndingId()))
+						.findFirst())
+				.flatMap(ending -> this.stories.reachRate(session.getStoryId(), ending.endingNo()))
+				.orElse(null);
+	}
+
+	/** 턴이 속한 세션. 응답 조립이 작품과 버전을 알아야 한다. */
+	private PlaySession session(Turn turn) {
+		return this.sessions.findById(turn.getSessionId())
+				.orElseThrow(() -> new IllegalStateException("턴의 세션을 찾지 못했다: " + turn.getSessionId()));
 	}
 
 	/**
@@ -216,7 +245,7 @@ public class PlayTurnService {
 	}
 
 	private static TurnView toView(Turn turn, StoryVersionView version, Integer endingIndex,
-			Integer totalEndings) {
+			Integer totalEndings, Double reachRate) {
 		return new TurnView(
 				turn.getTurnNo(),
 				turn.getChapterNo(),
@@ -231,7 +260,9 @@ public class PlayTurnService {
 				endingIndex,
 				totalEndings,
 				// R11.2 — 저장된 사실을 그대로 읽는다. 여기서 판단하지 않는다.
-				turn.isAiGenerated());
+				turn.isAiGenerated(),
+				// R2.7 · I-20 — 배치 갱신값이다. 여기서 세지 않는다.
+				reachRate);
 	}
 
 	/**
