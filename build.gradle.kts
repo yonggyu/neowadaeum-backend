@@ -164,6 +164,16 @@ val nightlyTest by tasks.registering(Test::class) {
 // 검증한 상태이므로 안전 문제는 아니다. **그 때문에 UP-TO-DATE 를 끄지는 않는다** — 캐시를 버리는
 // 대가가 이 가드가 얻는 것보다 크고, CI 는 매번 새 체크아웃이라 해당되지 않는다.
 tasks.withType<Test>().configureEach {
+	// 실패의 **메시지**를 CI 로그에 남긴다.
+	//
+	// 기본 형식은 예외 종류와 줄 번호까지만 찍는다 — `java.lang.AssertionError at Foo.java:179`.
+	// 컨테이너 테스트는 Docker 가 있는 곳에서만 돌므로 로컬에서 재현할 수 없고, 그 한 줄로는
+	// 무엇이 어긋났는지 좁힐 수 없다. XML 리포트에는 메시지가 있지만 그것은 로그에 실리지 않는다.
+	testLogging {
+		events("failed")
+		exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+	}
+
 	val guardEnabled = failOnNoDiscoveredTests
 	val xmlDir = reports.junitXml.outputLocation
 	val taskPath = path
