@@ -57,7 +57,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * <p>{@code nightly} 다 (ADR-0001). 부하 측정을 PR 마다 돌리면 CI 가 그것을 기다리는 데 대부분의
  * 시간을 쓴다.
  */
-@org.junit.jupiter.api.Tag("nightly")
+@org.junit.jupiter.api.Tag("container")
 class TurnLatencyNightlyTests extends ContainerTestBase {
 
 	/** 계측은 이 테스트의 관심사가 아니다 — 값을 버리는 레지스트리로 배선만 채운다 (B-48). */
