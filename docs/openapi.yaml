@@ -479,10 +479,31 @@ paths:
 
   # ── §13.8 작품 만들기 ───────────────────────────────────────
   /api/v1/authoring/drafts:
+    get:
+      tags: [authoring]
+      operationId: listDrafts
+      summary: 내 원고 목록
+      description: |
+        **내 것만 나온다** (I-8). 검수 전 UGC 는 작성자 말고는 볼 수 없다.
+      x-implemented-by: B-51
+      responses:
+        '200':
+          description: 최근 것부터
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DraftResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     post:
       tags: [authoring]
       operationId: createDraft
       summary: 드래프트 생성
+      description: |
+        1단계에서 시작한다. **작성자당 개수 상한이 있다** (R8.12) — 없으면 한 계정이 저장소를
+        채운다. 닿으면 `409` 이며, 지우면 자리가 난다.
       x-implemented-by: B-51
       responses:
         '201':
@@ -493,10 +514,56 @@ paths:
                 $ref: '#/components/schemas/DraftResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '409':
+          description: 원고 개수 상한에 닿았다 (R8.12)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: ALREADY_EXISTS
+                message: 이미 등록되어 있어요.
+                details: {}
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/authoring/drafts/{draftId}:
+    get:
+      tags: [authoring]
+      operationId: getDraft
+      summary: 원고 조회
+      description: |
+        **남의 원고는 없는 것과 구분되지 않는다** (I-8) — `403` 이 아니라 `404` 다. 존재
+        여부가 새면 원고 id 를 훑어 남이 무엇을 쓰고 있는지 알 수 있다.
+      x-implemented-by: B-51
+      parameters:
+        - $ref: '#/components/parameters/DraftId'
+      responses:
+        '200':
+          description: 원고
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [authoring]
+      operationId: deleteDraft
+      summary: 원고 삭제
+      description: |
+        **없어도 성공이다** — 삭제는 상태를 맞추는 요청이고, 두 번째 호출이 실패하면
+        클라이언트가 재시도할 방법이 없다. 남의 원고는 지워지지 않으며 그 사실도 알리지 않는다.
+      x-implemented-by: B-51
+      parameters:
+        - $ref: '#/components/parameters/DraftId'
+      responses:
+        '204':
+          description: 삭제됨. 본문 없음
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
     patch:
       tags: [authoring]
       operationId: patchDraft
