@@ -34,6 +34,26 @@ class AuthoringSchemaConstraintTests extends ContainerTestBase {
 	@Qualifier("catalogDataSource")
 	private DataSource dataSource;
 
+	/**
+	 * <b>넣은 것을 치운다.</b>
+	 *
+	 * <p>컨테이너는 한 벌이고 테스트는 그것을 나눠 쓴다. 블록리스트에 남긴 행은 <b>다음
+	 * 테스트의 세이프티 판정</b>에 그대로 들어간다 — 남의 테스트를 실패시키는 방식으로
+	 * 실재를 증명하면 안 된다.
+	 */
+	@org.junit.jupiter.api.AfterEach
+	void clear() throws SQLException {
+		try (Connection connection = this.dataSource.getConnection()) {
+			for (String table : new String[] { "blocklist_entry", "content_report", "story_review",
+					"story_draft" }) {
+				try (PreparedStatement statement = connection
+						.prepareStatement("DELETE FROM " + table)) {
+					statement.executeUpdate();
+				}
+			}
+		}
+	}
+
 	/** R8.3 — 5단계 작성이다. 범위 밖 단계는 들어가지 못한다. */
 	@Test
 	void R8_3_a_draft_step_stays_within_five() throws SQLException {
