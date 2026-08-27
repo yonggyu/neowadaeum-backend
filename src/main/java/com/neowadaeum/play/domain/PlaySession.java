@@ -62,6 +62,14 @@ public class PlaySession {
 	@Column(name = "is_test_session", nullable = false, updatable = false)
 	private boolean testSession;
 
+	/**
+	 * 이 세션이 만들 수 있는 턴 수 (R8.13).
+	 *
+	 * <p><b>비어 있으면 상한이 없다.</b> 미리보기(B-53)만 값을 갖는다.
+	 */
+	@Column(name = "turn_limit", updatable = false)
+	private Integer turnLimit;
+
 	/** 도달한 엔딩. catalog 스키마이므로 FK 없이 UUID 만 갖는다 (§4.6). */
 	@Column(name = "current_ending_id")
 	private UUID currentEndingId;
@@ -99,6 +107,20 @@ public class PlaySession {
 	 * <p>{@code now} 를 인자로 받는 이유는 테스트가 시간을 고정할 수 있어야 하기 때문이다.
 	 * 도메인 안에서 현재 시각을 읽으면 같은 입력이 같은 결과를 내지 않는다.
 	 */
+	/**
+	 * 턴 상한이 있는 세션 (R8.13, B-53).
+	 *
+	 * <p><b>미리보기는 3턴에서 끝난다.</b> 상수로 두지 않은 이유는 {@code is_test_session} 인
+	 * 세션이 미리보기만이 아니기 때문이다 — 관리자 디버그 세션(B-43)도 같은 플래그를 쓰며,
+	 * 그쪽을 3턴에 끊으면 디버그가 되지 않는다.
+	 */
+	public static PlaySession startLimited(UUID playerRef, UUID storyId, UUID storyVersionId,
+			String providerId, String modelId, int turnLimit, Instant now) {
+		PlaySession session = start(playerRef, storyId, storyVersionId, providerId, modelId, true, now);
+		session.turnLimit = turnLimit;
+		return session;
+	}
+
 	public static PlaySession start(UUID playerRef, UUID storyId, UUID storyVersionId, String providerId,
 			String modelId, boolean testSession, Instant now) {
 		PlaySession session = new PlaySession();
@@ -245,6 +267,15 @@ public class PlaySession {
 
 	public int getChapterNo() {
 		return this.chapterNo;
+	}
+
+	/** <b>상한에 닿았는가</b> (R8.13). 상한이 없으면 언제나 거짓이다. */
+	public boolean hasReachedTurnLimit() {
+		return this.turnLimit != null && this.turnNo >= this.turnLimit;
+	}
+
+	public Integer getTurnLimit() {
+		return this.turnLimit;
 	}
 
 	public boolean isTestSession() {

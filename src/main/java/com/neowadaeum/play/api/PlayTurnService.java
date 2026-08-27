@@ -77,6 +77,12 @@ public class PlayTurnService {
 					Map.of("currentTurnNo", session.getTurnNo(), "chapterNo", session.getChapterNo()));
 		}
 
+		// R8.13 — 미리보기는 3턴에서 끝난다. **서버가 막는다** — 상한을 클라이언트에 맡기면
+		// 그것은 상한이 아니라 안내다. 세션 자체는 살아 있으므로 기록은 계속 읽힌다.
+		if (session.hasReachedTurnLimit()) {
+			throw new ApiException(ErrorCode.FORBIDDEN);
+		}
+
 		// R6.5 — 서버가 강제하는 쿨다운. 클라이언트 쿨다운과 별개다.
 		this.guards.requireNotCoolingDown(sessionId);
 
