@@ -91,6 +91,17 @@ public class StoryDraft {
 		this.updatedAt = now;
 	}
 
+	/**
+	 * 이 원고가 만든 작품을 가리키게 한다 (B-54).
+	 *
+	 * <p><b>재제출은 같은 작품에 새 버전을 얹는다</b> (R8.8) — 원고마다 작품이 새로 생기면
+	 * 고칠 때마다 카탈로그에 <b>같은 작품이 여럿</b>이 된다.
+	 */
+	public void linkStory(UUID storyId, Instant now) {
+		this.storyId = storyId;
+		this.updatedAt = now;
+	}
+
 	public boolean isOwnedBy(UUID playerRef) {
 		return this.authorRef.equals(playerRef);
 	}

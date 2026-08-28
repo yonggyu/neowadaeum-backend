@@ -123,6 +123,12 @@ public class DraftService {
 		return json.append(']').toString();
 	}
 
+	/** 원고가 만든 작품을 가리키게 한다 (B-54). */
+	public void linkStory(UUID authorRef, UUID draftId, UUID storyId) {
+		this.transactions.executeWithoutResult(status -> requireOwned(authorRef, draftId)
+				.linkStory(storyId, Instant.now(this.clock)));
+	}
+
 	private StoryDraft requireOwned(UUID authorRef, UUID draftId) {
 		StoryDraft draft = this.drafts.findById(draftId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
