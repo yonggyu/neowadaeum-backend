@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.authoring.blocklist.BlocklistAdminService;
-import com.neowadaeum.authoring.blocklist.BlocklistEntryRepository;
 import com.neowadaeum.authoring.blocklist.BlocklistKind;
 import com.neowadaeum.authoring.blocklist.BlocklistSeverity;
 import com.neowadaeum.authoring.draft.DraftService;
@@ -28,8 +27,14 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 class UgcRescanIntegrationTests extends ContainerTestBase {
 
-	/** 가상의 이름. 실제 블록리스트 항목이 아니다 (S-11). */
-	private static final String FICTIONAL = "이나린";
+	/**
+	 * 가상의 이름. 실제 블록리스트 항목이 아니다 (S-11).
+	 *
+	 * <p><b>이 클래스만 쓰는 이름이다.</b> 블록리스트 조회에는 수명 1분의 스냅샷이 있고
+	 * (§13-31), 다른 테스트 클래스가 Repository 로 지우면 그 스냅샷이 살아남는다 — 같은 이름을
+	 * 쓰면 <b>남의 뒷정리가 이 클래스의 제출을 반려시킨다.</b>
+	 */
+	private static final String FICTIONAL = "타비린";
 
 	private static final String CLEAN_PAYLOAD = """
 			{"title":"봄의 학교","shortDesc":"짧은 소개","worldIntro":"소개",
@@ -60,9 +65,6 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 	private BlocklistAdminService blocklist;
 
 	@Autowired
-	private BlocklistEntryRepository blocklistRows;
-
-	@Autowired
 	@Qualifier("catalogDataSource")
 	private DataSource catalog;
 
@@ -81,7 +83,10 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 		}
 		this.stories.clear();
 		this.draftRows.deleteAll();
-		this.blocklistRows.deleteAll();
+		// **서비스를 거쳐 지운다.** Repository 로 지우면 스냅샷 캐시가 무효화되지 않고(§13-31,
+		// 수명 1분) 앞 테스트의 항목이 남아 다음 테스트의 제출이 반려된다 — 그러면 작품이
+		// 만들어지지 않고 실패가 "재스캔이 안 된다"로 보인다.
+		this.blocklist.list().forEach(entry -> this.blocklist.remove(entry.getId()));
 	}
 
 	/**
@@ -187,13 +192,22 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 		assertThat(column(storyId, "review_status")).isEqualTo("approved");
 	}
 
+	/**
+	 * 승인된 작품 하나.
+	 *
+	 * <p><b>여기서 단언한다.</b> 제출이 반려되면 {@code storyId} 가 비고, 그러면 실패가
+	 * <b>"재스캔이 동작하지 않는다"</b> 로 보인다 — 원인은 제출 쪽인데.
+	 */
 	private UUID givenApprovedStory(String payload) {
 		UUID authorRef = UUID.randomUUID();
 		UUID draftId = this.drafts.create(authorRef).getId();
 		this.drafts.save(authorRef, draftId, 5, payload);
-		UUID storyId = this.submissions.submit(authorRef, draftId, Visibility.UNLISTED).storyId();
-		this.stories.add(storyId);
-		return storyId;
+		var outcome = this.submissions.submit(authorRef, draftId, Visibility.UNLISTED);
+		assertThat(outcome.reviewStatus())
+				.as("픽스처가 자동 검수에서 걸렸다 — 블록리스트가 비어 있어야 한다")
+				.isEqualTo(ReviewStatus.APPROVED);
+		this.stories.add(outcome.storyId());
+		return outcome.storyId();
 	}
 
 	private String column(UUID storyId, String name) {
