@@ -30,7 +30,7 @@ paths:
 - `blocked` 상태에서 다음 단계 진행은 **서버가 거부한다.** 클라이언트 검증에만 의존하지 않는다.
 - 반려 사유는 **카테고리만** 노출한다. 블록리스트 항목은 비공개다.
 - `unlisted → public` 승격은 **인간 검수를 재트리거**한다.
-- `review_status` 전이: `draft → pending → (auto_rejected | in_review) → (approved | rejected)`, `approved → suspended → (approved | rejected)`. `auto_rejected`는 내부 기록용이고 사용자에게는 `rejected`로 표시한다.
+- `review_status` 전이: `draft → pending → (auto_rejected | in_review) → (approved | rejected)`, `approved → suspended → (approved | rejected)`, **`approved → (in_review | approved)`** (재제출 — 같은 작품에 새 버전, §13-40). `auto_rejected`는 내부 기록용이고 사용자에게는 `rejected`로 표시한다.
 
 ## 작성자 표시
 

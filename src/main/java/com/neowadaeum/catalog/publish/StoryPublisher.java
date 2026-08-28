@@ -1,5 +1,7 @@
 package com.neowadaeum.catalog.publish;
 
+import com.neowadaeum.common.error.ApiException;
+import com.neowadaeum.common.error.ErrorCode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -106,8 +108,33 @@ public class StoryPublisher {
 	 */
 	@Transactional("catalogTransactionManager")
 	public void markCurrent(UUID storyId, UUID versionId) {
+		requireDefaultEnding(versionId);
 		this.jdbc.sql("UPDATE story SET current_version_id = ?, published_at = ? WHERE id = ?")
 				.params(versionId, at(Instant.now(this.clock)), storyId).update();
+	}
+
+	/**
+	 * <b>폴백 없는 작품은 현재가 되지 않는다</b> (R2.2, R2.11, #54).
+	 *
+	 * <p>기본 엔딩이 없으면 어떤 조건에도 걸리지 않은 세션이 <b>끝나지 못한다</b> — 무한히
+	 * 진행되는 이야기가 된다.
+	 *
+	 * <p><b>DB 로는 막을 수 없는 절반이다.</b> 상한("2개 이상 금지")은 partial unique index 가
+	 * 잡지만, 하한("0개 금지")은 <b>행의 부재</b>라 CHECK 가 볼 수 없다. 트리거로 막으면 엔딩을
+	 * 아직 만들지 않은 {@code draft} 라는 <b>정상 상태까지 거부</b>하게 된다 (§13-16).
+	 *
+	 * <p>그래서 이 자리다 — <b>작품이 플레이 가능해지는 순간</b>이 R2.2 의 방지 목적이 실제로
+	 * 의미를 갖는 유일한 시점이다.
+	 */
+	private void requireDefaultEnding(UUID versionId) {
+		Integer count = this.jdbc
+				.sql("SELECT COUNT(*) FROM ending_def WHERE story_version_id = ? AND is_default")
+				.param(versionId).query(Integer.class).single();
+		if (count == null || count < 1) {
+			// S-7 — 폴백 부재를 조용히 넘기지 않는다. 사유는 카테고리 수준이다 (S-11).
+			throw new ApiException(ErrorCode.VALIDATION_ERROR,
+					java.util.Map.of("reason", "missing_default_ending"));
+		}
 	}
 
 	/**
