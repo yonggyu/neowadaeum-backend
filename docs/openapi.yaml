@@ -806,7 +806,12 @@ paths:
         **응답에 본문이 없다.** 지금 몇 건인지도, 무엇이 일어났는지도 알리지 않는다 — 알면
         임계를 역산할 수 있다 (S-11, §13-12). 신고자가 알아야 하는 것은 접수됐다 하나다.
 
-        누적에 대한 조치(자동 정지·검수 큐 편입, R8.9)는 B-57(2/2)이 더한다.
+        **작품 신고만 정지 임계에 센다** (§13-41). 턴 신고는 기록되고 사후 검수(B-59)의
+        재료가 된다 — 세 사람이 서로 다른 턴을 신고한 것과 세 사람이 그 작품을 신고한 것은
+        다른 사실이다.
+
+        임계에 닿은 작품은 `suspended` 가 되고 **인간 검수 큐에 오른다** (R8.9) —
+        자동으로 내린 것을 자동으로 올리지 않는다. 그러면 신고가 곧 판정이 된다.
       x-implemented-by: B-57
       requestBody:
         required: true
@@ -1179,6 +1184,10 @@ paths:
         **`reasons` 는 카테고리만이다** (R8.7). 이 값은 작성자에게 그대로 전달되므로,
         검수자가 문장을 적을 수 있으면 걸린 표현이 그 문장에 실려 작성자에게 간다.
         `note` 는 내부 기록이며 작성자에게 가지 않는다.
+
+        **정지된 작품도 여기서 다룬다** (R8.9, B-57). 신고 누적으로 내려간 작품은
+        `suspended` 로 큐에 오르며, 통과하면 **내려가기 전의 가시성**으로 돌아간다 —
+        정지는 가시성을 지우지 않았으므로 그 값이 그대로 남아 있다.
 
         **기다리는 중인 작품만 판정할 수 있다.** 이미 처리된 것에 다시 판정이 오면
         `409 REVIEW_NOT_PENDING` 이다 — 두 검수자가 같은 작품을 각자 열어 두면 나중에
@@ -2647,14 +2656,21 @@ components:
 
         **원고 본문도 담지 않는다.** 큐는 무엇을 볼 차례인지를 답하는 자리이며, 원문 열람은
         감사가 걸린 다른 문이다 (S-5).
-      required: [storyId, title, queuedAt]
+      required: [storyId, title, reviewStatus, queuedAt]
       properties:
         storyId: { type: string, format: uuid }
         title: { type: string }
+        reviewStatus:
+          type: string
+          enum: [in_review, suspended]
+          description: |
+            **왜 큐에 있는가.** 제출을 기다리는 것(`in_review`)과 신고로 내려간 것
+            (`suspended`, R8.9)은 검수자가 다르게 봐야 하는 일이다 — 하나는 아직 아무도
+            못 본 작품이고, 다른 하나는 이미 사람들이 본 작품이다.
         queuedAt:
           type: string
           format: date-time
-          description: 언제부터 기다렸는가. 자동 검수가 통과시킨 시각이다
+          description: 언제부터 기다렸는가. 마지막 판정 시각이다
 
     ReviewVerdictRequest:
       type: object
@@ -2688,7 +2704,10 @@ components:
         storyId: { type: string, format: uuid }
         reviewStatus:
           type: string
-          enum: [in_review, approved, rejected]
+          enum: [in_review, suspended, approved, rejected]
+          description: |
+            `hold` 는 **온 자리 그대로** 돌아온다 — `in_review` 는 `in_review` 로,
+            `suspended` 는 `suspended` 로.
 
     PreviewResponse:
       type: object
