@@ -41,6 +41,19 @@ public class PublishedStoryTexts {
 	private static final String APPROVED_NEXT_PAGE =
 			APPROVED_SELECT + " AND s.id > ? ORDER BY s.id LIMIT ?";
 
+	private static final String APPROVED_REF_SELECT = """
+			SELECT s.id, s.visibility
+			FROM story s
+			WHERE s.review_status = 'approved' AND s.author_type = 'user'
+			  AND s.current_version_id IS NOT NULL
+			""";
+
+	private static final String APPROVED_REF_FIRST_PAGE =
+			APPROVED_REF_SELECT + " ORDER BY s.id LIMIT ?";
+
+	private static final String APPROVED_REF_NEXT_PAGE =
+			APPROVED_REF_SELECT + " AND s.id > ? ORDER BY s.id LIMIT ?";
+
 	private final JdbcClient jdbc;
 
 	public PublishedStoryTexts(@Qualifier("catalogDataSource") DataSource catalogDataSource) {
@@ -72,6 +85,22 @@ public class PublishedStoryTexts {
 
 		appendVersionTexts(stories);
 		return stories;
+	}
+
+	/**
+	 * 승인된 UGC 의 <b>id 와 공개 범위만</b> (R8.11, B-59).
+	 *
+	 * <p>샘플링은 <b>무엇이 쓰였는지를 보지 않는다</b> — 뽑는 일과 읽는 일은 다르며, 뽑기
+	 * 위해 원문을 전부 실어 오면 큐에 올리지도 않을 작품의 본문까지 나른다.
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public List<ApprovedRef> approvedRefs(int limit, UUID after) {
+		JdbcClient.StatementSpec spec = (after == null)
+				? this.jdbc.sql(APPROVED_REF_FIRST_PAGE).params(limit)
+				: this.jdbc.sql(APPROVED_REF_NEXT_PAGE).params(after, limit);
+
+		return spec.query((rs, rowNum) -> new ApprovedRef(rs.getObject("id", UUID.class),
+				rs.getString("visibility"))).list();
 	}
 
 	/**
@@ -127,5 +156,9 @@ public class PublishedStoryTexts {
 	 * @param texts 검사할 문자열들. <b>순서에 의미가 없다</b> — 남기는 것은 카테고리뿐이다
 	 */
 	public record ApprovedStory(UUID storyId, String visibility, UUID versionId, List<String> texts) {
+	}
+
+	/** 샘플링이 보는 것 — <b>무엇이 쓰였는지는 뽑은 뒤에 사람이 본다.</b> */
+	public record ApprovedRef(UUID storyId, String visibility) {
 	}
 }

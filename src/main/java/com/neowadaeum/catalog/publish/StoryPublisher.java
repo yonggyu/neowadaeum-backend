@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -199,6 +200,30 @@ public class StoryPublisher {
 						LIMIT ?
 						""")
 				.params(IN_REVIEW_STATUS, SUSPENDED_STATUS, limit)
+				.query((rs, rowNum) -> new AwaitingReview(rs.getObject("id", UUID.class),
+						rs.getString("title"), rs.getObject("author_ref", UUID.class),
+						rs.getString("visibility"), rs.getString("review_status"),
+						rs.getTimestamp("created_at").toInstant()))
+				.list();
+	}
+
+	/**
+	 * 지목된 작품들의 큐 표시용 정보 (R8.11, B-59).
+	 *
+	 * <p>샘플링은 <b>승인 상태 그대로</b> 큐에 올린다 (§13-42) — 그래서 상태로 찾을 수 없고,
+	 * 무엇을 올릴지는 {@code authoring} 의 검수 이력이 정한다. 여기는 <b>그 id 들의 제목</b>을
+	 * 답할 뿐이다.
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public List<AwaitingReview> storiesByIds(Collection<UUID> storyIds) {
+		if (storyIds.isEmpty()) {
+			return List.of();
+		}
+		return this.jdbc.sql("""
+						SELECT id, title, author_ref, visibility, review_status, created_at
+						FROM story WHERE id IN (:ids) ORDER BY created_at
+						""")
+				.param("ids", storyIds)
 				.query((rs, rowNum) -> new AwaitingReview(rs.getObject("id", UUID.class),
 						rs.getString("title"), rs.getObject("author_ref", UUID.class),
 						rs.getString("visibility"), rs.getString("review_status"),
