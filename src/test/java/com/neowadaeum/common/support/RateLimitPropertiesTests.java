@@ -41,7 +41,7 @@ class RateLimitPropertiesTests {
 	/** 설정이 값을 덮는다 — B-46 실측 후 조정할 수 있어야 한다. */
 	@Test
 	void S15_configuration_overrides_the_defaults() {
-		assertThat(new RateLimitProperties(3, 4, 5, 6).turnPerMinute()).isEqualTo(3);
+		assertThat(new RateLimitProperties(3, 4, 5, 6, 7).turnPerMinute()).isEqualTo(3);
 	}
 
 	/** 창 길이는 값이 아니라 규칙이다 — §15 가 "분당"이라고 적었다. */
