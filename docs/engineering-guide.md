@@ -695,6 +695,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | 400 | `VALIDATION_ERROR` | 일반 입력 검증 실패 | 필드 오류 표시 |
 | 401 | `UNAUTHENTICATED` | 토큰 없음/만료 | 재로그인 |
 | 403 | `AGE_RESTRICTED` | 만 15세 미만 | 가입 불가 안내 |
+| 403 | `STORY_LIMIT_REACHED` | 계정당 작품 개수 상한 (B-60) | 날이 바뀌어도 늘지 않는다 — 기다리라고 안내하지 않는다 |
 | 403 | `FORBIDDEN` | 소유자 아님 / 권한 없음 | |
 | 404 | `NOT_FOUND` | 리소스 없음 | |
 | 409 | `TURN_CONFLICT` | `turnNo` 불일치 | 현재 턴으로 동기화 |

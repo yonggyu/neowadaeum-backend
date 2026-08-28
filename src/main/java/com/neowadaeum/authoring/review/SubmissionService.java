@@ -1,5 +1,6 @@
 package com.neowadaeum.authoring.review;
 
+import com.neowadaeum.authoring.UgcLimitProperties;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.DraftStoryDefinition;
 import com.neowadaeum.authoring.draft.StoryDraft;
@@ -51,17 +52,20 @@ public class SubmissionService {
 
 	private final StoryReviewRepository reviews;
 
+	private final UgcLimitProperties limits;
+
 	private final Clock clock;
 
 	private final TransactionTemplate transactions;
 
 	public SubmissionService(DraftService drafts, PrecheckScreen screen, StoryPublisher publisher,
-			StoryReviewRepository reviews, Clock clock,
+			StoryReviewRepository reviews, UgcLimitProperties limits, Clock clock,
 			PlatformTransactionManager catalogTransactionManager) {
 		this.drafts = drafts;
 		this.screen = screen;
 		this.publisher = publisher;
 		this.reviews = reviews;
+		this.limits = limits;
 		this.clock = clock;
 		this.transactions = new TransactionTemplate(catalogTransactionManager);
 	}
@@ -79,6 +83,13 @@ public class SubmissionService {
 		PrecheckScreen.Result screened = this.screen.screen(fieldsOf(definition));
 		if (screened.state() == com.neowadaeum.authoring.draft.DraftSafetyState.BLOCKED) {
 			return rejected(screened.findings());
+		}
+
+		// R8.12 — 새 작품일 때만 개수를 본다 (B-60). 재제출은 같은 작품에 버전을 얹으므로
+		// 개수를 늘리지 않는다 (B-56) — 거기서 막으면 상한에 닿은 작성자가 **이미 낸 작품조차
+		// 고치지 못하게** 된다.
+		if (draft.getStoryId() == null) {
+			requireStoryQuota(authorRef);
 		}
 
 		// R8.8 — 재제출은 같은 작품에 새 버전을 얹는다. 원고가 자기 작품을 기억한다 (B-56).
@@ -113,6 +124,22 @@ public class SubmissionService {
 					Visibility.valueOf(stored.visibility().toUpperCase(java.util.Locale.ROOT)),
 					reasons);
 		});
+	}
+
+	/**
+	 * <b>한 계정이 플랫폼 비용을 정하지 않는다</b> (R8.12).
+	 *
+	 * <p>작품 하나는 발행된 버전과 챕터·엔딩을 갖고, 검수와 사후 관리(B-59)의 대상이 된다 —
+	 * 만드는 쪽에 상한이 없으면 <b>그 뒤의 모든 비용에도 상한이 없다.</b>
+	 *
+	 * <p><b>{@code 403} 이다.</b> 날이 바뀌어도 늘지 않으므로 기다리라고 안내하면 기다린 만큼
+	 * 헛되다.
+	 */
+	private void requireStoryQuota(UUID authorRef) {
+		if (this.publisher.countSubmittedStoriesOf(authorRef) >= this.limits.storiesPerAuthor()) {
+			throw new com.neowadaeum.common.error.ApiException(
+					com.neowadaeum.common.error.ErrorCode.STORY_LIMIT_REACHED);
+		}
 	}
 
 	/** 저장된 것은 카테고리 배열이다 (R8.7). 파싱기를 들이지 않고 그대로 읽는다. */
