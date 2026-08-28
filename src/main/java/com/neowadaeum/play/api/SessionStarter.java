@@ -1,6 +1,7 @@
 package com.neowadaeum.play.api;
 
 import com.neowadaeum.play.port.TurnGenerationPort;
+import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.common.spi.AiNoticeRecorder;
 import com.neowadaeum.common.spi.NoticeSurface;
@@ -46,6 +47,7 @@ public class SessionStarter {
 
 	private final PlaySessionRepository sessions;
 	private final StoryVersionFacade storyVersions;
+	private final StoryCatalogFacade stories;
 	private final TurnPipeline pipeline;
 	private final TurnGenerationPort provider;
 	private final AiNoticeRecorder aiNotices;
@@ -53,11 +55,13 @@ public class SessionStarter {
 	private final TransactionTemplate transactions;
 
 	public SessionStarter(PlaySessionRepository sessions, StoryVersionFacade storyVersions,
-			TurnPipeline pipeline, TurnGenerationPort provider, AiNoticeRecorder aiNotices, Clock clock,
+			StoryCatalogFacade stories, TurnPipeline pipeline, TurnGenerationPort provider,
+			AiNoticeRecorder aiNotices, Clock clock,
 			PlatformTransactionManager playTransactionManager) {
 		this.transactions = new TransactionTemplate(playTransactionManager);
 		this.sessions = sessions;
 		this.storyVersions = storyVersions;
+		this.stories = stories;
 		this.pipeline = pipeline;
 		this.provider = provider;
 		this.aiNotices = aiNotices;
@@ -104,6 +108,13 @@ public class SessionStarter {
 					}
 					existing.abandon(now);
 				});
+
+		// R8.10 / I-8 — 내려간 작품에서는 새로 시작할 수 없다. current_version_id 는 정지 뒤에도
+		// 그대로 남아 있으므로(정지는 되돌려질 수 있는 판단이다) 그것만으로는 걸러지지 않는다.
+		// **없는 작품과 구분하지 않는다** — 이어갈 수 없다는 사실은 같다.
+		if (this.stories.status(storyId).filter(story -> !story.suspended()).isEmpty()) {
+			throw new ApiException(ErrorCode.NOT_FOUND);
+		}
 
 		UUID storyVersionId = this.storyVersions.findCurrentVersionId(storyId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
