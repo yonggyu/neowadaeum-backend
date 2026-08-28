@@ -798,7 +798,15 @@ paths:
         세이프티 L3 의 **유일한 사용자 경로**다 (R13.5). Play 화면 Menu 에서 진입한다.
 
         동일인의 반복 신고는 누적으로 세지 않는다 — `UNIQUE(reporterRef, targetType, targetId)` (§13-9).
-        IP 기준 rate limit 이 함께 걸린다 (S-8).
+        누적이 자동 정지의 근거이므로, **중복이 세어지면 한 사람이 혼자 작품을 내릴 수 있다.**
+
+        **IP 로도 센다** (S-8). 계정 기준만으로는 계정을 여러 개 만들어 임계를 채우는 길이
+        열려 있고, 신고는 **작품을 내릴 수 있는** 요청이다.
+
+        **응답에 본문이 없다.** 지금 몇 건인지도, 무엇이 일어났는지도 알리지 않는다 — 알면
+        임계를 역산할 수 있다 (S-11, §13-12). 신고자가 알아야 하는 것은 접수됐다 하나다.
+
+        누적에 대한 조치(자동 정지·검수 큐 편입, R8.9)는 B-57(2/2)이 더한다.
       x-implemented-by: B-57
       requestBody:
         required: true
@@ -821,6 +829,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                error: ALREADY_EXISTS
+                message: 이미 등록되어 있어요.
+                details: {}
         '429':
           $ref: '#/components/responses/TooManyRequests'
 

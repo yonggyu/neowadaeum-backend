@@ -71,7 +71,8 @@ class StoreIsolationTests extends ContainerTestBase {
 		// authoring 이다** (ADR-0002) — 목록이 느는 것은 의식적인 결정이어야 하므로
 		// containsExactlyInAnyOrder 를 유지한다.
 		assertThat(catalogEntities).containsExactlyInAnyOrder("Genre", "StoryGenre", "AuthorProfile",
-				"EndingStat", "ServiceConfig", "BlocklistEntryRow", "StoryDraft", "StoryReview");
+				"EndingStat", "ServiceConfig", "BlocklistEntryRow", "StoryDraft", "StoryReview",
+				"ContentReport");
 
 		assertThat(promptLogEntities).doesNotContainAnyElementsOf(identityEntities);
 		assertThat(catalogEntities)

@@ -16,10 +16,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param precheckPerMinute  §15 — precheck 분당 20회 (B-50 이 쓴다)
  * @param authPerMinutePerIp S-8 — 계정 없이 부를 수 있는 경로의 IP 기준 제한
  * @param turnPerDay         §15 의 "계정당 일일 토큰 한도"를 <b>턴 수로 대리한다</b> (§13-28)
+ * @param reportPerMinutePerIp S-8 — 신고는 <b>작품을 내릴 수 있는</b> 요청이다 (B-57).
+ *     계정 기준만으로는 계정을 여러 개 만들어 임계를 채우는 길이 열려 있다
  */
 @ConfigurationProperties("app.rate-limit")
 public record RateLimitProperties(Integer turnPerMinute, Integer precheckPerMinute,
-		Integer authPerMinutePerIp, Integer turnPerDay) {
+		Integer authPerMinutePerIp, Integer turnPerDay, Integer reportPerMinutePerIp) {
 
 	/** 창 길이는 값이 아니라 규칙이다 — §15 가 "분당"이라고 적었다. */
 	public static final Duration MINUTE = Duration.ofMinutes(1);
@@ -32,10 +34,11 @@ public record RateLimitProperties(Integer turnPerMinute, Integer precheckPerMinu
 		precheckPerMinute = (precheckPerMinute != null) ? precheckPerMinute : 20;
 		authPerMinutePerIp = (authPerMinutePerIp != null) ? authPerMinutePerIp : 20;
 		turnPerDay = (turnPerDay != null) ? turnPerDay : 200;
+		reportPerMinutePerIp = (reportPerMinutePerIp != null) ? reportPerMinutePerIp : 10;
 	}
 
 	/** 설정을 띄우지 않는 테스트가 쓴다. */
 	public static RateLimitProperties defaults() {
-		return new RateLimitProperties(null, null, null, null);
+		return new RateLimitProperties(null, null, null, null, null);
 	}
 }
