@@ -85,4 +85,24 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 	 */
 	List<PlaySession> findByPlayerRefAndStoryIdAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(
 			UUID playerRef, UUID storyId, SessionStatus status, Limit limit);
+
+	/**
+	 * 무활동 세션을 만료로 바꾼다 (§4.7, B-61).
+	 *
+	 * <p><b>지우지 않는다.</b> 기록은 남고 이어갈 수만 없게 된다 — 지나간 플레이는 계속 읽힌다.
+	 *
+	 * <p><b>{@code updated_at} 을 건드리지 않는다.</b> 만료 처리를 활동으로 기록하면 그 세션은
+	 * <b>방금 손댄 것</b>이 되고, 다음 회차의 판정 근거가 이번 회차 때문에 흔들린다.
+	 *
+	 * <p>상태를 <b>파라미터로</b> 넘긴다 — 컨버터가 저장 표기를 정하므로 (소문자다) JPQL 에
+	 * 리터럴을 적으면 그 규칙이 두 곳에 생긴다.
+	 */
+	@org.springframework.data.jpa.repository.Modifying
+	@org.springframework.data.jpa.repository.Query("""
+			UPDATE PlaySession s SET s.status = :expired, s.expiresAt = :now
+			WHERE s.status = :active AND s.deletedAt IS NULL AND s.updatedAt < :idleBefore
+			""")
+	int expireIdle(com.neowadaeum.play.domain.SessionStatus expired,
+			com.neowadaeum.play.domain.SessionStatus active, java.time.Instant idleBefore,
+			java.time.Instant now);
 }

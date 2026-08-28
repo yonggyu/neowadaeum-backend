@@ -2,6 +2,7 @@ package com.neowadaeum.config;
 
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.common.support.RateLimitProperties;
+import com.neowadaeum.common.support.RetentionProperties;
 import com.neowadaeum.common.support.TurnBudgetProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -22,9 +23,13 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>{@link RateLimitProperties} 도 마찬가지다 (#157). 턴은 {@code play}, precheck 는
  * {@code authoring}(B-50), 인증 경로는 {@code identity} 가 읽는다 — <b>셋이 같은 표를 봐야 한다.</b>
+ *
+ * <p>{@link RetentionProperties} 는 B-61 이 더했다. 프롬프트·감사 로그는 {@code ai} 가, 세션은
+ * {@code play} 가 지운다 — 그리고 <b>이 값들은 약관에 적혀 있다.</b> 한곳에 두지 않으면 고지
+ * 문구와 맞춰 볼 대상이 흩어진다.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({ RecentTurnsProperties.class, TurnBudgetProperties.class,
-		RateLimitProperties.class })
+		RateLimitProperties.class, RetentionProperties.class })
 public class SharedPropertiesConfiguration {
 }
