@@ -698,7 +698,17 @@ paths:
       description: |
         자동 검수(L1)를 거친다. `visibility = public` 은 **인간 검수 필수**다 (R8.6).
         반려 사유는 **카테고리만** 노출한다 (R8.7).
-      x-implemented-by: B-54
+
+        **재제출은 작품을 늘리지 않는다** (R8.8, B-56) — 같은 작품에 새 버전을 얹는다.
+        새 작품을 만들면 같은 이야기가 라이브러리에 둘이 되고, 도달률은
+        `(story_id, ending_no)` 로 집계되므로 통계가 갈라진다.
+
+        **진행 중 세션은 흔들리지 않는다** (R2.1) — 세션은 생성 시 버전에 고정되며,
+        새 버전이 현재가 된 뒤 Resume 은 `version_changed` 로 알린다.
+
+        **재검수 동안 작품은 목록에서 내려간다** (§13-40). 이미 승인돼 있었더라도
+        그렇다 — 검수를 지나지 않은 버전이 보이면 검수의 의미가 없다 (I-8).
+      x-implemented-by: B-54, B-56
       parameters:
         - $ref: '#/components/parameters/DraftId'
       requestBody:

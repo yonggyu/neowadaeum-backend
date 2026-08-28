@@ -37,6 +37,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class SubmissionService {
 
+	/** 상태 스키마. 작성자가 고른 템플릿이 채우기 전까지는 비어 있다 (R4.4). */
+	private static final String STATE_SCHEMA = "{\"flags\":[]}";
+
 	private static final tools.jackson.databind.json.JsonMapper JSON =
 			tools.jackson.databind.json.JsonMapper.builder().build();
 
@@ -78,8 +81,8 @@ public class SubmissionService {
 			return rejected(screened.findings());
 		}
 
-		SubmissionOutcome outcome = approve(definition, visibility);
-		// R8.8 — 재제출은 같은 작품을 가리켜야 한다. 원고가 자기 작품을 기억한다.
+		// R8.8 — 재제출은 같은 작품에 새 버전을 얹는다. 원고가 자기 작품을 기억한다 (B-56).
+		SubmissionOutcome outcome = approve(draft.getStoryId(), definition, visibility);
 		this.drafts.linkStory(authorRef, draftId, outcome.storyId());
 		return outcome;
 	}
@@ -159,15 +162,24 @@ public class SubmissionService {
 	 *
 	 * <p><b>{@code public} 은 여기서 열리지 않는다</b> (R8.6) — {@code in_review} 로 두고 사람을
 	 * 기다린다. 그동안 작품은 {@code private} 이다: <b>검수 중인 작품이 보이면 검수의 의미가 없다.</b>
+	 *
+	 * <p><b>재제출은 작품을 늘리지 않는다</b> (R8.8, B-56). 이미 낸 적이 있으면 같은 작품에 새
+	 * 버전을 얹는다 — 새 작품을 만들면 <b>같은 이야기가 라이브러리에 둘</b>이 되고, 도달률은
+	 * {@code (story_id, ending_no)} 로 집계되므로 <b>통계가 갈라진다.</b>
+	 *
+	 * <p><b>진행 중 세션은 흔들리지 않는다</b> (R2.1, §10.1-12). 새 버전은 승인 전까지 현재가
+	 * 되지 않고, 현재가 된 뒤에도 이미 고정된 세션은 옛 버전을 계속 본다 (I-4).
 	 */
-	private SubmissionOutcome approve(StoryDefinition definition, Visibility visibility) {
+	private SubmissionOutcome approve(UUID existingStoryId, StoryDefinition definition,
+			Visibility visibility) {
 		boolean needsHuman = visibility == Visibility.PUBLIC;
 		ReviewStatus status = needsHuman ? ReviewStatus.IN_REVIEW : ReviewStatus.APPROVED;
 		Visibility effective = needsHuman ? Visibility.PRIVATE : visibility;
 
 		return this.transactions.execute(status2 -> {
-			StoryPublisher.PublishedVersion published = this.publisher.publishNew(definition,
-					"{\"flags\":[]}");
+			StoryPublisher.PublishedVersion published = (existingStoryId == null)
+					? this.publisher.publishNew(definition, STATE_SCHEMA)
+					: this.publisher.publishRevision(existingStoryId, definition, STATE_SCHEMA);
 			this.publisher.applyReview(published.storyId(), status.columnValue(),
 					effective.columnValue());
 			if (!needsHuman) {
