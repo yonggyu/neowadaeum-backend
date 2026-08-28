@@ -9,7 +9,7 @@
  * 위반은 {@code ApplicationModules.verify()}가 빌드에서 잡는다.
  */
 @ApplicationModule(allowedDependencies = { "common", "identity :: access", "play :: debug",
-		"ai :: debug", "authoring :: blocklist" })
+		"ai :: debug", "authoring :: blocklist", "authoring :: review" })
 package com.neowadaeum.admin;
 
 import org.springframework.modulith.ApplicationModule;

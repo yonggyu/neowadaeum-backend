@@ -1,5 +1,6 @@
 package com.neowadaeum.authoring.review;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,4 +14,12 @@ public interface StoryReviewRepository extends JpaRepository<StoryReview, UUID> 
 
 	/** 이력 전체. <b>왜 그렇게 됐는지</b>는 여기에 있다. */
 	List<StoryReview> findByStoryIdOrderByReviewedAtDesc(UUID storyId);
+
+	/**
+	 * 여러 작품의 이력을 한 번에 (B-55).
+	 *
+	 * <p>큐는 작품마다 <b>언제부터 기다렸는지</b>를 보여 준다. 작품 수만큼 조회하면 큐 한 장을
+	 * 여는 데 조회가 그만큼 늘어난다.
+	 */
+	List<StoryReview> findByStoryIdInOrderByReviewedAtDesc(Collection<UUID> storyIds);
 }

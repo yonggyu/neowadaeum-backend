@@ -99,7 +99,9 @@ public class SubmissionService {
 			return new SubmissionOutcome(null, ReviewStatus.DRAFT, Visibility.PRIVATE, List.of());
 		}
 		return this.transactions.execute(status -> {
-			StoryPublisher.StoryStatus stored = this.publisher.statusOf(draft.getStoryId());
+			StoryPublisher.StoryStatus stored = this.publisher.statusOf(draft.getStoryId())
+					.orElseThrow(() -> new com.neowadaeum.common.error.ApiException(
+							com.neowadaeum.common.error.ErrorCode.NOT_FOUND));
 			List<String> reasons = this.reviews
 					.findFirstByStoryIdOrderByReviewedAtDesc(draft.getStoryId())
 					.map(review -> reasonsOf(review.getReasons())).orElse(List.of());
