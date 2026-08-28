@@ -71,6 +71,11 @@ public class PlayTurnService {
 	public TurnView advance(UUID playerRef, UUID sessionId, TurnRequestBody request) {
 		PlaySession session = requireOwnedActiveSession(playerRef, sessionId);
 
+		// R8.10 — 정지된 작품은 여기서 끝난다. **turnNo 확인보다 앞이다**: 작품 전체의 문제이므로
+		// 개별 턴 상태보다 앞서며, 뒤에 두면 클라이언트가 턴 번호를 맞춘 뒤 다시 막힌다
+		// (SessionResumeService 가 같은 순서를 쓴다).
+		requireNotSuspended(session);
+
 		// R6.1 — turnNo 불일치는 409 이며 현재 턴 상태를 함께 준다. 클라이언트가 맞출 근거가 있어야 한다.
 		if (session.getTurnNo() != request.turnNo()) {
 			throw new ApiException(ErrorCode.TURN_CONFLICT,
@@ -225,6 +230,26 @@ public class PlayTurnService {
 						.findFirst())
 				.flatMap(ending -> this.stories.reachRate(session.getStoryId(), ending.endingNo()))
 				.orElse(null);
+	}
+
+	/**
+	 * <b>정지된 작품에서는 새 턴이 만들어지지 않는다</b> (R8.10, R13.3).
+	 *
+	 * <p><b>세션은 살아 있다.</b> 상태를 바꾸지 않으므로 {@code history} 와 {@code current} 는
+	 * 그대로 답한다 — 정지는 <b>작품에 대한 조치</b>이지 그 사람이 이미 읽은 것을 지우는 일이
+	 * 아니다.
+	 *
+	 * <p><b>사라진 작품도 같은 자리다.</b> 이어갈 수 없다는 사실은 같고, "없는 작품"과 "정지된
+	 * 작품"을 구분해 알릴 이유가 없다 (I-8 과 같은 판단, {@code SessionResumeService} 도 그렇다).
+	 *
+	 * @throws ApiException {@code STORY_SUSPENDED} — {@code 423}. 읽기 전용이라는 뜻이다
+	 */
+	private void requireNotSuspended(PlaySession session) {
+		boolean playable = this.stories.status(session.getStoryId())
+				.filter(story -> !story.suspended()).isPresent();
+		if (!playable) {
+			throw new ApiException(ErrorCode.STORY_SUSPENDED);
+		}
 	}
 
 	/** 턴이 속한 세션. 응답 조립이 작품과 버전을 알아야 한다. */
