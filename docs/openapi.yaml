@@ -1111,6 +1111,97 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/v1/admin/reviews:
+    get:
+      tags: [admin]
+      operationId: listReviewQueue
+      summary: 인간 검수 큐
+      description: |
+        **`public` 은 사람이 연다** (R8.6). 자동 검수는 통과시켜도 열지 않으므로, 이 문이
+        없으면 `public` 으로 제출된 작품은 영원히 대기 상태에 머문다.
+
+        **세 조건은 보는 문에도 서 있다** (S-4). 큐에 걸린 것은 아직 아무도 보지 못한
+        작품이며, 그 목록이 새면 검수 전 UGC 가 새는 것과 같다 (I-8).
+
+        오래 기다린 것부터 온다. **큐의 전체 길이는 알리지 않는다** — 밀린 건수는 검수
+        처리량을 드러내고, 그 값을 알면 큐가 길 때를 골라 제출할 수 있다.
+      x-implemented-by: B-55
+      parameters:
+        - $ref: '#/components/parameters/AdminStepUp'
+      responses:
+        '200':
+          description: 기다리는 작품. 오래된 것부터
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReviewQueueItem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/reviews/{storyId}/verdict:
+    post:
+      tags: [admin]
+      operationId: decideReview
+      summary: 검수 판정
+      description: |
+        **`pass` 는 곧 게시다** (R8.8) — 승인하면서 가시성을 열고 현재 버전을 가리킨다.
+        나누면 "승인됐는데 플레이할 수 없는" 작품이 남는다.
+
+        **`hold` 는 아무것도 바꾸지 않는다.** 큐에 남는다. 그래도 이력은 남는다 —
+        "봤고 판단을 미뤘다"는 아무도 보지 않았다와 다른 사실이다.
+
+        **`reasons` 는 카테고리만이다** (R8.7). 이 값은 작성자에게 그대로 전달되므로,
+        검수자가 문장을 적을 수 있으면 걸린 표현이 그 문장에 실려 작성자에게 간다.
+        `note` 는 내부 기록이며 작성자에게 가지 않는다.
+
+        **기다리는 중인 작품만 판정할 수 있다.** 이미 처리된 것에 다시 판정이 오면
+        `409 REVIEW_NOT_PENDING` 이다 — 두 검수자가 같은 작품을 각자 열어 두면 나중에
+        누른 쪽이 이기고, 진 쪽은 자기 판정이 사라진 줄도 모른다.
+      x-implemented-by: B-55
+      parameters:
+        - name: storyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/AdminStepUp'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewVerdictRequest'
+      responses:
+        '200':
+          description: 판정됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewVerdictResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 검수 대기 중이 아니다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: REVIEW_NOT_PENDING
+                message: 이미 처리된 검수예요.
+                details: {}
+
   /api/v1/admin/2fa/enroll:
     post:
       tags: [admin]
@@ -1461,6 +1552,7 @@ components:
         - CONCURRENT_GENERATION
         - SESSION_ALREADY_ACTIVE
         - ALREADY_EXISTS
+        - REVIEW_NOT_PENDING
         - SAFETY_BLOCKED
         - STORY_SUSPENDED
         - RETRY_COOLDOWN
@@ -2524,6 +2616,57 @@ components:
           type: string
           enum: [block, warn]
         source: { type: [string, 'null'] }
+
+    ReviewQueueItem:
+      type: object
+      description: |
+        **작성자를 담지 않는다.** 검수는 무엇이 쓰였는가를 보는 일이고, 누가 썼는지가 함께
+        오면 그것이 판정에 섞인다 — 그리고 `player_ref` 는 응답에 나가지 않는다.
+
+        **원고 본문도 담지 않는다.** 큐는 무엇을 볼 차례인지를 답하는 자리이며, 원문 열람은
+        감사가 걸린 다른 문이다 (S-5).
+      required: [storyId, title, queuedAt]
+      properties:
+        storyId: { type: string, format: uuid }
+        title: { type: string }
+        queuedAt:
+          type: string
+          format: date-time
+          description: 언제부터 기다렸는가. 자동 검수가 통과시킨 시각이다
+
+    ReviewVerdictRequest:
+      type: object
+      required: [verdict]
+      properties:
+        verdict:
+          type: string
+          enum: [PASS, REJECT, HOLD]
+        reasons:
+          type: array
+          maxItems: 8
+          description: |
+            **카테고리만**이다 (R8.7). 자유 문자열을 받지 않는 것이 그 보장이다 — 이 값은
+            작성자에게 그대로 전달된다.
+          items:
+            type: string
+            enum: [MINOR_SEXUAL, REAL_PERSON_HARM, NON_CONSENSUAL, IP_REPLICATION,
+                   RATING_EXCEEDED, HATE_SPEECH, THIRD_PARTY_PERSONAL_DATA]
+        note:
+          type: [string, 'null']
+          maxLength: 500
+          description: 내부 기록. **작성자에게 가지 않는다**
+
+    ReviewVerdictResult:
+      type: object
+      description: |
+        **`hold` 는 대기 상태 그대로 돌아온다** — 판정했지만 아무것도 바뀌지 않았다는 사실이
+        응답에 보여야 검수자가 자기가 무엇을 했는지 안다.
+      required: [storyId, reviewStatus]
+      properties:
+        storyId: { type: string, format: uuid }
+        reviewStatus:
+          type: string
+          enum: [in_review, approved, rejected]
 
     PreviewResponse:
       type: object

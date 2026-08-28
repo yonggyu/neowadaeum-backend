@@ -4,7 +4,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -32,6 +34,9 @@ public class StoryPublisher {
 	private static final String DRAFT_REVIEW_STATUS = "draft";
 
 	private static final String PRIVATE_VISIBILITY = "private";
+
+	/** 사람을 기다리는 작품의 상태 (R8.6). 검수 큐가 보는 것이 이것이다. */
+	private static final String IN_REVIEW_STATUS = "in_review";
 
 	/** UGC 다. 공식 작품과 섞이지 않는다. */
 	private static final String USER_AUTHOR_TYPE = "user";
@@ -132,12 +137,60 @@ public class StoryPublisher {
 	 * 검수 이력에 있다 (R8.7).
 	 */
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
-	public StoryStatus statusOf(UUID storyId) {
+	public Optional<StoryStatus> statusOf(UUID storyId) {
 		return this.jdbc.sql("SELECT review_status, visibility FROM story WHERE id = ?")
 				.param(storyId)
 				.query((rs, rowNum) -> new StoryStatus(rs.getString("review_status"),
 						rs.getString("visibility")))
-				.single();
+				.optional();
+	}
+
+	/**
+	 * <b>사람을 기다리는 작품들</b> (R8.6, B-55).
+	 *
+	 * <p>먼저 만들어진 것부터 준다 — 검수는 순서대로 처리하는 일이고, 나중에 온 것이 앞서면
+	 * <b>오래 기다린 작성자가 끝없이 밀린다.</b>
+	 *
+	 * <p><b>큐의 전체 길이를 세지 않는다</b> (S-11). 몇 건이 밀려 있는지는 검수 처리량을
+	 * 드러내며, 그 값을 알면 <b>큐가 길 때를 골라 제출할 수 있다.</b>
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public List<AwaitingReview> storiesAwaitingReview(int limit) {
+		return this.jdbc.sql("""
+						SELECT id, title, author_ref, visibility, created_at
+						FROM story
+						WHERE review_status = ?
+						ORDER BY created_at
+						LIMIT ?
+						""")
+				.params(IN_REVIEW_STATUS, limit)
+				.query((rs, rowNum) -> new AwaitingReview(rs.getObject("id", UUID.class),
+						rs.getString("title"), rs.getObject("author_ref", UUID.class),
+						rs.getString("visibility"), rs.getTimestamp("created_at").toInstant()))
+				.list();
+	}
+
+	/**
+	 * 마지막으로 발행된 버전.
+	 *
+	 * <p>승인은 <b>이것</b>을 현재로 만든다 (R8.8) — 검수를 기다리는 동안 작성자가 새 버전을
+	 * 얹었다면, 사람이 본 것도 열리는 것도 그 최신본이어야 한다.
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public Optional<UUID> latestVersionId(UUID storyId) {
+		return this.jdbc
+				.sql("SELECT id FROM story_version WHERE story_id = ? ORDER BY version_no DESC LIMIT 1")
+				.param(storyId).query(UUID.class).optional();
+	}
+
+	/**
+	 * 검수를 기다리는 작품 한 건.
+	 *
+	 * <p><b>본문도 세계관도 담지 않는다.</b> 큐는 <b>무엇을 볼 차례인가</b>를 답하는 자리이고,
+	 * 원고 원문은 열람 감사가 걸린 다른 문으로 본다 (S-5).
+	 */
+	public record AwaitingReview(UUID storyId, String title, UUID authorRef, String visibility,
+			Instant createdAt) {
 	}
 
 	/** 작품의 상태 한 벌. */
