@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -54,9 +55,10 @@ public class ReviewQueueService {
 	 * 승인이 여는 가시성도 그 하나다. 사후 검수(B-59)가 <b>이미 승인된 작품</b>을 그 상태로
 	 * 올리기 시작하면 그때는 목표 가시성을 함께 날라야 한다 — 그 경로는 아직 없다.
 	 *
-	 * <p><b>정지에서 돌아오는 길은 다르다</b> (B-57). 정지는 가시성을 건드리지 않으므로
-	 * 원래 값이 그대로 남아 있고, 통과는 <b>그것</b>으로 돌려놓는다 — 신고 하나로 내려간
-	 * {@code unlisted} 작품이 복귀하면서 공개되면 그것은 복귀가 아니다.
+	 * <p><b>다른 길로 온 것은 원래 자리로 돌아간다.</b> 정지(B-57)와 샘플링(B-59)은 가시성을
+	 * 건드리지 않으므로 원래 값이 그대로 남아 있고, 통과는 <b>그것</b>으로 돌려놓는다 — 신고
+	 * 하나로 내려간 {@code unlisted} 작품이나 <b>무작위로 뽑혔을 뿐인</b> 작품이 통과하면서
+	 * 공개되면 그것은 복귀가 아니다.
 	 */
 	private static final String PUBLIC_VISIBILITY = "public";
 
@@ -86,7 +88,9 @@ public class ReviewQueueService {
 	 * 순간이다. 작품 생성 시각을 쓰면 <b>재검수가 몇 달을 기다린 것처럼 보인다.</b>
 	 */
 	public List<QueueItem> pending() {
-		List<StoryPublisher.AwaitingReview> awaiting = this.publisher.storiesAwaitingReview(PAGE_SIZE);
+		List<StoryPublisher.AwaitingReview> awaiting =
+				new ArrayList<>(this.publisher.storiesAwaitingReview(PAGE_SIZE));
+		awaiting.addAll(sampledStories(PAGE_SIZE - Math.min(PAGE_SIZE, awaiting.size())));
 		if (awaiting.isEmpty()) {
 			return List.of();
 		}
@@ -116,7 +120,7 @@ public class ReviewQueueService {
 		return this.transactions.execute(status -> {
 			StoryPublisher.StoryStatus stored = this.publisher.statusOf(storyId)
 					.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-			if (!awaitsAHuman(stored.reviewStatus())) {
+			if (!awaitsAHuman(storyId, stored.reviewStatus())) {
 				throw new ApiException(ErrorCode.REVIEW_NOT_PENDING);
 			}
 
@@ -161,8 +165,10 @@ public class ReviewQueueService {
 	 * 가시성을 지우지 않았으므로 그 값이 그대로 남아 있다.
 	 */
 	private static String restoredVisibilityOf(StoryPublisher.StoryStatus stored) {
-		return ReviewStatus.SUSPENDED.columnValue().equals(stored.reviewStatus())
-				? stored.visibility() : PUBLIC_VISIBILITY;
+		// in_review 로 오는 길은 public 제출 하나뿐이다 (§13-39). 나머지 — 정지(§13-41)와
+		// 샘플링(§13-42) — 는 내려가지도 가려지지도 않았으므로 있던 자리가 곧 답이다.
+		return ReviewStatus.IN_REVIEW.columnValue().equals(stored.reviewStatus())
+				? PUBLIC_VISIBILITY : stored.visibility();
 	}
 
 	/**
@@ -171,9 +177,31 @@ public class ReviewQueueService {
 	 * <p>둘이다 — 제출이 기다리는 것(R8.6)과 <b>신고로 내려간 것</b>(R8.9). 후자를 큐에서
 	 * 빼면 자동으로 내린 작품을 아무도 다시 보지 않게 된다.
 	 */
-	private static boolean awaitsAHuman(String reviewStatus) {
+	private boolean awaitsAHuman(UUID storyId, String reviewStatus) {
 		return ReviewStatus.IN_REVIEW.columnValue().equals(reviewStatus)
-				|| ReviewStatus.SUSPENDED.columnValue().equals(reviewStatus);
+				|| ReviewStatus.SUSPENDED.columnValue().equals(reviewStatus)
+				// R8.11 — 샘플링으로 올라온 작품은 승인 상태 그대로다 (§13-42). 상태만 보면
+				// 판정할 수 없고, 판정할 수 없는 항목은 큐에 있어도 큐가 아니다.
+				|| this.reviews.isFlaggedForReview(storyId);
+	}
+
+	/**
+	 * 샘플링이 올려 둔 작품들 (R8.11, B-59, §13-42).
+	 *
+	 * <p><b>상태로 찾을 수 없다.</b> 샘플링은 작품을 내리지 않으므로 (§13-12 — 인기 있는 것과
+	 * 위험한 것은 다르다) {@code approved} 그대로이며, 큐에 있다는 사실은 <b>검수 이력의
+	 * 표식</b>에만 남는다.
+	 *
+	 * <p><b>상태로 이미 올라온 것 뒤에 붙는다.</b> 제출을 기다리는 작품과 신고로 내려간 작품이
+	 * 먼저다 — 그 둘은 <b>사람이 볼 때까지 아무도 못 보거나 아무도 못 하는</b> 상태이고,
+	 * 샘플링은 이미 게시돼 잘 돌아가는 작품이다.
+	 */
+	private List<StoryPublisher.AwaitingReview> sampledStories(int limit) {
+		if (limit <= 0) {
+			return List.of();
+		}
+		return this.publisher
+				.storiesByIds(this.reviews.storyIdsFlaggedForReview(Limit.of(limit)));
 	}
 
 	/** 작품마다 가장 최근 판정 시각. 정렬이 이미 끝난 목록을 한 번만 훑는다. */
