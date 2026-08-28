@@ -208,6 +208,23 @@ public class StoryPublisher {
 	}
 
 	/**
+	 * 이 작성자가 <b>낸</b> 작품 수 (R8.12, B-60).
+	 *
+	 * <p><b>미리보기가 만든 것은 세지 않는다.</b> 그것은 매 미리보기마다 늘어나고(§13-37)
+	 * 파기는 B-61 이 가져간다 — 함께 세면 <b>미리보기 몇 번으로 작품을 못 만들게 된다.</b>
+	 * 제출을 지난 작품만 상한의 대상이다.
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public long countSubmittedStoriesOf(UUID authorRef) {
+		return this.jdbc.sql("""
+						SELECT COUNT(*) FROM story
+						WHERE author_type = ? AND author_ref = ? AND review_status <> ?
+						""")
+				.params(USER_AUTHOR_TYPE, authorRef, DRAFT_REVIEW_STATUS)
+				.query(Long.class).single();
+	}
+
+	/**
 	 * 지목된 작품들의 큐 표시용 정보 (R8.11, B-59).
 	 *
 	 * <p>샘플링은 <b>승인 상태 그대로</b> 큐에 올린다 (§13-42) — 그래서 상태로 찾을 수 없고,

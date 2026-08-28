@@ -26,6 +26,13 @@ public enum ErrorCode {
 	UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "로그인이 필요해요."),
 	/** [R10.2] 만 15세 미만. 계정을 생성하지 않는다 (§4.1). */
 	AGE_RESTRICTED(HttpStatus.FORBIDDEN, "만 15세부터 이용할 수 있어요."),
+	/**
+	 * [R8.12] 계정당 작품 개수 상한 (B-60).
+	 *
+	 * <p><b>{@code QUOTA_EXCEEDED}(429) 가 아니다.</b> 그 문구는 "오늘 이용할 수 있는 양"이고,
+	 * 작품 개수는 <b>날이 바뀌어도 늘지 않는다</b> — 기다리라고 안내하면 기다린 만큼 헛되다.
+	 */
+	STORY_LIMIT_REACHED(HttpStatus.FORBIDDEN, "만들 수 있는 작품 수를 모두 사용했어요."),
 	/** 소유자가 아니거나 권한이 없다. */
 	FORBIDDEN(HttpStatus.FORBIDDEN, "이 작업을 수행할 권한이 없어요."),
 

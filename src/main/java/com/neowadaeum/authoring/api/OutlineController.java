@@ -1,5 +1,6 @@
 package com.neowadaeum.authoring.api;
 
+import com.neowadaeum.authoring.UgcLimitProperties;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.outline.ConditionTemplate;
 import com.neowadaeum.common.error.ApiException;
@@ -43,13 +44,6 @@ public class OutlineController {
 
 	private static final int ENDINGS = 3;
 
-	/**
-	 * 계정당 일일 호출 상한 (R8.12).
-	 *
-	 * <p>원문은 값을 정하지 않는다 (§13-34). 초안은 <b>세계관을 고쳐 가며</b> 다시 부르는
-	 * 것이므로 하루 몇 번으로는 부족하고, 수십 번이면 그것은 작성이 아니라 뽑기다.
-	 */
-	static final int OUTLINE_PER_DAY = 20;
 
 	private final OutlineDrafter drafter;
 
@@ -59,12 +53,15 @@ public class OutlineController {
 
 	private final PlayerRefResolver playerRefs;
 
+	private final UgcLimitProperties limits;
+
 	public OutlineController(OutlineDrafter drafter, DraftService drafts, RateLimiter rateLimiter,
-			PlayerRefResolver playerRefs) {
+			PlayerRefResolver playerRefs, UgcLimitProperties limits) {
 		this.drafter = drafter;
 		this.drafts = drafts;
 		this.rateLimiter = rateLimiter;
 		this.playerRefs = playerRefs;
+		this.limits = limits;
 	}
 
 	@PostMapping
@@ -101,8 +98,8 @@ public class OutlineController {
 	}
 
 	private void requireWithinDailyLimit(UUID authorRef) {
-		if (!this.rateLimiter.tryAcquire("outline-day", authorRef.toString(), OUTLINE_PER_DAY,
-				Duration.ofDays(1))) {
+		if (!this.rateLimiter.tryAcquire("outline-day", authorRef.toString(),
+				this.limits.outlinePerDay(), Duration.ofDays(1))) {
 			throw new ApiException(ErrorCode.RATE_LIMITED,
 					Map.of("retryAfterSeconds", Duration.ofDays(1).toSeconds()));
 		}

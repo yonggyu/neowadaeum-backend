@@ -1,5 +1,6 @@
 package com.neowadaeum.authoring.api;
 
+import com.neowadaeum.authoring.UgcLimitProperties;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.DraftStoryDefinition;
 import com.neowadaeum.catalog.publish.StoryDefinition;
@@ -38,13 +39,6 @@ public class PreviewController {
 	/** R8.13 — 3턴 후 자동 종료. */
 	static final int PREVIEW_TURN_LIMIT = 3;
 
-	/**
-	 * 계정당 일일 미리보기 횟수 (R8.12).
-	 *
-	 * <p>미리보기 한 번이 <b>임시 작품 하나와 AI 호출 셋</b>이다. 상한이 없으면 그 비용을
-	 * 한 계정이 정한다.
-	 */
-	static final int PREVIEWS_PER_DAY = 10;
 
 	/** R4.4 · §13-9 — 작성자가 자유 정의하지 않는다. 미리보기는 기본 템플릿으로 연다. */
 	private static final String PREVIEW_STATE_SCHEMA = "{\"flags\":[]}";
@@ -59,13 +53,17 @@ public class PreviewController {
 
 	private final PlayerRefResolver playerRefs;
 
+	private final UgcLimitProperties limits;
+
 	public PreviewController(DraftService drafts, StoryPublisher publisher,
-			TestSessionStarter sessions, RateLimiter rateLimiter, PlayerRefResolver playerRefs) {
+			TestSessionStarter sessions, RateLimiter rateLimiter, PlayerRefResolver playerRefs,
+			UgcLimitProperties limits) {
 		this.drafts = drafts;
 		this.publisher = publisher;
 		this.sessions = sessions;
 		this.rateLimiter = rateLimiter;
 		this.playerRefs = playerRefs;
+		this.limits = limits;
 	}
 
 	@PostMapping
@@ -86,8 +84,8 @@ public class PreviewController {
 	}
 
 	private void requireWithinDailyLimit(UUID authorRef) {
-		if (!this.rateLimiter.tryAcquire("preview-day", authorRef.toString(), PREVIEWS_PER_DAY,
-				Duration.ofDays(1))) {
+		if (!this.rateLimiter.tryAcquire("preview-day", authorRef.toString(),
+				this.limits.previewsPerDay(), Duration.ofDays(1))) {
 			throw new ApiException(ErrorCode.RATE_LIMITED,
 					Map.of("retryAfterSeconds", Duration.ofDays(1).toSeconds()));
 		}

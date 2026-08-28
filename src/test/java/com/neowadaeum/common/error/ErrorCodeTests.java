@@ -23,6 +23,7 @@ class ErrorCodeTests {
 		catalog.put("VALIDATION_ERROR", HttpStatus.BAD_REQUEST);
 		catalog.put("UNAUTHENTICATED", HttpStatus.UNAUTHORIZED);
 		catalog.put("AGE_RESTRICTED", HttpStatus.FORBIDDEN);
+		catalog.put("STORY_LIMIT_REACHED", HttpStatus.FORBIDDEN);
 		catalog.put("FORBIDDEN", HttpStatus.FORBIDDEN);
 		catalog.put("NOT_FOUND", HttpStatus.NOT_FOUND);
 		catalog.put("TURN_CONFLICT", HttpStatus.CONFLICT);

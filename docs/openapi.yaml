@@ -1578,6 +1578,7 @@ components:
         - VALIDATION_ERROR
         - UNAUTHENTICATED
         - AGE_RESTRICTED
+        - STORY_LIMIT_REACHED
         - FORBIDDEN
         - NOT_FOUND
         - TURN_CONFLICT
