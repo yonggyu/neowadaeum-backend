@@ -10,6 +10,7 @@ import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.StoryDraftRepository;
 import com.neowadaeum.authoring.report.ContentReportRepository;
+import com.neowadaeum.authoring.report.SuspensionThresholds;
 import com.neowadaeum.authoring.review.StoryReviewRepository;
 import com.neowadaeum.authoring.review.SubmissionService;
 import com.neowadaeum.authoring.review.Visibility;
@@ -80,6 +81,8 @@ class ReportApiIntegrationTests extends ContainerTestBase {
 		}
 		this.stories.clear();
 		this.draftRows.deleteAll();
+		jdbc.sql("DELETE FROM service_config WHERE config_key = ?")
+				.param(SuspensionThresholds.CONFIG_KEY).update();
 	}
 
 	/**

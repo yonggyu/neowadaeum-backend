@@ -48,11 +48,15 @@ public class ReviewQueueService {
 	private static final String REJECTED_STATUS = "rejected";
 
 	/**
-	 * <b>통과하면 공개다.</b>
+	 * <b>제출이 기다리던 것을 통과시키면 공개다.</b>
 	 *
-	 * <p>인간 검수 큐에 오는 길은 {@code public} 제출 하나뿐이므로 (R8.6, B-54), 승인이 여는
-	 * 가시성도 그 하나다. 사후 검수(B-59)가 <b>이미 승인된 작품</b>을 큐에 올리기 시작하면
-	 * 그때는 목표 가시성을 함께 날라야 한다 — 그 경로는 아직 없다.
+	 * <p>{@code in_review} 로 큐에 오는 길은 {@code public} 제출 하나뿐이므로 (R8.6, B-54),
+	 * 승인이 여는 가시성도 그 하나다. 사후 검수(B-59)가 <b>이미 승인된 작품</b>을 그 상태로
+	 * 올리기 시작하면 그때는 목표 가시성을 함께 날라야 한다 — 그 경로는 아직 없다.
+	 *
+	 * <p><b>정지에서 돌아오는 길은 다르다</b> (B-57). 정지는 가시성을 건드리지 않으므로
+	 * 원래 값이 그대로 남아 있고, 통과는 <b>그것</b>으로 돌려놓는다 — 신고 하나로 내려간
+	 * {@code unlisted} 작품이 복귀하면서 공개되면 그것은 복귀가 아니다.
 	 */
 	private static final String PUBLIC_VISIBILITY = "public";
 
@@ -92,6 +96,7 @@ public class ReviewQueueService {
 		List<QueueItem> items = new ArrayList<>(awaiting.size());
 		for (StoryPublisher.AwaitingReview story : awaiting) {
 			items.add(new QueueItem(story.storyId(), story.title(),
+					ReviewStatus.valueOf(story.reviewStatus().toUpperCase(java.util.Locale.ROOT)),
 					queuedAt.getOrDefault(story.storyId(), story.createdAt())));
 		}
 		return List.copyOf(items);
@@ -111,11 +116,11 @@ public class ReviewQueueService {
 		return this.transactions.execute(status -> {
 			StoryPublisher.StoryStatus stored = this.publisher.statusOf(storyId)
 					.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-			if (!ReviewStatus.IN_REVIEW.columnValue().equals(stored.reviewStatus())) {
+			if (!awaitsAHuman(stored.reviewStatus())) {
 				throw new ApiException(ErrorCode.REVIEW_NOT_PENDING);
 			}
 
-			ReviewStatus next = applyTo(storyId, verdict);
+			ReviewStatus next = applyTo(storyId, stored, verdict);
 			this.reviews.save(StoryReview.of(storyId, ReviewStage.HUMAN, verdict, reasonsJson(reasons),
 					reviewerRef, note, Instant.now(this.clock)));
 			return new Decision(storyId, next);
@@ -129,11 +134,12 @@ public class ReviewQueueService {
 	 * "봤고 판단을 미뤘다"는 <b>아무도 보지 않았다</b>와 다른 사실이며, 미뤄진 채로 얼마나
 	 * 오래 있었는지는 그 기록으로만 답할 수 있다.
 	 */
-	private ReviewStatus applyTo(UUID storyId, ReviewVerdict verdict) {
+	private ReviewStatus applyTo(UUID storyId, StoryPublisher.StoryStatus stored,
+			ReviewVerdict verdict) {
 		return switch (verdict) {
 			case PASS -> {
 				// R8.8 — 승인이 곧 게시다. 열면서 현재 버전을 가리킨다.
-				this.publisher.applyReview(storyId, APPROVED_STATUS, PUBLIC_VISIBILITY);
+				this.publisher.applyReview(storyId, APPROVED_STATUS, restoredVisibilityOf(stored));
 				this.publisher.markCurrent(storyId,
 						this.publisher.latestVersionId(storyId)
 								.orElseThrow(() -> new ApiException(ErrorCode.INTERNAL_ERROR)));
@@ -143,8 +149,31 @@ public class ReviewQueueService {
 				this.publisher.applyReview(storyId, REJECTED_STATUS, PRIVATE_VISIBILITY);
 				yield ReviewStatus.REJECTED;
 			}
-			case HOLD -> ReviewStatus.IN_REVIEW;
+			case HOLD -> ReviewStatus.valueOf(stored.reviewStatus().toUpperCase(java.util.Locale.ROOT));
 		};
+	}
+
+	/**
+	 * 통과가 여는 가시성.
+	 *
+	 * <p><b>어디서 왔는지가 답을 정한다.</b> 제출이 기다리던 것은 {@code public} 을 원했고
+	 * (R8.6), 정지에서 돌아오는 것은 <b>내려가기 전의 자리</b>로 돌아간다 (B-57) — 정지는
+	 * 가시성을 지우지 않았으므로 그 값이 그대로 남아 있다.
+	 */
+	private static String restoredVisibilityOf(StoryPublisher.StoryStatus stored) {
+		return ReviewStatus.SUSPENDED.columnValue().equals(stored.reviewStatus())
+				? stored.visibility() : PUBLIC_VISIBILITY;
+	}
+
+	/**
+	 * <b>사람을 기다리는 상태인가.</b>
+	 *
+	 * <p>둘이다 — 제출이 기다리는 것(R8.6)과 <b>신고로 내려간 것</b>(R8.9). 후자를 큐에서
+	 * 빼면 자동으로 내린 작품을 아무도 다시 보지 않게 된다.
+	 */
+	private static boolean awaitsAHuman(String reviewStatus) {
+		return ReviewStatus.IN_REVIEW.columnValue().equals(reviewStatus)
+				|| ReviewStatus.SUSPENDED.columnValue().equals(reviewStatus);
 	}
 
 	/** 작품마다 가장 최근 판정 시각. 정렬이 이미 끝난 목록을 한 번만 훑는다. */
@@ -170,8 +199,13 @@ public class ReviewQueueService {
 	 *
 	 * <p><b>작성자를 담지 않는다.</b> 검수는 <b>무엇이 쓰였는가</b>를 보는 일이고, 누가 썼는지가
 	 * 함께 오면 그것이 판정에 섞인다.
+	 *
+	 * <p><b>왜 큐에 있는지는 담는다</b> (B-57). 제출을 기다리는 것과 신고로 내려간 것은
+	 * 검수자가 <b>다르게 봐야 하는 일</b>이다 — 하나는 아직 아무도 못 본 작품이고, 다른
+	 * 하나는 이미 사람들이 본 작품이다.
 	 */
-	public record QueueItem(UUID storyId, String title, Instant queuedAt) {
+	public record QueueItem(UUID storyId, String title, ReviewStatus reviewStatus,
+			Instant queuedAt) {
 	}
 
 	/** 판정 결과. */

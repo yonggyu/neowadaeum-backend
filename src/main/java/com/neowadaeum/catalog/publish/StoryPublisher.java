@@ -40,6 +40,14 @@ public class StoryPublisher {
 	/** 사람을 기다리는 작품의 상태 (R8.6). 검수 큐가 보는 것이 이것이다. */
 	private static final String IN_REVIEW_STATUS = "in_review";
 
+	/**
+	 * 신고 누적으로 내려간 작품 (R8.9, B-57).
+	 *
+	 * <p><b>이것도 사람을 기다린다.</b> 자동으로 내린 것을 자동으로 올릴 수는 없으므로 — 그러면
+	 * 신고가 곧 판정이 된다 — 정지된 작품은 검수 큐에서 사람의 판정을 기다린다.
+	 */
+	private static final String SUSPENDED_STATUS = "suspended";
+
 	/** UGC 다. 공식 작품과 섞이지 않는다. */
 	private static final String USER_AUTHOR_TYPE = "user";
 
@@ -184,17 +192,36 @@ public class StoryPublisher {
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public List<AwaitingReview> storiesAwaitingReview(int limit) {
 		return this.jdbc.sql("""
-						SELECT id, title, author_ref, visibility, created_at
+						SELECT id, title, author_ref, visibility, review_status, created_at
 						FROM story
-						WHERE review_status = ?
+						WHERE review_status IN (?, ?)
 						ORDER BY created_at
 						LIMIT ?
 						""")
-				.params(IN_REVIEW_STATUS, limit)
+				.params(IN_REVIEW_STATUS, SUSPENDED_STATUS, limit)
 				.query((rs, rowNum) -> new AwaitingReview(rs.getObject("id", UUID.class),
 						rs.getString("title"), rs.getObject("author_ref", UUID.class),
-						rs.getString("visibility"), rs.getTimestamp("created_at").toInstant()))
+						rs.getString("visibility"), rs.getString("review_status"),
+						rs.getTimestamp("created_at").toInstant()))
 				.list();
+	}
+
+	/**
+	 * 신고 누적으로 내린다 (R8.9, B-57).
+	 *
+	 * <p><b>가시성을 건드리지 않는다.</b> 정지는 되돌려질 수 있는 판단이고, 여기서 가시성을
+	 * 지워 버리면 <b>사람이 통과시킨 뒤 어디로 돌려놓아야 하는지</b>를 알 수 없다.
+	 *
+	 * <p><b>이미 내려간 작품은 다시 내리지 않는다.</b> 신고가 계속 들어와도 상태는 한 번만
+	 * 바뀐다 — 조건절이 그 보장이다.
+	 *
+	 * @return 이 호출이 실제로 내렸으면 {@code true}
+	 */
+	@Transactional("catalogTransactionManager")
+	public boolean suspend(UUID storyId) {
+		return this.jdbc
+				.sql("UPDATE story SET review_status = ? WHERE id = ? AND review_status <> ?")
+				.params(SUSPENDED_STATUS, storyId, SUSPENDED_STATUS).update() > 0;
 	}
 
 	/**
@@ -217,7 +244,7 @@ public class StoryPublisher {
 	 * 원고 원문은 열람 감사가 걸린 다른 문으로 본다 (S-5).
 	 */
 	public record AwaitingReview(UUID storyId, String title, UUID authorRef, String visibility,
-			Instant createdAt) {
+			String reviewStatus, Instant createdAt) {
 	}
 
 	/** 작품의 상태 한 벌. */
