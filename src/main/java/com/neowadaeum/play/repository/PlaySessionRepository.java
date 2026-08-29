@@ -124,4 +124,20 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 	int deleteByPlayerRefs(
 			@org.springframework.data.repository.query.Param("playerRefs")
 			java.util.Collection<UUID> playerRefs);
+
+	/**
+	 * 미리보기 작품과 함께 사라지는 세션 (§13-37, B-61).
+	 *
+	 * <p><b>{@code is_test_session} 을 조건에 넣지 않는다.</b> 지우는 근거는 세션의 성질이 아니라
+	 * <b>작품이 사라진다는 사실</b>이다 — 그 작품 위에 다른 세션이 있다면 그것도 읽을 수 없게 된다.
+	 *
+	 * <p>세션에 매달린 것들을 먼저 지운 뒤에 부른다 (FK).
+	 */
+	@org.springframework.data.jpa.repository.Modifying(clearAutomatically = true,
+			flushAutomatically = true)
+	@org.springframework.data.jpa.repository.Query(
+			"DELETE FROM PlaySession s WHERE s.storyId IN :storyIds")
+	int deleteByStoryIds(
+			@org.springframework.data.repository.query.Param("storyIds")
+			java.util.Collection<UUID> storyIds);
 }
