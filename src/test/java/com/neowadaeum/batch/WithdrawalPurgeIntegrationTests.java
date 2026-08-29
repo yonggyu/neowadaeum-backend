@@ -3,6 +3,8 @@ package com.neowadaeum.batch;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ContainerTestBase;
+import com.neowadaeum.common.spi.EndingReach;
+import com.neowadaeum.common.spi.EndingReachSource;
 import com.neowadaeum.common.spi.PlayerDataPurge;
 import com.neowadaeum.common.spi.WithdrawnAccounts;
 import com.neowadaeum.identity.domain.User;
@@ -41,6 +43,9 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 	private PlayerDataPurge playerData;
 
 	@Autowired
+	private EndingReachSource reaches;
+
+	@Autowired
 	private UserRepository users;
 
 	@Autowired
@@ -61,6 +66,8 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 
 	private final List<UUID> createdSessions = new java.util.ArrayList<>();
 
+	private final List<UUID> carriedStories = new java.util.ArrayList<>();
+
 	/**
 	 * <b>내가 만든 것만 치운다.</b>
 	 *
@@ -69,6 +76,9 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 	 */
 	@AfterEach
 	void clear() {
+		this.carriedStories.forEach(storyId -> playJdbc()
+				.sql("DELETE FROM purged_session_tally WHERE story_id = ?").param(storyId).update());
+		this.carriedStories.clear();
 		this.createdSessions.forEach(this::deleteSessionTree);
 		this.createdSessions.clear();
 		this.createdUsers.forEach(this::deleteUserTree);
@@ -202,6 +212,90 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 				.satisfies(user -> assertThat(user.getPlayerRef()).isNull());
 	}
 
+	/**
+	 * <b>파기가 도달률을 되돌리지 않는다</b> (§13-44, R2.7, 이슈 #228).
+	 *
+	 * <p>도달률 집계는 매 회차 살아 있는 세션을 <b>전량 재계산</b>한다 (B-39). 그냥 지우면
+	 * <b>탈퇴 한 건이 그 사람이 완주했던 모든 작품의 도달률을 줄인다</b> — 작품에 아무 변화가
+	 * 없는데 숫자가 바뀌고, R2.8 의 표본 경계 근처에서는 도달률이 사라졌다 나타난다.
+	 *
+	 * <p>여기서 확인하는 것은 <b>원본은 사라지고 집계는 그대로</b>라는 두 가지다. 하나만 보면
+	 * "지우지 않는 구현"이나 "집계를 버리는 구현"이 각각 통과한다.
+	 */
+	@Test
+	void R2_7_purging_does_not_take_back_the_reach_it_already_contributed() {
+		Withdrawn member = givenWithdrawnMember();
+		UUID storyId = newStory();
+		UUID endingId = UUID.randomUUID();
+		UUID sessionId = givenCompletedPlayHistory(member.playerRef(), storyId, endingId);
+
+		assertThat(reachOf(storyId, endingId)).isEqualTo(1);
+
+		this.playerData.purge(List.of(member.playerRef()));
+
+		assertThat(this.sessions.findById(sessionId)).isEmpty();
+		assertThat(reachOf(storyId, endingId)).isEqualTo(1);
+		assertThat(completedOf(storyId)).isEqualTo(1);
+	}
+
+	/**
+	 * <b>여러 회차에 걸쳐 더해진다</b> (§13-44).
+	 *
+	 * <p>파기 배치는 매일 돈다. 옮긴 몫을 덮어쓰면 <b>앞 회차가 남긴 것이 사라져</b> 도달률이
+	 * 다시 줄어든다 — 문제는 늦게, 그리고 조용히 돌아온다.
+	 */
+	@Test
+	void R2_7_each_purge_adds_to_the_carried_tally_instead_of_replacing_it() {
+		UUID storyId = newStory();
+		UUID endingId = UUID.randomUUID();
+		Withdrawn first = givenWithdrawnMember();
+		givenCompletedPlayHistory(first.playerRef(), storyId, endingId);
+		Withdrawn second = givenWithdrawnMember();
+		givenCompletedPlayHistory(second.playerRef(), storyId, endingId);
+
+		this.playerData.purge(List.of(first.playerRef()));
+		this.playerData.purge(List.of(second.playerRef()));
+
+		assertThat(reachOf(storyId, endingId)).isEqualTo(2);
+	}
+
+	/**
+	 * <b>사용자가 지운 세션은 옮기지 않는다</b> (§13-44).
+	 *
+	 * <p>그 세션은 애초에 세어진 적이 없다 ({@code deleted_at}). 옮기면 파기가 도달률을
+	 * <b>늘린다</b> — 없던 도달이 생기는 쪽이 줄어드는 것보다 나쁘다.
+	 */
+	@Test
+	void R2_7_a_session_the_user_had_deleted_is_not_carried_over() {
+		Withdrawn member = givenWithdrawnMember();
+		UUID storyId = newStory();
+		UUID endingId = UUID.randomUUID();
+		UUID sessionId = givenCompletedPlayHistory(member.playerRef(), storyId, endingId);
+		playJdbc().sql("UPDATE play_session SET deleted_at = ? WHERE id = ?")
+				.params(now(), sessionId).update();
+
+		this.playerData.purge(List.of(member.playerRef()));
+
+		assertThat(reachOf(storyId, endingId)).isZero();
+	}
+
+	/**
+	 * <b>남는 집계로 사람을 되찾을 수 없다</b> (§13-44, R12.4).
+	 *
+	 * <p>C 안이 성립하는 근거는 "통계는 익명 합계다" 하나뿐이다. 그 표에 {@code player_ref} 나
+	 * {@code session_id} 가 한 칸이라도 있으면 <b>파기했다는 말이 사실이 아니게 된다</b> —
+	 * 컬럼이 늘어나는 것은 조용히 일어나므로 스키마 자체를 단언한다.
+	 */
+	@Test
+	void R12_4_the_carried_tally_holds_nothing_that_points_back_to_a_member() {
+		List<String> columns = playJdbc()
+				.sql("SELECT column_name FROM information_schema.columns WHERE table_name = ?")
+				.param("purged_session_tally").query(String.class).list();
+
+		assertThat(columns).containsExactlyInAnyOrder("story_id", "ending_id", "reached_count",
+				"updated_at");
+	}
+
 	// ── 준비 ────────────────────────────────────────────────
 
 	private record Withdrawn(UUID userId, UUID playerRef) {
@@ -269,6 +363,35 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 						""")
 				.params(UUID.randomUUID(), sessionId, now()).update();
 		return sessionId;
+	}
+
+	/** 파기 뒤에도 집계가 남는 작품. 클래스마다 고유해야 한다 — 집계는 전역이다. */
+	private UUID newStory() {
+		UUID storyId = UUID.randomUUID();
+		this.carriedStories.add(storyId);
+		return storyId;
+	}
+
+	/** 완주한 세션 하나. 도달 집계가 세는 것은 <b>완주하고 엔딩에 닿은</b> 세션뿐이다. */
+	private UUID givenCompletedPlayHistory(UUID playerRef, UUID storyId, UUID endingId) {
+		PlaySession session = PlaySession.start(playerRef, storyId, VERSION_ID, "fixed", "scenario",
+				false, Instant.now());
+		session.complete(endingId, Instant.now());
+		UUID sessionId = this.sessions.saveAndFlush(session).getId();
+		this.createdSessions.add(sessionId);
+		return sessionId;
+	}
+
+	private long reachOf(UUID storyId, UUID endingId) {
+		return this.reaches.tallyReached().stream()
+				.filter(reach -> reach.storyId().equals(storyId) && reach.endingId().equals(endingId))
+				.mapToLong(EndingReach::reachedCount).sum();
+	}
+
+	private long completedOf(UUID storyId) {
+		return this.reaches.tallyReached().stream()
+				.filter(reach -> reach.storyId().equals(storyId))
+				.mapToLong(EndingReach::storyCompletedCount).max().orElse(0);
 	}
 
 	// ── 뒷정리 · 조회 ────────────────────────────────────────
