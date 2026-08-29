@@ -24,6 +24,10 @@ import java.util.UUID;
  * <p><b>이메일·이름을 담지 않는다.</b> 소셜 계정 식별자와 이메일 해시는 {@link OauthIdentity} 에
  * 있고 원문은 어디에도 없다 (§13-11).
  *
+ * <p><b>탈퇴해도 이 행은 남는다</b> (R12.4, B-61). 동의 이력이 이 행을 앵커로 삼고 그것은 법정
+ * 기간 동안 보관해야 한다 — 파기가 지우는 것은 회원이 아니라 <b>회원과 기록을 잇는 고리</b>다
+ * (R12.5).
+ *
  * <p>상태 전이(정지·탈퇴)와 연령 확인 기록은 B-40 · B-61 · B-13 의 범위이고 여기에는 아직 없다.
  * 지금 필요한 것은 <b>가입 시점의 생성</b>뿐이다.
  */
@@ -41,8 +45,12 @@ public class User {
 	 *
 	 * <p>DB 의 UNIQUE 제약이 "회원당 1개"를, {@code updatable = false} 가 발급 후 바뀌지 않음을
 	 * 강제한다 — 바뀌면 play·catalog 의 기록이 통째로 주인을 잃는다.
+	 *
+	 * <p><b>탈퇴 파기만 이 값을 비운다</b> (R12.5, B-61). 그것은 값을 바꾸는 일이 아니라
+	 * <b>고리를 끊는 일</b>이며, 그래서 엔티티가 아니라 벌크 UPDATE 로만 일어난다 —
+	 * {@code updatable = false} 는 그대로 두어 <b>평상시 경로에는 바꿀 방법이 없게</b> 한다.
 	 */
-	@Column(name = "player_ref", nullable = false, updatable = false)
+	@Column(name = "player_ref", updatable = false)
 	private UUID playerRef;
 
 	@Column(name = "status", nullable = false)
@@ -67,6 +75,14 @@ public class User {
 
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
+
+	/**
+	 * 파기한 시각 (R12.5, B-61). 파기 전에는 {@code null} 이다.
+	 *
+	 * <p><b>"지웠다"의 근거는 값이 비었다는 사실이 아니라 언제 지웠는가다.</b>
+	 */
+	@Column(name = "purged_at")
+	private Instant purgedAt;
 
 	protected User() {
 	}
@@ -122,5 +138,9 @@ public class User {
 
 	public Instant getCreatedAt() {
 		return this.createdAt;
+	}
+
+	public Instant getPurgedAt() {
+		return this.purgedAt;
 	}
 }

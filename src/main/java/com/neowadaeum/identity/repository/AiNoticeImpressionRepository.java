@@ -1,8 +1,12 @@
 package com.neowadaeum.identity.repository;
 
 import com.neowadaeum.identity.domain.AiNoticeImpression;
+import java.util.Collection;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * AI 고지 노출 이력 영속화 (R11.3).
@@ -13,4 +17,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AiNoticeImpressionRepository extends JpaRepository<AiNoticeImpression, UUID> {
 
 	boolean existsByUserIdAndNoticeVersion(UUID userId, String noticeVersion);
+
+	/**
+	 * 탈퇴 파기 (R12.4, B-61).
+	 *
+	 * <p><b>노출 이력은 동의 이력이 아니다</b> (§13-8) — 법정 보관 대상은 {@code consent_log} 이며,
+	 * 이 표는 "무엇을 보여 줬는가"의 기록이라 탈퇴한 회원에 대해 남길 근거가 없다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("DELETE FROM AiNoticeImpression i WHERE i.userId IN :userIds")
+	int deleteByUserIds(@Param("userIds") Collection<UUID> userIds);
 }

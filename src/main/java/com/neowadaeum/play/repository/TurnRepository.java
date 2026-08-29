@@ -5,7 +5,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Limit;
+import java.util.Collection;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /** 턴 영속화 (§9.2). 조회 API(B-35 History)의 커서 페이지네이션은 그 작업에서 더한다. */
 public interface TurnRepository extends JpaRepository<Turn, UUID> {
@@ -63,4 +67,19 @@ public interface TurnRepository extends JpaRepository<Turn, UUID> {
 
 	/** 되돌린 지점의 턴. 세션의 chapter 를 그 턴에 맞춰야 한다. */
 	Optional<Turn> findBySessionIdAndTurnNoAndDeletedAtIsNull(UUID sessionId, int turnNo);
+
+	/**
+	 * 탈퇴 회원의 기록 파기 (R12.4, B-61).
+	 *
+	 * <p>턴 본문은 그 회원의 플레이 기록이다. 세션을 지우면서 남기면 <b>주인 없는 이야기</b>가 쌓인다.
+	 *
+	 * <p><b>벌크 삭제다.</b> 엔티티를 읽어 지우면 그 회원의 플레이 전체를 메모리에 올리게 된다 —
+	 * 지우는 일에 필요한 것은 <b>조건</b>이지 행의 내용이 아니다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			DELETE FROM Turn t
+			WHERE t.sessionId IN (SELECT s.id FROM PlaySession s WHERE s.playerRef IN :playerRefs)
+			""")
+	int deleteByPlayerRefs(@Param("playerRefs") Collection<UUID> playerRefs);
 }

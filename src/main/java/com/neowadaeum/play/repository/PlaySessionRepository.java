@@ -105,4 +105,23 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 	int expireIdle(com.neowadaeum.play.domain.SessionStatus expired,
 			com.neowadaeum.play.domain.SessionStatus active, java.time.Instant idleBefore,
 			java.time.Instant now);
+
+	/**
+	 * 탈퇴 회원의 세션 파기 (R12.4, B-61).
+	 *
+	 * <p><b>만료와 다르다.</b> 만료는 이어갈 수만 없게 만들고 기록을 남긴다 — 사용자가 자기가
+	 * 어디까지 갔었는지를 잃지 않기 위해서다. 탈퇴에는 그 사용자가 없다.
+	 *
+	 * <p><b>{@code deleted_at} 을 보지 않는다.</b> 사용자가 지운 세션도 파기 대상이다 — 그것은
+	 * 화면에서 치운 것이지 지워진 것이 아니었다.
+	 *
+	 * <p>세션에 매달린 것들을 먼저 지운 뒤에 부른다 (FK).
+	 */
+	@org.springframework.data.jpa.repository.Modifying(clearAutomatically = true,
+			flushAutomatically = true)
+	@org.springframework.data.jpa.repository.Query(
+			"DELETE FROM PlaySession s WHERE s.playerRef IN :playerRefs")
+	int deleteByPlayerRefs(
+			@org.springframework.data.repository.query.Param("playerRefs")
+			java.util.Collection<UUID> playerRefs);
 }
