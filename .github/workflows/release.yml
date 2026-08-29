@@ -64,11 +64,23 @@ jobs:
           trap 'docker rm -f "$container" > /dev/null' EXIT
           docker export "$container" | tar -tf - > /tmp/image-files.txt
 
-          # 이름만으로 시크릿인 것들. .dockerignore 가 막고 있어야 하며, 뚫리면 여기서 걸린다.
-          forbidden='(^|/)\.env($|\.)|\.pem$|\.p8$|\.p12$|\.jks$|\.keystore$|-key\.json$|(^|/)docs/internal/'
-          if grep -Eq "$forbidden" /tmp/image-files.txt; then
-            echo "이미지에 시크릿으로 분류되는 파일이 있다:"
-            grep -E "$forbidden" /tmp/image-files.txt
+          # **`.env` 는 이미지 어디에도 있으면 안 된다.** 베이스 이미지가 만들 이유가 없는
+          # 이름이므로, 나오면 그것은 우리가 넣은 것이다.
+          if grep -Eq '(^|/)\.env($|\.)' /tmp/image-files.txt; then
+            echo "이미지에 .env 가 있다:"
+            grep -E '(^|/)\.env($|\.)' /tmp/image-files.txt
+            exit 1
+          fi
+
+          # **키·인증서는 우리가 넣은 경로에서만 본다.**
+          # 이미지 전체를 보면 베이스 OS 의 **공개 루트 인증서**(/etc/ssl/certs/*.pem)가 걸린다 —
+          # 그것은 시크릿이 아니라 신뢰 저장소이고, 베이스는 다이제스트로 고정돼 있어 우리가
+          # 판정할 대상이 아니다. 확인해야 하는 것은 **우리가 넣은 것 안에 시크릿이 없는가**다.
+          ours='^(app|home/app|tmp)/'
+          keys='\.pem$|\.p8$|\.p12$|\.jks$|\.keystore$|-key\.json$|(^|/)docs/internal/'
+          if grep -E "$ours" /tmp/image-files.txt | grep -Eq "$keys"; then
+            echo "우리가 넣은 경로에 시크릿으로 분류되는 파일이 있다:"
+            grep -E "$ours" /tmp/image-files.txt | grep -E "$keys"
             exit 1
           fi
 
