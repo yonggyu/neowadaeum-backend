@@ -68,8 +68,21 @@ public class OAuthLoginService {
 		return this.registrar.register(provider, verified, signup, ipHash);
 	}
 
-	/** 리프레시 회전. 저장소를 건드리지 않는다 — 상태 없는 리프레시의 실질이다. */
+	/**
+	 * 리프레시 회전.
+	 *
+	 * <p><b>리프레시 저장소는 여전히 없다</b> (§13) — 대신 <b>회원이 아직 유효한지</b>를 묻는다.
+	 * 묻지 않으면 탈퇴한 회원이 토큰을 무한히 회전시킬 수 있고, 그러면 탈퇴는 <b>다음 로그인부터
+	 * 적용되는 신청</b>이 된다 (R12.5, B-62).
+	 *
+	 * <p>조회 하나가 붙는 곳은 <b>재발급뿐</b>이다. 액세스 토큰이 짧으므로 그것으로 충분하다 —
+	 * 모든 요청에 거는 것이 §13 이 피하려던 비용이었다.
+	 *
+	 * @throws ApiException {@code FORBIDDEN} 정지·탈퇴 회원 · {@code UNAUTHENTICATED} 파기된 매핑
+	 */
 	public AuthTokens refresh(String refreshToken) {
-		return this.tokens.issue(this.tokens.resolveRefresh(refreshToken));
+		UUID playerRef = this.tokens.resolveRefresh(refreshToken);
+		this.registrar.requireActive(playerRef);
+		return this.tokens.issue(playerRef);
 	}
 }

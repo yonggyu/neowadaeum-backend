@@ -418,6 +418,25 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ── §13.7 My Stories ────────────────────────────────────────
+  /api/v1/me:
+    delete:
+      tags: [me]
+      operationId: withdraw
+      summary: 탈퇴
+      description: |
+        회원 상태를 `withdrawn` 으로 옮긴다 (R12.5). **되돌릴 수 없다** — 두 번 불러도 결과가
+        같으므로 이미 탈퇴한 계정에도 `204` 로 답한다.
+
+        **즉시 지워지지는 않는다.** 실제 파기(플레이 기록 삭제 · `player_ref` 매핑 파기)와 공개
+        UGC 강등은 파기 배치가 수행한다 (B-61, §13-9). 그 사이에도 이 계정은 **다시 로그인할 수
+        없고 토큰을 재발급받지 못한다.**
+      x-implemented-by: B-62
+      responses:
+        '204':
+          description: 탈퇴 접수됨. 본문 없음
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/v1/me/sessions:
     get:
       tags: [me]
