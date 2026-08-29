@@ -247,8 +247,8 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 
 		playJdbc().sql("""
 						INSERT INTO turn (id, session_id, turn_no, chapter_no, paragraphs, choices,
-								created_at)
-						VALUES (?, ?, 1, 1, '[]'::jsonb, '[]'::jsonb, ?)
+								safety_verdict, created_at)
+						VALUES (?, ?, 1, 1, '[]'::jsonb, '[]'::jsonb, 'pass', ?)
 						""")
 				.params(UUID.randomUUID(), sessionId, now()).update();
 		playJdbc().sql("""
