@@ -238,7 +238,13 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 		return user.getId();
 	}
 
-	/** 세션 하나와 거기 매달린 것들. 파기가 <b>매달린 것까지</b> 지우는지 보려면 셋 다 필요하다. */
+	/**
+	 * 세션 하나와 거기 매달린 것들. 파기가 <b>매달린 것까지</b> 지우는지 보려면 셋 다 필요하다.
+	 *
+	 * <p><b>기본값 없는 NOT NULL 을 전부 적는다.</b> {@code safety_verdict}(R9.3)와
+	 * {@code is_ai_generated}(R11.2)는 <b>기본값을 두지 않기로 한 컬럼</b>이다 — 값이 조용히
+	 * 채워지면 그것은 그 턴의 사실이 아니라 스키마의 사실이 된다.
+	 */
 	private UUID givenPlayHistory(UUID playerRef) {
 		PlaySession session = this.sessions.saveAndFlush(PlaySession.start(playerRef, STORY_ID,
 				VERSION_ID, "fixed", "scenario", false, Instant.now()));
@@ -247,8 +253,8 @@ class WithdrawalPurgeIntegrationTests extends ContainerTestBase {
 
 		playJdbc().sql("""
 						INSERT INTO turn (id, session_id, turn_no, chapter_no, paragraphs, choices,
-								safety_verdict, created_at)
-						VALUES (?, ?, 1, 1, '[]'::jsonb, '[]'::jsonb, 'pass', ?)
+								safety_verdict, is_ai_generated, created_at)
+						VALUES (?, ?, 1, 1, '[]'::jsonb, '[]'::jsonb, 'pass', TRUE, ?)
 						""")
 				.params(UUID.randomUUID(), sessionId, now()).update();
 		playJdbc().sql("""
