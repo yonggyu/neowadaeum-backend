@@ -3,7 +3,11 @@ package com.neowadaeum.play.repository;
 import com.neowadaeum.play.domain.StorySummary;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Collection;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * 요약 영속화 (§4.2, B-34).
@@ -31,4 +35,19 @@ public interface StorySummaryRepository extends JpaRepository<StorySummary, UUID
 	 */
 	java.util.List<StorySummary> findBySessionIdAndUptoTurnNoGreaterThanAndDeletedAtIsNull(
 			UUID sessionId, int uptoTurnNo);
+
+	/**
+	 * 탈퇴 회원의 기록 파기 (R12.4, B-61).
+	 *
+	 * <p>요약은 세션의 내용을 압축한 것이다 — 세션이 사라지면 압축해 둘 원본도 없다.
+	 *
+	 * <p><b>벌크 삭제다.</b> 엔티티를 읽어 지우면 그 회원의 플레이 전체를 메모리에 올리게 된다 —
+	 * 지우는 일에 필요한 것은 <b>조건</b>이지 행의 내용이 아니다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			DELETE FROM StorySummary m
+			WHERE m.sessionId IN (SELECT s.id FROM PlaySession s WHERE s.playerRef IN :playerRefs)
+			""")
+	int deleteByPlayerRefs(@Param("playerRefs") Collection<UUID> playerRefs);
 }
