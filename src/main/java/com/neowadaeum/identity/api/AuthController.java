@@ -69,8 +69,12 @@ public class AuthController {
 	 * 값은 {@code 400 VALIDATION_ERROR} 다 — 존재하지 않는 경로가 아니라 <b>보낼 수 없는 값</b>이다.
 	 *
 	 * <p><b>IP 를 원문으로 넘기지 않는다</b> (§12). 여기서 해시로 바꾸므로 서비스도 저장소도
-	 * 원문을 볼 방법이 없다. 프록시 뒤에서는 {@code getRemoteAddr()} 이 프록시를 가리키며,
-	 * 전달 헤더를 신뢰할지는 배포 구성의 문제다 (B-63).
+	 * 원문을 볼 방법이 없다.
+	 *
+	 * <p><b>프록시 뒤에서는 {@code getRemoteAddr()} 이 프록시를 가리킨다.</b> 전달 헤더를
+	 * <b>신뢰된 프록시에서 온 것만</b> 신뢰한다는 원칙이 §13-45 로 정해졌다 — 무조건 믿으면
+	 * 헤더 한 줄로 S-8 의 IP 기준 한도를 우회할 수 있다. 신뢰 경계를 실제 값으로 세우는 것은
+	 * 배포 환경이 정해지는 시점이다 ({@code docs/deployment.md} §5, 이슈 #224).
 	 */
 	@PostMapping("/oauth/{provider}")
 	public TokenResponse loginWithOAuth(@PathVariable String provider,
