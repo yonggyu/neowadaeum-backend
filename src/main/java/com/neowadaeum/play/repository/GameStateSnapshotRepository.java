@@ -46,4 +46,17 @@ public interface GameStateSnapshotRepository extends JpaRepository<GameStateSnap
 			WHERE g.sessionId IN (SELECT s.id FROM PlaySession s WHERE s.playerRef IN :playerRefs)
 			""")
 	int deleteByPlayerRefs(@Param("playerRefs") Collection<UUID> playerRefs);
+
+	/**
+	 * 미리보기 작품과 함께 사라지는 기록 (§13-37, B-61).
+	 *
+	 * <p>작품이 지워지면 그 위의 세션은 <b>읽을 수 없는 기록</b>이 된다 — 남겨 두면
+	 * 어느 작품의 것인지 물어볼 곳이 없는 행이 쌓인다.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("""
+			DELETE FROM GameStateSnapshot g
+			WHERE g.sessionId IN (SELECT s.id FROM PlaySession s WHERE s.storyId IN :storyIds)
+			""")
+	int deleteByStoryIds(@Param("storyIds") Collection<UUID> storyIds);
 }

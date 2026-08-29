@@ -2,6 +2,8 @@ package com.neowadaeum.batch;
 
 import com.neowadaeum.common.spi.LogRetentionPurge;
 import com.neowadaeum.common.spi.PlayerDataPurge;
+import com.neowadaeum.common.spi.PreviewSessionPurge;
+import com.neowadaeum.common.spi.PreviewStoryPurge;
 import com.neowadaeum.common.spi.SessionExpiry;
 import com.neowadaeum.common.spi.WithdrawnAccounts;
 import java.time.Duration;
@@ -20,9 +22,9 @@ import org.springframework.stereotype.Component;
  * 아니라 <b>거짓 고지</b>다 — S-10 이 "파기 배치를 <b>실제로 구현하고 테스트한다</b>" 를
  * 명시한 이유다.
  *
- * <p><b>셋을 한 회차에 부른다.</b> 로그 파기 · 세션 만료 · 탈퇴 파기는 스토어도 소유 모듈도
- * 다르지만 <b>같은 질문에 답한다</b> — 지난 것을 언제까지 들고 있는가. 주기를 나누면 "지금 보관
- * 상태가 어떤가"를 세 로그에서 맞춰 봐야 한다.
+ * <p><b>넷을 한 회차에 부른다.</b> 로그 파기 · 세션 만료 · 탈퇴 파기 · 미리보기 파기는 스토어도
+ * 소유 모듈도 다르지만 <b>같은 질문에 답한다</b> — 지난 것을 언제까지 들고 있는가. 주기를 나누면
+ * "지금 보관 상태가 어떤가"를 네 로그에서 맞춰 봐야 한다.
  *
  * <p><b>하나가 실패해도 나머지는 돈다.</b> 스토어가 다르므로 함께 묶을 트랜잭션도 없고,
  * 한 스토어의 장애가 다른 스토어의 파기를 미룰 이유도 없다.
@@ -49,14 +51,21 @@ public class RetentionBatch {
 
 	private final PlayerDataPurge playerData;
 
+	private final PreviewStoryPurge previewStories;
+
+	private final PreviewSessionPurge previewSessions;
+
 	private final StringRedisTemplate redis;
 
 	public RetentionBatch(LogRetentionPurge logs, SessionExpiry sessions, WithdrawnAccounts accounts,
-			PlayerDataPurge playerData, StringRedisTemplate redis) {
+			PlayerDataPurge playerData, PreviewStoryPurge previewStories,
+			PreviewSessionPurge previewSessions, StringRedisTemplate redis) {
 		this.logs = logs;
 		this.sessions = sessions;
 		this.accounts = accounts;
 		this.playerData = playerData;
+		this.previewStories = previewStories;
+		this.previewSessions = previewSessions;
 		this.redis = redis;
 	}
 
@@ -77,9 +86,10 @@ public class RetentionBatch {
 			int purgedLogs = purgeLogs();
 			int expiredSessions = expireSessions();
 			int purgedAccounts = purgeWithdrawnAccounts();
+			int purgedPreviews = purgeExpiredPreviews();
 			log.info("batch.retention.done purgedLogs={} expiredSessions={} purgedAccounts={} "
-					+ "tookMs={}", purgedLogs, expiredSessions, purgedAccounts,
-					(System.nanoTime() - startedAt) / 1_000_000);
+					+ "purgedPreviews={} tookMs={}", purgedLogs, expiredSessions, purgedAccounts,
+					purgedPreviews, (System.nanoTime() - startedAt) / 1_000_000);
 		}
 		finally {
 			this.redis.delete(LOCK_KEY);
@@ -133,6 +143,28 @@ public class RetentionBatch {
 		}
 		catch (RuntimeException ex) {
 			log.error("batch.retention.accounts.failed reason={}", ex.getClass().getSimpleName(), ex);
+			return 0;
+		}
+	}
+
+	/**
+	 * 미리보기가 쌓아 둔 작품 파기 (§13-37).
+	 *
+	 * <p><b>세션이 먼저다.</b> 작품을 먼저 지우면 그 위의 세션은 <b>읽을 수 없는 기록</b>이 되고,
+	 * 그 세션을 찾을 근거도 함께 사라진다. 탈퇴 파기와 같은 이유로 순서가 곧 안전장치다 —
+	 * 중간에 실패하면 그 작품은 다음 회차에 다시 대상이 된다.
+	 */
+	private int purgeExpiredPreviews() {
+		try {
+			List<UUID> expired = this.previewStories.expiredPreviewStories();
+			if (expired.isEmpty()) {
+				return 0;
+			}
+			this.previewSessions.purgeByStories(expired);
+			return this.previewStories.purge(expired);
+		}
+		catch (RuntimeException ex) {
+			log.error("batch.retention.previews.failed reason={}", ex.getClass().getSimpleName(), ex);
 			return 0;
 		}
 	}
