@@ -32,9 +32,12 @@ class BlocklistAdminServiceTests extends ContainerTestBase {
 	@Autowired
 	private BlocklistQuery query;
 
+	@Autowired
+	private PersistentBlocklistQuery cache;
+
 	@AfterEach
 	void clear() {
-		this.entries.deleteAll();
+		BlocklistTeardown.clear(this.entries, this.cache);
 	}
 
 	/** <b>등록이 곧바로 조회에 보인다.</b> 캐시가 갱신을 삼키지 않는다. */
@@ -63,6 +66,38 @@ class BlocklistAdminServiceTests extends ContainerTestBase {
 		assertThat(this.query.findAll())
 				.extracting(com.neowadaeum.common.spi.BlocklistEntry::normalizedValue)
 				.doesNotContain(TextNormalizer.normalize(value));
+	}
+
+	/**
+	 * <b>표만 비우면 지워지지 않는다</b> (§13-31, 이슈 #211).
+	 *
+	 * <p>스냅샷을 버리는 것은 쓰기 쪽이다 ({@link BlocklistAdminService}). 리포지토리로 직접
+	 * 지우면 그 경로를 거치지 않으므로 <b>DB 에서는 사라졌는데 최대 1분 동안 캐시에는 남아
+	 * 있다.</b> 컨테이너가 한 벌이라 그 사이에 도는 다른 클래스의 제출·precheck 가 이미 지워진
+	 * 항목에 걸리고, 실패는 블록리스트가 아니라 엉뚱한 기능의 문제처럼 보인다.
+	 *
+	 * <p>이 테스트는 <b>함정을 고정한다.</b> 뒷정리에서 무효화를 빼면 여기가 먼저 깨진다 —
+	 * 남의 테스트가 깨지면서 드러나는 것보다 낫다.
+	 */
+	@Test
+	void S13_31_clearing_the_table_alone_leaves_the_snapshot_stale() {
+		String value = unique();
+		this.service.register(BlocklistKind.PHRASE, value, BlocklistSeverity.BLOCK, "test");
+		assertThat(normalizedValues()).contains(TextNormalizer.normalize(value));
+
+		// 뒷정리가 하던 것 — 서비스를 거치지 않은 삭제.
+		this.entries.deleteAll();
+
+		assertThat(normalizedValues()).contains(TextNormalizer.normalize(value));
+
+		BlocklistTeardown.clear(this.entries, this.cache);
+
+		assertThat(normalizedValues()).doesNotContain(TextNormalizer.normalize(value));
+	}
+
+	private java.util.List<String> normalizedValues() {
+		return this.query.findAll().stream()
+				.map(com.neowadaeum.common.spi.BlocklistEntry::normalizedValue).toList();
 	}
 
 	/** <b>정규화는 서버가 한다</b> (R2.5). 저장된 것은 원문이 아니다. */
