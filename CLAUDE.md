@@ -1,4 +1,4 @@
-# CLAUDE.md — 너와다음 Backend (v1.2)
+# CLAUDE.md — 너와다음 Backend (v1.3)
 
 사용자가 선택지로 이야기를 이끄는 **AI 인터랙티브 스토리 플랫폼**의 백엔드다. 한국 서비스, 15세 이용가 단일 등급.
 본문은 매 턴 AI가 생성한다 — 지연·비용·비결정성이 상수다. 플레이 중 자유입력은 없고 사용자 입력면은 `choiceId` 하나뿐이다.
@@ -189,6 +189,55 @@ inspect → minimal change → targeted test → fast test → (필요 시) inte
 **`backend` / `dev` / `main`에 직접 푸시하지 않는다.** 커밋은 Conventional Commits + `Refs:` + 이슈 번호.
 **PR 400줄 — `src/main/**` 프로덕션 소스 기준이다.** 테스트·문서·픽스처는 세지 않는다. 브랜치 수명 3일. 상세는 `docs/git-workflow.md`.
 
+## 프로젝트 위키 — **작업 PR 마다 갱신한다**
+
+이 레포 밖에 **너와다음 전용 위키**가 있다. 코드와 문서가 *무엇을* 하는지 말한다면, 위키는 **6개월 뒤에 그 결정을 재구성할 수 있게** 정리해 둔 곳이다 — 모듈 경계, 턴 파이프라인, 도메인 규칙, ADR 색인, 스토어별 스키마, 현재 진행 상태.
+
+**레포에 없다.** 로컬 볼트 + Cloudflare Pages 이며 주소·토큰은 레포 밖 로컬 설정에 있다 (S-11 — 공개 레포에 적지 않는다). 접근 수단은 PATH 의 `wiki` CLI 하나다.
+
+```bash
+wiki search  neowadaeum "턴 파이프라인"     # 전문 검색
+wiki read    neowadaeum 20-Architecture/turn-pipeline.md
+wiki ls      neowadaeum 30-Decisions
+wiki new     neowadaeum 30-Decisions adr-0008-<슬러그> "<제목>"
+wiki build   neowadaeum                     # 링크·Mermaid 검증. 갱신했으면 반드시 돌린다
+wiki publish neowadaeum "<커밋 메시지>"      # commit + push → 약 40초 후 반영
+```
+
+> **`llmwiki` 가 아니다.** 그 CLI 는 LLM 일반 지식 위키 전용이고 이 프로젝트 위키의 경로를 건드리지 못한다. 반대로 **LLM·AI 일반론(RAG·서빙·모델 선택)은 이 위키에 넣지 않는다** — 너와다음을 그만두면 쓸모없어지는 것만 여기 온다.
+
+### 언제 읽는가
+
+**작업 정의를 읽기 전에 위키를 먼저 검색한다.** 이미 정리된 결론이 있으면 일반론을 새로 세우지 말고 그 결정을 따르고, 참조한 노트를 PR 본문에 밝힌다. `docs/adr/` 원본이 정본이고 위키는 색인이다 — **충돌하면 레포가 이긴다.**
+
+### 언제 쓰는가 — 작업(`B-xx` / `S-x`) PR 마다
+
+**Draft → Ready 전환 조건이다.** 아래 표로 대조해 해당하는 페이지를 갱신하고, 갱신할 것이 없으면 **PR 본문에 "없음"이라고 적는다.** 판단 자체를 건너뛰지 않는다.
+
+| 이 PR 이 바꾼 것 | 갱신할 위키 페이지 |
+|---|---|
+| 작업 완료 · 이슈 개폐 · 남은 결정 | `00-Overview/current-status` — **문서 상단의 기준 커밋·날짜를 함께 고친다** |
+| 모듈 경계 · 허용 의존 · `@NamedInterface` | `20-Architecture/system-architecture` + 해당 `module-*` |
+| 턴 파이프라인 단계·순서·예산 | `20-Architecture/turn-pipeline` |
+| 새 ADR · 기존 ADR 이 `superseded` 됨 | `30-Decisions/adr-*` + `30-Decisions/index` |
+| 마이그레이션 · 제약 · 스토어 이동 | `40-Data/store-*` · `40-Data/migrations` |
+| `docs/openapi.yaml` · `ErrorCode` | `50-API/*` |
+| 게임 규칙 · 세이프티 정책 · 세션/UGC 상태 전이 | `60-Domain/*` |
+| 새 용어 또는 이름 변경 | `00-Overview/glossary` |
+| 문서와 코드의 어긋남을 발견하거나 해소함 | `00-Overview/doc-code-drift` |
+| 브랜치 · CI · 테스트 정책 | `70-Development/*` |
+
+### 쓸 때의 규칙
+
+- **`docs/internal/` 원문을 옮기지 않는다.** 조항 번호로만 지목한다 (`R4.2 의 델타 상한`). **세이프티 임계값·블록리스트 항목·시크릿도 적지 않는다** — 위키가 토큰 게이트 뒤에 있어도 같다 (S-11).
+- **근거를 남긴다.** 파일 또는 `ADR`/`R` 조항 단위로. **줄 번호는 쓰지 않는다** — 금방 깨진다.
+- **canonical 을 하나만 둔다.** 같은 내용을 여러 페이지에 복붙하지 말고 링크한다.
+- **컬럼 목록·시그니처·디렉터리 트리를 복사하지 않는다.** 반드시 실제와 어긋나고, **어긋난 문서는 없는 것보다 나쁘다.** 대신 *왜 그런가*를 쓴다.
+- **오래된 계획과 현재 구현을 섞지 않는다.** 확실하지 않으면 쓰지 않는다.
+- 새 노트를 만들면 **그 폴더 `index.md` 에 링크를 추가한다.** 파일명은 소문자+하이픈, 한글 파일명 금지.
+
+**CI 는 이것을 검증하지 못한다** — 위키가 레포 밖이기 때문이다. `wiki build neowadaeum` 이 링크와 Mermaid 를 잡는 유일한 게이트이고, 나머지는 PR 체크리스트가 강제한다.
+
 ## 문서 index — 필요할 때 해당 절만 읽는다
 
 | 문서 | 언제 |
@@ -203,6 +252,7 @@ inspect → minimal change → targeted test → fast test → (필요 시) inte
 | `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 / **0006 턴 생성 포트 소유(0005 일부 대체)** / **0007 fallback 과 세션 provider 고정** |
 | `docs/openapi.yaml` | API 계약 — 런타임 진실의 원천(B-06). 계약을 바꾸면 이 파일을 함께 고친다. `OpenApiContractTests` 가 구현과의 표류를 잡는다 |
 | `README.md` | 로컬 실행 · 스키마 4개 · 마이그레이션 명명 규칙 |
+| **프로젝트 위키** (레포 밖) | 모듈 경계 · 턴 파이프라인 · 도메인 규칙 · ADR 색인 · 스토어별 스키마 · 현재 상태. `wiki search neowadaeum "<주제>"`. **작업 PR 마다 갱신한다 — 위 절 참조** |
 
 ## 코드 영역별 규칙 — `.claude/rules/`
 
