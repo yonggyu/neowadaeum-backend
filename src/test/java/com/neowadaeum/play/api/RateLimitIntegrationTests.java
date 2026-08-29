@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.common.support.RateLimitProperties;
+import com.neowadaeum.common.support.RateLimitWindows;
 import com.neowadaeum.common.support.RateLimiter;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
@@ -36,6 +37,9 @@ class RateLimitIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private RateLimiter rateLimiter;
+
+	@Autowired
+	private org.springframework.data.redis.core.StringRedisTemplate redis;
 
 	@Autowired
 	private RateLimitProperties limits;
@@ -159,13 +163,18 @@ class RateLimitIntegrationTests extends ContainerTestBase {
 
 	// ── 보조 ────────────────────────────────────────────────
 
-	/** 창을 미리 소진한다 — 실제로 10번 턴을 만들면 Provider 를 열 번 부르게 된다. */
+	/**
+	 * 창을 미리 소진한다 — 실제로 10번 턴을 만들면 Provider 를 열 번 부르게 된다.
+	 *
+	 * <p><b>한도만큼 세지 않고 한 번에 채운다</b> (이슈 #217). 고정 창이므로(§13-28) 한도만큼
+	 * 왕복하는 동안 분 경계를 넘으면 <b>카운터가 1부터 다시 센다</b> — 그러면 막혀야 할 요청이
+	 * 통과해 한도 게이트가 아니라 그 뒤의 코드를 만나고, 실패는 <b>CI 가 느린 날에만</b> 나타난다.
+	 */
 	private void exhaust(String scope, UUID playerRef, int limit) {
 		java.time.Duration window = "turn-day".equals(scope) ? RateLimitProperties.DAY
 				: RateLimitProperties.MINUTE;
-		for (int attempt = 0; attempt < limit; attempt++) {
-			this.rateLimiter.tryAcquire(scope, playerRef.toString(), limit, window);
-		}
+		RateLimitWindows.exhaust(this.redis, this.rateLimiter, scope, playerRef.toString(), limit,
+				window);
 	}
 
 	private UUID startSession() throws Exception {
