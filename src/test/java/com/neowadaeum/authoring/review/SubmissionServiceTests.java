@@ -7,6 +7,8 @@ import com.neowadaeum.authoring.blocklist.BlocklistAdminService;
 import com.neowadaeum.authoring.blocklist.BlocklistEntryRepository;
 import com.neowadaeum.authoring.blocklist.BlocklistKind;
 import com.neowadaeum.authoring.blocklist.BlocklistSeverity;
+import com.neowadaeum.authoring.blocklist.BlocklistTeardown;
+import com.neowadaeum.authoring.blocklist.PersistentBlocklistQuery;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.StoryDraftRepository;
 import java.util.UUID;
@@ -50,6 +52,9 @@ class SubmissionServiceTests extends ContainerTestBase {
 	private BlocklistEntryRepository blocklistRows;
 
 	@Autowired
+	private PersistentBlocklistQuery blocklistCache;
+
+	@Autowired
 	@Qualifier("catalogDataSource")
 	private DataSource catalog;
 
@@ -68,7 +73,7 @@ class SubmissionServiceTests extends ContainerTestBase {
 		}
 		this.stories.clear();
 		this.draftRows.deleteAll();
-		this.blocklistRows.deleteAll();
+		BlocklistTeardown.clear(this.blocklistRows, this.blocklistCache);
 	}
 
 	/** {@code unlisted} 는 자동 검수만으로 승인되고 <b>곧바로 게시된다</b> (R8.6, R8.8). */
