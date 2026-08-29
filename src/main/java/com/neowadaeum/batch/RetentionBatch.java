@@ -6,6 +6,7 @@ import com.neowadaeum.common.spi.PreviewSessionPurge;
 import com.neowadaeum.common.spi.PreviewStoryPurge;
 import com.neowadaeum.common.spi.SessionExpiry;
 import com.neowadaeum.common.spi.WithdrawnAccounts;
+import com.neowadaeum.common.spi.WithdrawnAuthorContent;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +52,8 @@ public class RetentionBatch {
 
 	private final PlayerDataPurge playerData;
 
+	private final WithdrawnAuthorContent authorContent;
+
 	private final PreviewStoryPurge previewStories;
 
 	private final PreviewSessionPurge previewSessions;
@@ -58,12 +61,14 @@ public class RetentionBatch {
 	private final StringRedisTemplate redis;
 
 	public RetentionBatch(LogRetentionPurge logs, SessionExpiry sessions, WithdrawnAccounts accounts,
-			PlayerDataPurge playerData, PreviewStoryPurge previewStories,
-			PreviewSessionPurge previewSessions, StringRedisTemplate redis) {
+			PlayerDataPurge playerData, WithdrawnAuthorContent authorContent,
+			PreviewStoryPurge previewStories, PreviewSessionPurge previewSessions,
+			StringRedisTemplate redis) {
 		this.logs = logs;
 		this.sessions = sessions;
 		this.accounts = accounts;
 		this.playerData = playerData;
+		this.authorContent = authorContent;
 		this.previewStories = previewStories;
 		this.previewSessions = previewSessions;
 		this.redis = redis;
@@ -130,7 +135,7 @@ public class RetentionBatch {
 	 * identity 에만 있다 — <b>매핑을 먼저 끊으면 다른 스토어는 무엇을 지워야 할지 알 수 없게
 	 * 된다.</b> 이 순서 덕분에 중간에 실패해도 안전하다: 그 회원은 다음 회차에 다시 대상이 된다.
 	 *
-	 * <p><b>스토어가 둘이라 함께 묶을 트랜잭션이 없다.</b> 그래서 순서가 곧 안전장치다.
+	 * <p><b>스토어가 셋이라 함께 묶을 트랜잭션이 없다.</b> 그래서 순서가 곧 안전장치다.
 	 */
 	private int purgeWithdrawnAccounts() {
 		try {
@@ -139,6 +144,9 @@ public class RetentionBatch {
 				return 0;
 			}
 			this.playerData.purge(pending);
+			// R12.5 의 단서 — 공개된 UGC 는 예외 처리가 필요하다. **매핑을 끊기 전에** 한다:
+			// author_ref 가 곧 playerRef 이므로, 끊긴 뒤에는 어느 작품이 그의 것인지 알 수 없다.
+			this.authorContent.handleWithdrawal(pending);
 			return this.accounts.purge(pending);
 		}
 		catch (RuntimeException ex) {

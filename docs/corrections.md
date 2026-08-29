@@ -139,7 +139,7 @@ R11.3은 "사전 고지 노출 이력을 `consent_log`에 기록한다"고 하�
 | `stateChanges` 연산자 | `<numericPath>: delta`, `flags.add: []`, `flags.remove: []`, `inventory.add: []`, `inventory.remove: []`, `location`, `timeOfDay`. **이 외 키는 무시** |
 | `state_schema` 템플릿 | R4.4가 "플랫폼 템플릿 중 선택"을 요구하므로 `story_version.state_template_key`(`affinity`\|`flag`\|`numeric`) 컬럼 추가 |
 | `isPending`(History) | 마지막 턴이며 `chosen_choice_id IS NULL`인 경우 true |
-| UGC 작성자 탈퇴 | `[결정 필요]` — 약관 확정 전까지 기본값은 **공개 UGC를 `unlisted`로 강등하고 작성자명을 "탈퇴한 사용자"로 익명화**한다 |
+| UGC 작성자 탈퇴 | `[결정 필요]` — 약관 확정 전까지 기본값은 **공개 UGC를 `unlisted`로 강등하고 작성자명을 "탈퇴한 사용자"로 익명화**한다. **B-62 에서 이 채택안대로 구현했다** — 지우지 않는 이유는 작품에 *플레이한 사람들의* 기록(세션·도달률)이 매달려 있기 때문이고, 검수 상태는 건드리지 않는다(승인은 작품에 대한 판정이지 작성자에 대한 판정이 아니다). 발행되지 않은 원고(`story_draft`)는 지운다. 처리는 **매핑 파기보다 먼저** 일어난다 — `author_ref` 가 곧 `player_ref` 다 |
 
 ### 13-10. `[모순]` 구현 우선순위의 의존성 역전
 
