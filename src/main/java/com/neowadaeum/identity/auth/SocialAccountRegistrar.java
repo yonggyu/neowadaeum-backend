@@ -101,6 +101,26 @@ public class SocialAccountRegistrar {
 	}
 
 	/**
+	 * 리프레시가 묻는 것 — <b>이 회원이 아직 유효한가</b> (R12.5, B-62).
+	 *
+	 * <p><b>리프레시에만 건다.</b> 모든 요청 경로에 걸면 조회가 하나씩 붙고, 그것이 리프레시
+	 * 저장소를 두지 않기로 한 이유였다 (§13). 액세스 토큰은 짧으므로 <b>재발급을 막는 것으로
+	 * 탈퇴가 실제 차단이 된다</b> — 그 사이는 토큰의 남은 수명만큼이다.
+	 *
+	 * <p><b>규칙은 아래 {@code playerRefOf} 와 같다.</b> 로그인과 재발급이 다른 기준을 쓰면
+	 * 한쪽으로 막힌 회원이 다른 쪽으로 들어온다.
+	 *
+	 * @throws ApiException {@code UNAUTHENTICATED} 매핑이 파기됐다 · {@code FORBIDDEN} 정지·탈퇴
+	 */
+	public void requireActive(UUID playerRef) {
+		User user = this.users.findByPlayerRef(playerRef)
+				.orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+		if (user.getStatus() != UserStatus.ACTIVE) {
+			throw new ApiException(ErrorCode.FORBIDDEN);
+		}
+	}
+
+	/**
 	 * <b>정지·탈퇴 회원은 토큰을 받지 못한다.</b>
 	 *
 	 * <p>로그인 시점에 막지 않으면 그 뒤의 모든 경로가 각자 상태를 확인해야 한다.

@@ -280,16 +280,65 @@ class OAuthLoginServiceTests {
 				.willAnswer(invocation -> withField(invocation.getArgument(0), "id", UUID.randomUUID()));
 	}
 
-	/** 재발급은 저장소를 건드리지 않는다 — 상태 없는 리프레시의 실질이다. */
+	/**
+	 * 재발급은 회전한다 — 그리고 <b>회원이 아직 유효한지만</b> 묻는다 (B-62).
+	 *
+	 * <p>리프레시 저장소는 여전히 없다 (§13). 조회 하나가 붙는 곳은 재발급뿐이며, 그것이
+	 * "모든 요청 경로에 조회가 붙는다"를 피하면서 탈퇴를 실제 차단으로 만드는 지점이다.
+	 */
 	@Test
-	void refresh_rotates_without_touching_the_store() {
+	void R12_5_refresh_rotates_for_an_active_member() {
 		UUID playerRef = UUID.randomUUID();
 		AuthTokens first = this.tokens.issue(playerRef);
+		given(this.users.findByPlayerRef(playerRef))
+				.willReturn(Optional.of(User.register(playerRef, null, NOW)));
 
 		AuthTokens rotated = this.service.refresh(first.refreshToken());
 
 		assertThat(this.tokens.authenticate(rotated.accessToken())).isEqualTo(playerRef);
+		// 리프레시 저장소를 두지 않는다는 결정은 그대로다 — 회원만 확인한다.
 		verify(this.users, never()).findById(any());
+	}
+
+	/**
+	 * <b>탈퇴한 회원은 재발급받지 못한다</b> (R12.5, B-62).
+	 *
+	 * <p>이것이 없으면 탈퇴는 <b>다음 로그인부터 적용되는 신청</b>이 된다 — 토큰을 계속 회전시키면
+	 * 파기 배치가 돌 때까지 서비스를 그대로 쓸 수 있다.
+	 */
+	@Test
+	void R12_5_a_withdrawn_member_cannot_refresh() {
+		UUID playerRef = UUID.randomUUID();
+		AuthTokens first = this.tokens.issue(playerRef);
+		given(this.users.findByPlayerRef(playerRef)).willReturn(Optional.of(withdrawn(playerRef)));
+
+		assertThatThrownBy(() -> this.service.refresh(first.refreshToken()))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.FORBIDDEN);
+	}
+
+	/**
+	 * <b>매핑이 파기된 뒤의 토큰에는 답할 회원이 없다</b> (R12.5, B-61).
+	 *
+	 * <p>파기는 {@code player_ref} 를 비우므로 그 값으로는 아무도 찾을 수 없다.
+	 */
+	@Test
+	void R12_5_a_purged_mapping_cannot_refresh() {
+		AuthTokens first = this.tokens.issue(UUID.randomUUID());
+		given(this.users.findByPlayerRef(any())).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> this.service.refresh(first.refreshToken()))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.UNAUTHENTICATED);
+	}
+
+	/** 탈퇴 상태를 만든다 — 상태 전이는 엔티티가 갖고 있다 (B-62). */
+	private static User withdrawn(UUID playerRef) {
+		User user = User.register(playerRef, null, NOW);
+		user.withdraw();
+		return user;
 	}
 
 	/** 정지 상태를 만들 공개 경로가 아직 없다 — B-40 이다. 그 상태만 재현한다. */

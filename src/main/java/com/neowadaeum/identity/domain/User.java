@@ -111,6 +111,28 @@ public class User {
 		this.ageVerifiedAt = verifiedAt;
 	}
 
+	/**
+	 * 탈퇴 신청 (R12.5, B-62).
+	 *
+	 * <p><b>지우는 것이 아니라 상태다.</b> 실제 파기는 배치가 하고 (B-61), 그 사이에도 이 회원은
+	 * 로그인하지 못한다 — 상태가 곧 차단이다.
+	 *
+	 * <p><b>정지된 회원도 탈퇴할 수 있다.</b> 탈퇴는 서비스가 주는 혜택이 아니라 회원의 권리이며,
+	 * 정지를 이유로 막으면 <b>나갈 수 없는 계정</b>이 생긴다.
+	 *
+	 * <p><b>되돌릴 수 없다.</b> 되돌리는 경로를 두면 파기 배치가 지운 뒤에 돌아오는 회원이
+	 * 생기고, 그 회원에게는 기록도 동의도 없다.
+	 *
+	 * @return 이번 호출이 상태를 바꿨으면 {@code true}. 이미 탈퇴한 회원이면 {@code false}
+	 */
+	public boolean withdraw() {
+		if (this.status == UserStatus.WITHDRAWN) {
+			return false;
+		}
+		this.status = UserStatus.WITHDRAWN;
+		return true;
+	}
+
 	public UUID getId() {
 		return this.id;
 	}
