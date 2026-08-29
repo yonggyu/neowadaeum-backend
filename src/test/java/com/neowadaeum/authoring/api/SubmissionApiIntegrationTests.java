@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.authoring.blocklist.BlocklistEntryRepository;
+import com.neowadaeum.authoring.blocklist.BlocklistTeardown;
+import com.neowadaeum.authoring.blocklist.PersistentBlocklistQuery;
 import com.neowadaeum.authoring.draft.StoryDraftRepository;
 import com.neowadaeum.authoring.review.StoryReviewRepository;
 import java.util.UUID;
@@ -47,6 +49,9 @@ class SubmissionApiIntegrationTests extends ContainerTestBase {
 	private BlocklistEntryRepository blocklist;
 
 	@Autowired
+	private PersistentBlocklistQuery blocklistCache;
+
+	@Autowired
 	@Qualifier("catalogDataSource")
 	private DataSource catalog;
 
@@ -63,7 +68,7 @@ class SubmissionApiIntegrationTests extends ContainerTestBase {
 		});
 		this.reviews.deleteAll();
 		this.drafts.deleteAll();
-		this.blocklist.deleteAll();
+		BlocklistTeardown.clear(this.blocklist, this.blocklistCache);
 	}
 
 	/** 제출은 <b>접수</b>다 — 자동 승인이든 인간 검수 대기든 같은 코드로 답한다. */

@@ -36,14 +36,29 @@ public class RateLimiter {
 	 * @return 허용되면 {@code true}. 넘겼으면 {@code false}
 	 */
 	public boolean tryAcquire(String scope, String key, int limit, Duration window) {
-		String windowKey = "rate:%s:%s:%d".formatted(scope, key,
-				System.currentTimeMillis() / window.toMillis());
+		// 키를 한 번만 만든다. 두 번 만들면 그 사이에 창이 바뀌었을 때 **센 키와 만료를 건 키가
+		// 달라진다** — 만료 없는 카운터가 남고, 그 창은 영원히 소진된 상태가 된다.
+		String windowKey = windowKey(scope, key, window);
 		Long count = this.redis.opsForValue().increment(windowKey);
 		if (count != null && count == 1L) {
 			// 첫 증가에서만 만료를 건다. 매번 걸면 창이 계속 밀려 사실상 만료되지 않는다.
 			this.redis.expire(windowKey, window);
 		}
 		return count != null && count <= limit;
+	}
+
+	/**
+	 * 지금 창의 카운터 키.
+	 *
+	 * <p><b>이 형식은 이 클래스의 지식이다.</b> 창 번호가 키에 들어가므로(위 설명) 밖에서 같은
+	 * 문자열을 다시 만들면, 형식이 바뀌는 날 <b>어긋난 채로 조용히 동작한다</b> — 세던 것과 다른
+	 * 키를 세게 된다.
+	 *
+	 * <p>패키지 밖으로 열지 않는다. 지금 이것을 필요로 하는 것은 <b>창을 미리 소진시켜야 하는
+	 * 테스트</b>뿐이고 (이슈 #217), 그것은 같은 패키지에 있다.
+	 */
+	String windowKey(String scope, String key, Duration window) {
+		return "rate:%s:%s:%d".formatted(scope, key, System.currentTimeMillis() / window.toMillis());
 	}
 
 	/**
