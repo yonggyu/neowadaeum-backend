@@ -32,6 +32,7 @@ import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.StorySummaryRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.TurnRepository;
+import com.neowadaeum.safety.l2.MaskedText;
 import com.neowadaeum.safety.l2.SafetyL2Judge;
 import com.neowadaeum.safety.l2.SafetyJudgement;
 import com.neowadaeum.safety.l2.SafetyOutcome;
@@ -39,6 +40,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -238,16 +240,58 @@ public class TurnPipeline {
 		if (judgement.outcome() == SafetyOutcome.PASS) {
 			return new Generated(result, SafetyVerdict.PASS, judgement);
 		}
+		if (judgement.outcome() == SafetyOutcome.MASKED) {
+			return new Generated(applyMask(result, judgement), SafetyVerdict.REVISED, judgement);
+		}
 		if (judgement.blocked()) {
 			return null;
 		}
 
+		// §9.2 — 재생성은 **한 번뿐**이다. 여기에 반복이 없다는 것이 그 보장이다.
 		GeneratedTurn regenerated = this.provider.generateTurn(request);
 		SafetyJudgement second = screen(regenerated);
+		if (second.outcome() == SafetyOutcome.MASKED) {
+			return new Generated(applyMask(regenerated, second), SafetyVerdict.REVISED, second);
+		}
 		if (second.outcome() != SafetyOutcome.PASS) {
 			return null;
 		}
 		return new Generated(regenerated, SafetyVerdict.REVISED, second);
+	}
+
+	/**
+	 * 가려진 본문으로 갈아 끼운다 (§9.2 — 마스킹 후 통과).
+	 *
+	 * <p><b>원문은 여기서 끝난다.</b> 저장도 응답도 이 결과만 본다 — 판정기가 가린 자리를 되살릴
+	 * 경로를 만들지 않는다 (I-2).
+	 *
+	 * <p>문단의 종류와 화자, 상태 변화 제안은 그대로 둔다. 마스킹이 바꾸는 것은 <b>사용자에게
+	 * 보이는 문자열</b>뿐이다.
+	 */
+	private static GeneratedTurn applyMask(GeneratedTurn result, SafetyJudgement judgement) {
+		MaskedText masked = judgement.masked();
+		if (masked.paragraphs().size() != result.paragraphs().size()
+				|| masked.choices().size() != result.choices().size()) {
+			// 자리로 다시 붙일 수 없다. 조용히 원문을 쓰지 않는다 — 그것이 마스킹을 없던 일로
+			// 만드는 유일한 방법이다 (I-2).
+			throw new IllegalStateException("masked text does not line up with the generated turn");
+		}
+
+		List<GeneratedParagraph> paragraphs = IntStream.range(0, result.paragraphs().size())
+				.mapToObj(index -> {
+					GeneratedParagraph original = result.paragraphs().get(index);
+					return new GeneratedParagraph(original.type(), original.speakerName(),
+							masked.paragraphs().get(index));
+				})
+				.toList();
+
+		List<GeneratedChoice> choices = IntStream.range(0, result.choices().size())
+				.mapToObj(index -> new GeneratedChoice(result.choices().get(index).order(),
+						masked.choices().get(index)))
+				.toList();
+
+		return new GeneratedTurn(paragraphs, choices, result.proposedStateChanges(),
+				result.chapterAdvanceSuggested(), result.endingSuggested());
 	}
 
 	/**

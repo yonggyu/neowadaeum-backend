@@ -61,6 +61,34 @@ class InputSafetyScreenTests {
 		assertThat(screen.screen("1나린 을 본다").blocked()).isTrue();
 	}
 
+	/**
+	 * §9.2 — <b>입력에서는 가리지 않는다. 거부한다.</b>
+	 *
+	 * <p>같은 카테고리라도 처리가 갈린다: 생성물은 가린 뒤 통과하지만 <b>UGC 입력은 차단</b>이다.
+	 * 넣은 사람의 문장을 서버가 고쳐서 들이는 경로를 만들지 않는다.
+	 */
+	@Test
+	void R9_2_third_party_personal_data_in_input_is_refused_not_masked() {
+		InputSafetyScreen screen = screenWith(entry(FICTIONAL_NAME, SafetyCategory.THIRD_PARTY_PERSONAL_DATA));
+
+		InputVerdict verdict = screen.screen(FICTIONAL_NAME + " 에게 전화한다");
+
+		assertThat(verdict.blocked()).isTrue();
+		assertThat(verdict.categories()).containsExactly(SafetyCategory.THIRD_PARTY_PERSONAL_DATA);
+	}
+
+	/**
+	 * §9.2 — <b>재생성 대상 카테고리도 입력에서는 거부다.</b>
+	 *
+	 * <p>출력에는 "다시 만든다"는 선택지가 있지만 입력에는 없다 — 다시 만들 것이 없다.
+	 */
+	@Test
+	void R9_2_a_regenerate_category_is_refused_at_the_input_gate() {
+		InputSafetyScreen screen = screenWith(entry(FICTIONAL_NAME, SafetyCategory.IP_REPLICATION));
+
+		assertThat(screen.screen(FICTIONAL_NAME + " 처럼 말한다").blocked()).isTrue();
+	}
+
 	/** 빈 입력은 검수 대상이 아니다 — 무엇이 유효한 입력인가는 부르는 쪽의 판단이다. */
 	@Test
 	void R14_1_blank_input_is_not_screened() {

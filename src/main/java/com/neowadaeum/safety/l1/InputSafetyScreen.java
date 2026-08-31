@@ -44,6 +44,13 @@ public class InputSafetyScreen {
 			return InputVerdict.pass();
 		}
 		SafetyJudgement judgement = this.rules.judge(List.of(text), List.of());
-		return new InputVerdict(judgement.blocked(), judgement.categories());
+		// R9.2 — **입력에서는 걸린 것이 곧 거부다.** 출력의 처리(재생성·마스킹)를 여기로 가져오지
+		// 않는다: 다시 만들 것도 없고, 넣은 사람의 문장을 서버가 고쳐서 들이지도 않는다.
+		// 특히 마스킹은 "생성물은 가린 뒤 통과, UGC 입력은 차단"이므로 여기서 통과가 되면 안 된다.
+		//
+		// 차단 판정을 따로 보는 것은 **걸린 항목 없이 차단되는 경우**가 있기 때문이다 — 조회
+		// 실패는 카테고리를 남기지 않으면서 차단이다 (ADR-0002 fail-closed).
+		boolean blocked = judgement.blocked() || !judgement.categories().isEmpty();
+		return new InputVerdict(blocked, judgement.categories());
 	}
 }

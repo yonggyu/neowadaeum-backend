@@ -152,6 +152,68 @@ class SafetyL2JudgeTests {
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 
+	// ── 마스킹의 경계 (§9.2, §13-21) ─────────────────────────
+
+	/**
+	 * <b>1단이 찾은 자리는 가리고 통과한다.</b>
+	 *
+	 * <p>2단이 아무것도 찾지 못했을 때의 이야기다 — 자리를 아는 탐지만 남은 경우다.
+	 */
+	@Test
+	void R9_2_a_term_the_blocklist_located_is_masked_and_passes() {
+		SafetyJudgement judgement = new SafetyL2Judge(
+				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA), CountingClassifier.finding())
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.MASKED);
+		assertThat(judgement.masked().paragraphs().getFirst()).doesNotContain(LISTED);
+	}
+
+	/**
+	 * <b>2단이 찾은 개인정보는 가리지 않는다 — 자리를 모르기 때문이다</b> (§13-21).
+	 *
+	 * <p>분류기는 카테고리만 돌려준다. 위치를 받는 계약을 만들지 않았고, 모델이 말한 offset 을
+	 * 믿고 본문을 잘라내면 <b>모델이 서버의 편집기가 된다.</b> 그래서 결과를 폐기하고 다시 만든다.
+	 */
+	@Test
+	void S13_21_a_semantic_only_detection_is_regenerated_not_masked() {
+		SafetyJudgement judgement = new SafetyL2Judge(rulesFindingNothing(),
+				CountingClassifier.finding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA))
+				.judge(PARAGRAPHS, CHOICES);
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
+		assertThat(judgement.masked()).isNull();
+	}
+
+	/**
+	 * <b>2단이 같은 카테고리를 함께 말하면 1단의 마스킹으로 통과시키지 않는다.</b>
+	 *
+	 * <p>2단이 본 것은 <b>블록리스트에 적혀 있지 않은 무언가</b>다. 적힌 것만 가리고 통과시키면
+	 * 가리지 못한 쪽이 그대로 나간다.
+	 */
+	@Test
+	void S13_21_stage_two_finding_the_same_category_prevents_masking() {
+		SafetyJudgement judgement = new SafetyL2Judge(
+				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA),
+				CountingClassifier.finding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA))
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
+		assertThat(judgement.masked()).isNull();
+	}
+
+	/** §9.2 — 2단이 재생성 카테고리를 더하면 마스킹으로 내려가지 않는다. */
+	@Test
+	void S9_2_stage_two_can_escalate_a_masking_into_a_regeneration() {
+		SafetyJudgement judgement = new SafetyL2Judge(
+				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA),
+				CountingClassifier.finding(SafetyCategory.HATE_SPEECH))
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
+		assertThat(judgement.masked()).isNull();
+	}
+
 	/** R9.6 · S-3 — 판정 결과가 걸린 문자열을 담지 않는다. 카테고리까지다. */
 	@Test
 	void R9_6_the_judgement_does_not_carry_the_offending_text() {

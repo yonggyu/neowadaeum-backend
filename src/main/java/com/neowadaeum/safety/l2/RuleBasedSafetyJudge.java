@@ -24,6 +24,10 @@ import org.slf4j.LoggerFactory;
  * 규정하며, 2단(의미 기반)은 {@link SafetyL2Judge} 가 이 뒤에 붙인다 (B-30). 그래도 <b>이것 하나로도
  * 실제로 차단한다</b> — 축소된 실물이지 스텁이 아니다 (§0.2, ADR-0004).
  *
+ * <p><b>여기가 자리를 아는 유일한 단이다</b> (§9.2 마스킹). 블록리스트 대조는 어떤 항목이 어디에
+ * 걸렸는지를 결정론적으로 말할 수 있고, 그래서 마스킹은 이 단의 탐지에만 붙는다
+ * ({@link PersonalDataMasker}).
+ *
  * <p><b>fail-closed</b> (ADR-0002) — 블록리스트 조회가 실패하면 통과시키지 않고 차단한다.
  * 블록리스트를 못 읽는 상태에서 통과시키면 블록리스트가 존재하지 않는 것과 같다.
  */
@@ -52,8 +56,6 @@ public class RuleBasedSafetyJudge {
 	 * 선택지 텍스트도 사용자에게 도달하는 문자열이다.
 	 */
 	public SafetyJudgement judge(List<String> paragraphs, List<String> choices) {
-		String normalized = normalizeAll(paragraphs) + normalizeAll(choices);
-
 		List<BlocklistEntry> entries;
 		try {
 			entries = this.blocklist.findAll();
@@ -69,18 +71,45 @@ public class RuleBasedSafetyJudge {
 			return new SafetyJudgement(SafetyOutcome.BLOCK, Set.of());
 		}
 
-		Set<SafetyCategory> hits = new LinkedHashSet<>();
-		for (BlocklistEntry entry : entries) {
-			if (normalized.contains(entry.normalizedValue())) {
-				hits.add(entry.category());
-			}
-		}
-
+		Set<SafetyCategory> hits = hitsIn(matchTarget(paragraphs, choices), entries);
 		if (hits.isEmpty()) {
 			return SafetyJudgement.pass();
 		}
 
-		return new SafetyJudgement(CategoryPolicy.decide(hits), hits);
+		SafetyOutcome outcome = CategoryPolicy.decide(hits);
+		if (outcome != SafetyOutcome.MASKED) {
+			return new SafetyJudgement(outcome, hits);
+		}
+
+		// §9.2 — 마스킹 후 통과. 단, **가릴 수 있을 때만**이다.
+		MaskedText masked = PersonalDataMasker.mask(paragraphs, choices, entries);
+		if (masked == null) {
+			// 자리를 모른다. 원문을 임의로 잘라내는 대신 결과를 폐기하고 다시 만든다 —
+			// 재생성 후에도 걸리면 차단이다 (fail-closed).
+			return new SafetyJudgement(SafetyOutcome.REGENERATE, hits);
+		}
+		return new SafetyJudgement(SafetyOutcome.MASKED, hits, masked);
+	}
+
+	/**
+	 * 대조 대상 문자열 — <b>받은 것을 전부 이어 붙인다</b> (#84).
+	 *
+	 * <p>문단마다 따로 대조하면 <b>문단 경계에 걸친 표현이 빠져나간다.</b> 탐지는 언제나 이
+	 * 하나의 규칙으로 하고, 마스킹의 검증도 같은 규칙을 쓴다 — 규칙이 둘이 되면 한쪽만 관대해진다.
+	 */
+	static String matchTarget(List<String> paragraphs, List<String> choices) {
+		return normalizeAll(paragraphs) + normalizeAll(choices);
+	}
+
+	/** 정규화된 대조 대상에서 걸린 카테고리들 (R2.5 — 정규화 값끼리 비교한다). */
+	static Set<SafetyCategory> hitsIn(String target, List<BlocklistEntry> entries) {
+		Set<SafetyCategory> hits = new LinkedHashSet<>();
+		for (BlocklistEntry entry : entries) {
+			if (target.contains(entry.normalizedValue())) {
+				hits.add(entry.category());
+			}
+		}
+		return hits;
 	}
 
 	private static String normalizeAll(List<String> texts) {
