@@ -6,11 +6,16 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.neowadaeum.ai.log.AiCallLog;
+import com.neowadaeum.ai.provider.OutlineRequest;
+import com.neowadaeum.common.spi.SafetyClassificationRequest;
+import com.neowadaeum.play.port.SummaryRequest;
+import java.util.List;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
@@ -366,12 +371,31 @@ class AnthropicStoryProviderContractTests {
 		assertThat(this.recorded.getFirst().costMicro()).isNull();
 	}
 
-	/** §0.2 — 아직 구현하지 않은 용도는 예외 그대로다. 스텁으로 통과시키지 않는다. */
+	/**
+	 * §0.2 — <b>이 어댑터에 미구현으로 남은 용도가 없다</b> (#238).
+	 *
+	 * <p>이 자리는 요약(B-34)과 초안(B-52)이 예외를 던지는 동안 그것을 지켰다. 둘 다 구현된
+	 * 지금은 <b>seam 넷이 모두 실제로 도는지</b>가 확인할 것이다 — 그 사실이 조용히 뒤집히면
+	 * (예: 새 용도가 스텁으로 들어오면) 여기가 먼저 빨개진다.
+	 *
+	 * <p>각 용도의 성질은 전용 테스트가 본다 ({@code AnthropicSummaryTests} ·
+	 * {@code AnthropicOutlineTests} · {@code AnthropicSafetyClassificationTests}).
+	 */
 	@Test
-	void S0_2_unimplemented_uses_stay_unimplemented() {
-		// 요약은 B-34 에서 구현됐다. 남은 미구현은 아웃라인 하나다 (B-52).
-		assertThatThrownBy(() -> this.provider.draftOutline(null))
-				.isInstanceOf(UnsupportedOperationException.class);
+	void S0_2_no_use_is_left_unimplemented() {
+		respondWith(VALID_TURN);
+
+		// 어느 용도도 "구현하지 않았다" 로 끝나지 않는다. 실패하더라도 그것은 호출·형식의
+		// 실패여야 하고, 그 종류는 각 용도의 전용 테스트가 본다.
+		assertThatCode(() -> this.provider.generateTurn(request())).doesNotThrowAnyException();
+		assertThatThrownBy(() -> this.provider.draftOutline(new OutlineRequest("세계관", 5, 3)))
+				.isNotInstanceOf(UnsupportedOperationException.class);
+		assertThatThrownBy(() -> this.provider.summarize(
+				new SummaryRequest(null, List.of(new SummaryRequest.TurnDigest(1, null, "요지")), 600)))
+				.isNotInstanceOf(UnsupportedOperationException.class);
+		assertThatThrownBy(() -> this.provider.classifySafety(
+				new SafetyClassificationRequest(List.of("문장"))))
+				.isNotInstanceOf(UnsupportedOperationException.class);
 	}
 
 	private JsonNode sentBody() {
