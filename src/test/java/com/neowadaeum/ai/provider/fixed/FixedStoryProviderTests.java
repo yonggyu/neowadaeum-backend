@@ -205,8 +205,8 @@ class FixedStoryProviderTests {
 		OutlineResult first = provider().draftOutline(new OutlineRequest("세계관", 5, 3));
 		OutlineResult again = provider().draftOutline(new OutlineRequest("세계관", 5, 3));
 
-		assertThat(first.chapterOutlines()).hasSize(5);
-		assertThat(first.endingOutlines()).hasSize(3);
+		assertThat(first.chapters()).hasSize(5);
+		assertThat(first.endings()).hasSize(3);
 		assertThat(first).isEqualTo(again);
 	}
 

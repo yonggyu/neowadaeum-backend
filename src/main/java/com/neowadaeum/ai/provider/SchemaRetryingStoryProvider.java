@@ -1,6 +1,7 @@
 package com.neowadaeum.ai.provider;
 
 import com.neowadaeum.play.port.SummaryRequest;
+import com.neowadaeum.ai.schema.OutlineOutputSchemaException;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
@@ -31,9 +32,14 @@ import java.util.Set;
  * 레이어가 되기 때문이다 (I-7). 형식을 못 맞춘 원인이 프롬프트에 있다면 고칠 곳은 B-20 의
  * {@code OUTPUT_SPEC} 이지 재요청 경로가 아니다.
  *
- * <p><b>{@link #generateTurn} 에만 건다.</b> {@link #summarize} 는 문자열을 돌려주므로 맞출
- * 스키마가 없고, {@link #draftOutline} 의 출력 계약은 B-52 가 정한다. <b>지금 없는 계약을 위해
- * 빈 재요청을 걸어 두지 않는다</b> — 걸어 두면 그 경로의 실패가 조용히 두 배로 청구된다.
+ * <p><b>{@link #generateTurn} 과 {@link #draftOutline} 에 건다.</b> {@link #summarize} 는 문자열을
+ * 돌려주므로 맞출 스키마가 없고, {@link #classifySafety} 의 형식 위반은 재요청이 아니라 차단이다
+ * (fail-closed).
+ *
+ * <p><b>초안의 재요청은 1회 고정이다</b> (#238). 턴처럼 Provider 능력으로 갈리지 않는다 — 저 규칙
+ * (R5.8 · R3.3)은 §5.2 의 <b>턴 출력 스키마</b>에 대한 것이고, 초안 계약은 그보다 훨씬 작다
+ * (이름 둘과 글 둘). 그것을 두 번 놓치는 모델에게 세 번째를 주는 근거가 없고, 초안은 사용자가
+ * <b>다시 누를 수 있는</b> 호출이다 — 턴처럼 세션 상태가 걸려 있지 않다.
  *
  * <p><b>시간 제한 안쪽에 놓인다</b> ({@code AiGatewayConfiguration}). §6.1 은 4단계(호출, 25s)와
  * 5단계(재요청)를 나란히 두고 §6.3 은 서버 전체 예산을 28s 로 못박는데, 재요청이 제한 밖이면
@@ -121,8 +127,32 @@ public class SchemaRetryingStoryProvider implements StoryProvider {
 		return this.delegate.classifySafety(request);
 	}
 
+	/**
+	 * 계약을 못 맞춘 초안을 <b>한 번</b> 다시 요청한다 (#238).
+	 *
+	 * <p><b>개수 부족은 여기 오지 않는다.</b> 모자란 초안도 유효한 초안이며
+	 * ({@link OutlineOutputFormat}), 그것을 재요청 사유로 삼으면 <b>모델이 짧게 답하는 날마다
+	 * 비용이 두 배</b>가 된다. 여기 오는 것은 형태가 어긋난 응답뿐이다.
+	 *
+	 * <p><b>예산과 기록은 턴과 같은 규칙을 쓴다.</b> 남은 예산이 없으면 걸지 않고(B-21-2),
+	 * 재요청은 별개의 호출이므로 몇 번째인지를 어댑터에 알린다 (B-25).
+	 *
+	 * <p><b>재요청까지 실패하면 마지막 위반을 그대로 올려 보낸다.</b> 턴은 시도 횟수를 담은
+	 * seam 예외로 바꾸지만({@code OutputSchemaRejectedException}) 초안에는 그것을 읽고 다르게
+	 * 행동하는 호출자가 없다 — 없는 계약을 미리 만들지 않는다.
+	 */
 	@Override
 	public OutlineResult draftOutline(OutlineRequest request) {
-		return this.delegate.draftOutline(request);
+		GenerationBudget budget = GenerationBudget.current();
+
+		try {
+			return AiCallAttempt.within(1, () -> this.delegate.draftOutline(request));
+		}
+		catch (OutlineOutputSchemaException first) {
+			if (budget.exhausted()) {
+				throw new GenerationTimedOutException(budget.total());
+			}
+			return AiCallAttempt.within(2, () -> this.delegate.draftOutline(request));
+		}
 	}
 }

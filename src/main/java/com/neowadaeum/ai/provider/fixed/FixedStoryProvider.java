@@ -151,13 +151,15 @@ public class FixedStoryProvider implements StoryProvider {
 	 */
 	@Override
 	public OutlineResult draftOutline(OutlineRequest request) {
-		List<String> chapters = new java.util.ArrayList<>();
+		List<OutlineResult.Chapter> chapters = new java.util.ArrayList<>();
 		for (int no = 1; no <= request.chapterCount(); no++) {
-			chapters.add("%d장 초안\n이 장에서 무슨 일이 일어나는지 작성자가 채운다.".formatted(no));
+			chapters.add(new OutlineResult.Chapter("%d장 초안".formatted(no),
+					"이 장에서 무슨 일이 일어나는지 작성자가 채운다."));
 		}
-		List<String> endings = new java.util.ArrayList<>();
+		List<OutlineResult.Ending> endings = new java.util.ArrayList<>();
 		for (int no = 1; no <= request.endingCount(); no++) {
-			endings.add("엔딩 %d 초안\n마지막에 붙는 글을 작성자가 채운다.".formatted(no));
+			endings.add(new OutlineResult.Ending("엔딩 %d 초안".formatted(no),
+					"마지막에 붙는 글을 작성자가 채운다."));
 		}
 		return new OutlineResult(chapters, endings);
 	}

@@ -158,17 +158,19 @@ class SchemaRetryingStoryProviderTests {
 	}
 
 	/**
-	 * <b>{@code summarize} · {@code draftOutline} 에는 재요청을 걸지 않는다.</b>
+	 * <b>{@code summarize} 에는 재요청을 걸지 않는다.</b>
 	 *
-	 * <p>요약은 문자열이라 맞출 스키마가 없고, 아웃라인의 출력 계약은 B-52 가 정한다. 지금 없는
-	 * 계약을 위해 빈 재요청을 걸어 두면 그 경로의 실패가 조용히 두 배로 청구된다 (§0.2).
+	 * <p>문자열을 돌려주므로 맞출 스키마가 없다. 없는 계약을 위해 빈 재요청을 걸어 두면 그 경로의
+	 * 실패가 조용히 두 배로 청구된다 (§0.2).
+	 *
+	 * <p><b>{@code draftOutline} 은 이 목록에서 빠졌다</b> (#238) — 계약이 생겼고 재요청이 걸린다.
+	 * 그쪽은 {@code SchemaRetryingOutlineTests} 가 본다.
 	 */
 	@Test
-	void S0_2_the_other_seam_methods_are_passed_straight_through() {
+	void S0_2_summarize_is_passed_straight_through() {
 		SchemaRetryingStoryProvider retrying = new SchemaRetryingStoryProvider(CountingProvider.structured());
 
 		assertThatThrownBy(() -> retrying.summarize(null)).isInstanceOf(UnsupportedOperationException.class);
-		assertThatThrownBy(() -> retrying.draftOutline(null)).isInstanceOf(UnsupportedOperationException.class);
 	}
 
 	/**

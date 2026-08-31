@@ -62,7 +62,7 @@ public interface StoryProvider extends TurnGenerationPort, SummarizationPort {
 	 *
 	 * <p>결과는 검수 대상이며 그대로 게시되지 않는다.
 	 *
-	 * @throws UnsupportedOperationException 아직 이 용도를 구현하지 않은 어댑터 (B-52)
+	 * @throws com.neowadaeum.ai.schema.OutlineOutputSchemaException 응답이 초안 계약을 어겼다 (#238)
 	 */
 	OutlineResult draftOutline(OutlineRequest request);
 }
