@@ -53,6 +53,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -114,6 +115,7 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 	private SafetyL2Judge safetyJudge;
 
 	@BeforeEach
+	@AfterEach
 	void clearPlayHistory() {
 		this.snapshots.deleteAll();
 		this.turns.deleteAll();
