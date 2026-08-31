@@ -4,6 +4,7 @@ import com.neowadaeum.authoring.draft.DraftSafetyState;
 import com.neowadaeum.common.spi.BlocklistEntry;
 import com.neowadaeum.common.spi.BlocklistQuery;
 import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.support.NormalizedText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;

@@ -73,6 +73,9 @@ public class SafetyL2Judge {
 			return first;
 		}
 
+		// 2단은 **원문**을 본다. 1단이 가린 본문을 넘기면 분류기가 보는 것이 사람이 읽을 것과
+		// 같아지지만, 마스킹은 정보를 지울 뿐 더하지 않으므로 원문이 통과한 판정은 가린 본문에도
+		// 그대로 성립한다. 반대로 가린 뒤에 넘기면 **판정 순서가 마스킹 성공 여부에 묶인다.**
 		Set<SafetyCategory> semantic;
 		try {
 			semantic = this.classifier.classify(new SafetyClassificationRequest(texts));
@@ -85,7 +88,31 @@ public class SafetyL2Judge {
 
 		Set<SafetyCategory> all = new LinkedHashSet<>(first.categories());
 		all.addAll(semantic);
-		return new SafetyJudgement(CategoryPolicy.decide(all), all);
+
+		SafetyOutcome outcome = CategoryPolicy.decide(all);
+		if (outcome != SafetyOutcome.MASKED) {
+			return new SafetyJudgement(outcome, all);
+		}
+		return masked(first, semantic, all);
+	}
+
+	/**
+	 * 마스킹은 <b>1단이 찾은 자리에만</b> 붙는다 (§9.2, §13-21).
+	 *
+	 * <p>2단이 같은 카테고리를 돌려줬다면 그것은 <b>블록리스트에 적혀 있지 않은 무언가</b>를 봤다는
+	 * 뜻이고, 그 자리는 아무도 모른다. 분류기는 카테고리만 돌려주며 위치를 받는 계약을 만들지
+	 * 않았다 — 모델이 말한 offset 을 믿고 본문을 잘라내면 <b>모델이 서버의 편집기가 된다.</b>
+	 *
+	 * <p>그래서 이 경우는 가리지 않고 <b>결과를 폐기한다.</b> 재생성은 오케스트레이터가 1회만
+	 * 수행하며, 다시 걸리면 차단이다 (fail-closed).
+	 */
+	private static SafetyJudgement masked(SafetyJudgement first, Set<SafetyCategory> semantic,
+			Set<SafetyCategory> all) {
+
+		if (CategoryPolicy.anyMasked(semantic) || first.masked() == null) {
+			return new SafetyJudgement(SafetyOutcome.REGENERATE, all);
+		}
+		return new SafetyJudgement(SafetyOutcome.MASKED, all, first.masked());
 	}
 
 	/**

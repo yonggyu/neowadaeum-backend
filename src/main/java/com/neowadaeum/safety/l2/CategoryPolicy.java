@@ -17,10 +17,17 @@ final class CategoryPolicy {
 	}
 
 	/**
-	 * 가장 강한 정책을 따른다.
+	 * 가장 강한 정책을 따른다 — <b>차단 &gt; 재생성 &gt; 마스킹</b>.
 	 *
 	 * <p>즉시차단이 하나라도 있으면 <b>재생성하지 않는다</b> (§9.2, B-30 DoD). 재생성 대상과 섞였을
 	 * 때 약한 쪽을 따르면 즉시차단이 사실상 사라진다.
+	 *
+	 * <p><b>마스킹이 가장 약하다.</b> 마스킹은 걸린 자리만 지우고 나머지를 통과시키는 처리이므로,
+	 * 재생성 대상이 함께 걸렸다면 그 문단은 애초에 다시 만들어야 한다 — 개인정보를 가렸다고 해서
+	 * 혐오 표현이 사라지지 않는다.
+	 *
+	 * <p><b>{@link SafetyOutcome#MASKED} 는 정책이지 결과가 아니다.</b> 실제로 가릴 수 있는지는
+	 * 판정기가 확인한다 ({@link RuleBasedSafetyJudge}) — 자리를 모르면 재생성으로 내려간다.
 	 */
 	static SafetyOutcome decide(Set<SafetyCategory> hits) {
 		if (hits.isEmpty()) {
@@ -31,13 +38,15 @@ final class CategoryPolicy {
 			return SafetyOutcome.BLOCK;
 		}
 
-		if (hits.stream().anyMatch(category -> category.policy() == SafetyPolicy.MASK)) {
-			// §9.2 는 마스킹 후 통과를 규정하지만 지금은 탐지 위치(span)를 받지 않는다 (§13-21).
-			// 스텁으로 통과시키지 않는다 (§0.2).
-			throw new UnsupportedOperationException(
-					"masking policy is not implemented — see §9.2 and B-30");
+		if (hits.stream().anyMatch(category -> category.policy() == SafetyPolicy.REGENERATE_ONCE)) {
+			return SafetyOutcome.REGENERATE;
 		}
 
-		return SafetyOutcome.REGENERATE;
+		return SafetyOutcome.MASKED;
+	}
+
+	/** 이 카테고리들 중 마스킹으로 처리되는 것이 있는가 (§9.2). */
+	static boolean anyMasked(Set<SafetyCategory> categories) {
+		return categories.stream().anyMatch(category -> category.policy() == SafetyPolicy.MASK);
 	}
 }

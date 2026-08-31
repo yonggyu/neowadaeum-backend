@@ -226,6 +226,148 @@ class TurnResilienceIntegrationTests extends ContainerTestBase {
 		assertThat(this.sessions.findById(sessionId).orElseThrow().getTurnNo()).isZero();
 	}
 
+	// ── §9.2 마스킹 ─────────────────────────────────────────
+
+	/**
+	 * §9.2 — <b>가린 본문이 저장되고, 원문은 어디에도 남지 않는다.</b>
+	 *
+	 * <p>판정기가 가릴 수 있다고 말한 경우다(1단 블록리스트 탐지). 파이프라인이 그 결과를 실제로
+	 * <b>갈아 끼우는지</b>가 여기서만 확인된다 — 판정만 옳고 저장이 원문이면 마스킹은 없는 것과 같다.
+	 *
+	 * <p>재생성은 일어나지 않는다. 가린 것으로 통과했기 때문이다.
+	 */
+	@Test
+	void S9_2_a_masked_turn_stores_the_masked_body_without_regenerating() {
+		AtomicInteger calls = new AtomicInteger();
+		String personal = "박서린";
+
+		StoryProvider offending = new TurnOnlyStoryProvider() {
+			@Override
+			public String providerId() {
+				return "masking";
+			}
+
+			@Override
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				calls.incrementAndGet();
+				return new GeneratedTurn(
+						List.of(GeneratedParagraph.narration(personal + " 이 문을 열었다.")),
+						List.of(new GeneratedChoice(1, personal + " 을 부른다")),
+						JSON.readTree("{}"), false, null);
+			}
+		};
+
+		SafetyL2Judge judge = new SafetyL2Judge(
+				new RuleBasedSafetyJudge(new InMemoryBlocklistQuery(List.of(new BlocklistEntry(
+						TextNormalizer.normalize(personal), SafetyCategory.THIRD_PARTY_PERSONAL_DATA)))),
+				request -> java.util.Set.of());
+
+		UUID sessionId = this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY, SEED_VERSION,
+				"masking", "scenario", false, Instant.now(FIXED))).getId();
+
+		TurnOutcome outcome = pipelineWith(offending, judge).advance(sessionId, null);
+
+		assertThat(outcome.status()).isEqualTo(TurnOutcome.TurnStatus.GENERATED);
+		assertThat(calls.get()).as("가려서 통과했는데 재생성이 일어났다 (§9.2)").isEqualTo(1);
+
+		com.neowadaeum.play.domain.Turn saved = this.turns.findById(outcome.turnId()).orElseThrow();
+		assertThat(saved.getParagraphs()).doesNotContain(personal);
+		assertThat(saved.getChoices()).doesNotContain(personal);
+		assertThat(saved.getSafetyVerdict()).isEqualTo(com.neowadaeum.play.domain.SafetyVerdict.REVISED);
+	}
+
+	/**
+	 * §9.2 · §13-21 — <b>자리를 모르는 탐지는 재생성 1회로 처리한다.</b>
+	 *
+	 * <p>2단(의미 분류)이 개인정보를 봤다고 말했지만 위치는 아무도 모른다. 원문을 임의로 잘라내는
+	 * 대신 결과를 폐기하고 다시 만들며, <b>다시 만든 것이 깨끗하면 통과한다.</b>
+	 */
+	@Test
+	void S13_21_a_semantic_detection_is_regenerated_once_and_then_passes() {
+		AtomicInteger calls = new AtomicInteger();
+		AtomicInteger verdicts = new AtomicInteger();
+
+		StoryProvider provider = new TurnOnlyStoryProvider() {
+			@Override
+			public String providerId() {
+				return "semantic";
+			}
+
+			@Override
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				calls.incrementAndGet();
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration("문이 열렸다.")),
+						List.of(new GeneratedChoice(1, "들어간다")), JSON.readTree("{}"), false, null);
+			}
+		};
+
+		// 첫 판정만 걸린다. 두 번째는 깨끗하다.
+		SafetyL2Judge judge = new SafetyL2Judge(
+				new RuleBasedSafetyJudge(new InMemoryBlocklistQuery(List.of())),
+				request -> verdicts.incrementAndGet() == 1
+						? java.util.Set.of(SafetyCategory.THIRD_PARTY_PERSONAL_DATA)
+						: java.util.Set.of());
+
+		UUID sessionId = this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY, SEED_VERSION,
+				"semantic", "scenario", false, Instant.now(FIXED))).getId();
+
+		TurnOutcome outcome = pipelineWith(provider, judge).advance(sessionId, null);
+
+		assertThat(outcome.status()).isEqualTo(TurnOutcome.TurnStatus.GENERATED);
+		assertThat(calls.get()).as("재생성은 1회다 (§9.2)").isEqualTo(2);
+		assertThat(this.turns.findById(outcome.turnId()).orElseThrow().getSafetyVerdict())
+				.isEqualTo(com.neowadaeum.play.domain.SafetyVerdict.REVISED);
+	}
+
+	/**
+	 * §9.2 — <b>재생성 결과에서도 걸리면 차단이다. 그리고 세 번째 생성은 없다.</b>
+	 *
+	 * <p>마스킹으로 처리되는 카테고리라도 자리를 모르면 통과가 아니다 (fail-closed). 호출 횟수를
+	 * 세는 이유는 <b>"다시 만들면 통과할 때까지"가 되는 순간 무한 루프</b>이기 때문이다.
+	 */
+	@Test
+	void S9_2_a_detection_that_survives_regeneration_blocks_after_exactly_one_retry() {
+		AtomicInteger calls = new AtomicInteger();
+
+		StoryProvider provider = new TurnOnlyStoryProvider() {
+			@Override
+			public String providerId() {
+				return "stubborn";
+			}
+
+			@Override
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				calls.incrementAndGet();
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration("문이 열렸다.")),
+						List.of(new GeneratedChoice(1, "들어간다")), JSON.readTree("{}"), false, null);
+			}
+		};
+
+		SafetyL2Judge judge = new SafetyL2Judge(
+				new RuleBasedSafetyJudge(new InMemoryBlocklistQuery(List.of())),
+				request -> java.util.Set.of(SafetyCategory.THIRD_PARTY_PERSONAL_DATA));
+
+		UUID sessionId = this.sessions.save(PlaySession.start(UUID.randomUUID(), SEED_STORY, SEED_VERSION,
+				"stubborn", "scenario", false, Instant.now(FIXED))).getId();
+
+		TurnOutcome outcome = pipelineWith(provider, judge).advance(sessionId, null);
+
+		assertThat(outcome.status()).isEqualTo(TurnOutcome.TurnStatus.SAFETY_BLOCKED);
+		assertThat(calls.get()).as("재생성이 1회를 넘었다 — 통과할 때까지 부르면 무한 루프다").isEqualTo(2);
+
+		// I-2 · R6.6 — 통과하지 못한 본문은 저장되지 않고 세션도 움직이지 않는다.
+		assertThat(this.turns.count()).isZero();
+		assertThat(this.sessions.findById(sessionId).orElseThrow().getTurnNo()).isZero();
+	}
+
+	private TurnPipeline pipelineWith(StoryProvider provider, SafetyL2Judge judge) {
+		return new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions,
+				provider, judge, this.gameStateEngine, this.chapterEngine, this.endingEngine,
+				RecentTurnsProperties.defaults(), this.summaries, this.summaryTrigger,
+				this.playTransactionManager, FIXED, TurnBudgetProperties.defaults(),
+				new TurnMetrics(METERS), new SafetyMetrics(METERS));
+	}
+
 	/**
 	 * <b>턴 예산이 소진되면 세션이 움직이지 않는다</b> (#116, R6.6).
 	 *
