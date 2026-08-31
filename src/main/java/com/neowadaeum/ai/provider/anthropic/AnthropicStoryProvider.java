@@ -8,6 +8,8 @@ import com.neowadaeum.ai.log.AiCallRecorder;
 import com.neowadaeum.ai.provider.AiCallAttempt;
 import com.neowadaeum.ai.provider.AiCallFallback;
 import com.neowadaeum.ai.provider.AiPurpose;
+import com.neowadaeum.ai.provider.OutlineOutputFormat;
+import com.neowadaeum.ai.provider.OutlinePrompt;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
@@ -16,6 +18,7 @@ import com.neowadaeum.ai.provider.SummaryPrompt;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.prompt.PlatformPrompts;
+import com.neowadaeum.ai.schema.OutlineOutputSchemaException;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import com.neowadaeum.play.port.GeneratedTurn;
@@ -106,6 +109,41 @@ public class AnthropicStoryProvider implements StoryProvider {
 			    "categories": {"type": "array", "items": {"type": "string"}}
 			  },
 			  "required": ["categories"],
+			  "additionalProperties": false
+			}
+			""";
+
+	/** 초안 응답의 형식 (B-52). <b>번호가 없다</b> — 서버가 붙인다 (R7.14). */
+	private static final String OUTLINE_SCHEMA = """
+			{
+			  "type": "object",
+			  "properties": {
+			    "chapters": {
+			      "type": "array",
+			      "items": {
+			        "type": "object",
+			        "properties": {
+			          "title": {"type": "string"},
+			          "summary": {"type": "string"}
+			        },
+			        "required": ["title", "summary"],
+			        "additionalProperties": false
+			      }
+			    },
+			    "endings": {
+			      "type": "array",
+			      "items": {
+			        "type": "object",
+			        "properties": {
+			          "label": {"type": "string"},
+			          "epilogue": {"type": "string"}
+			        },
+			        "required": ["label", "epilogue"],
+			        "additionalProperties": false
+			      }
+			    }
+			  },
+			  "required": ["chapters", "endings"],
 			  "additionalProperties": false
 			}
 			""";
@@ -447,10 +485,79 @@ public class AnthropicStoryProvider implements StoryProvider {
 		return text.toString().strip();
 	}
 
-	/** <b>아웃라인 초안은 B-52 다.</b> 위와 같은 이유다. */
+	/**
+	 * 챕터·엔딩 초안을 만든다 (R7.14, B-52).
+	 *
+	 * <p><b>초안용 모델을 부른다</b> (R3.6). 턴 생성 모델로 초안을 만들면 <b>초안 한 번이 턴
+	 * 여러 개만큼</b> 든다 — 그 비용은 작성자가 아니라 플랫폼이 부담한다 (R8.12).
+	 *
+	 * <p><b>출력 스키마를 건다.</b> 요약과 다른 점이 이것이다 — 결과가 평문 한 덩어리가 아니라
+	 * 목록 둘이라 맞출 형식이 있고, 형식이 어긋나면 재요청 경로가 그것을 받는다 (#238).
+	 *
+	 * <p><b>번호를 요구하지 않는다</b> (R7.14). 스키마에 번호 자리가 없는 것이 그 보장이다 —
+	 * 프롬프트로 부탁하는 것과 담을 자리를 두지 않는 것은 다르다.
+	 */
 	@Override
 	public OutlineResult draftOutline(OutlineRequest request) {
-		throw new UnsupportedOperationException("draftOutline is B-52");
+		ObjectNode body = outlineBody(request);
+		long startedAt = System.nanoTime();
+
+		JsonNode response;
+		try {
+			response = this.restClient.post()
+					.uri("/v1/messages")
+					.body(body)
+					.retrieve()
+					.body(JsonNode.class);
+		}
+		catch (RestClientException ex) {
+			record(AiPurpose.OUTLINE, body, null, startedAt, null);
+			throw new ProviderCallFailedException("anthropic outline call failed");
+		}
+
+		record(AiPurpose.OUTLINE, body, response, startedAt, null);
+		return OutlineOutputFormat.parse(outlineText(response), request);
+	}
+
+	/**
+	 * 초안 요청 본문.
+	 *
+	 * <p><b>지시는 {@code system} 으로 간다</b> (I-7). 세계관은 <b>작성자가 쓴 글</b>이며 그것을
+	 * 지시와 같은 평면에 두면 형식·등급 지시를 덮어쓸 자리가 생긴다.
+	 */
+	private ObjectNode outlineBody(OutlineRequest request) {
+		ObjectNode body = JSON.createObjectNode();
+		body.put("model", modelFor(AiPurpose.OUTLINE));
+		body.put("max_tokens", this.properties.maxTokens());
+		body.put("system", PlatformPrompts.OUTLINE);
+
+		ObjectNode message = body.putArray("messages").addObject();
+		message.put("role", "user");
+		message.put("content", OutlinePrompt.compose(request));
+
+		body.set("output_config", JSON.createObjectNode()
+				.set("format", JSON.createObjectNode()
+						.put("type", "json_schema")
+						.set("schema", JSON.readTree(OUTLINE_SCHEMA))));
+		return body;
+	}
+
+	/** 응답에서 초안 본문을 꺼낸다. 형태가 다르면 <b>계약 위반</b>이다 — 재요청 경로가 받는다. */
+	private static String outlineText(JsonNode response) {
+		if (response == null || !response.path("content").isArray()) {
+			throw new OutlineOutputSchemaException("anthropic outline response has no content array");
+		}
+
+		StringBuilder text = new StringBuilder();
+		for (JsonNode block : response.path("content")) {
+			if ("text".equals(block.path("type").asString(null))) {
+				text.append(block.path("text").asString(""));
+			}
+		}
+		if (text.isEmpty() || text.toString().isBlank()) {
+			throw new OutlineOutputSchemaException("anthropic outline response has no text block");
+		}
+		return text.toString();
 	}
 
 }
