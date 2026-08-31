@@ -6,6 +6,7 @@ import com.neowadaeum.authoring.outline.ConditionTemplate;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.common.spi.OutlineDraft;
+import com.neowadaeum.common.spi.OutlineDraftFailedException;
 import com.neowadaeum.common.spi.OutlineDraftRequest;
 import com.neowadaeum.common.spi.OutlineDrafter;
 import com.neowadaeum.common.support.RateLimitProperties;
@@ -71,9 +72,27 @@ public class OutlineController {
 		// 남의 원고에는 부를 수 없다 (I-8). 없는 것과 구분되지 않는다.
 		String worldPrompt = worldPromptOf(this.drafts.read(authorRef, draftId).getPayload());
 
-		OutlineDraft draft = this.drafter.draft(
-				new OutlineDraftRequest(worldPrompt, CHAPTERS, ENDINGS));
+		OutlineDraft draft = draftOrFail(worldPrompt);
 		return OutlineResponse.of(draft, conditionTemplateKeys());
+	}
+
+	/**
+	 * <b>초안 실패는 서버의 버그가 아니다</b> (#238).
+	 *
+	 * <p>Provider 호출이 실패했거나 모델이 재요청까지 계약을 못 맞춘 것이며, 그것을 500 으로
+	 * 두면 <b>작성자는 자기가 무엇을 잘못했는지 묻는다.</b> 502 는 "우리 밖에서 실패했고 다시
+	 * 눌러도 된다"를 말한다.
+	 *
+	 * <p><b>일일 상한은 이미 소모됐다.</b> 되돌리지 않는다 — 호출은 실제로 나갔고 그 비용도
+	 * 나갔다 (R8.12). 되돌리면 형식을 못 맞추는 모델에게 무제한 재시도를 주는 길이 된다.
+	 */
+	private OutlineDraft draftOrFail(String worldPrompt) {
+		try {
+			return this.drafter.draft(new OutlineDraftRequest(worldPrompt, CHAPTERS, ENDINGS));
+		}
+		catch (OutlineDraftFailedException ex) {
+			throw new ApiException(ErrorCode.PROVIDER_ERROR);
+		}
 	}
 
 	/**
