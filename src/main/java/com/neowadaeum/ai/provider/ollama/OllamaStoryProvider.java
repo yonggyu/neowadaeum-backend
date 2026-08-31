@@ -9,6 +9,8 @@ import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.AiCallAttempt;
 import com.neowadaeum.ai.provider.AiCallFallback;
 import com.neowadaeum.ai.provider.AiPurpose;
+import com.neowadaeum.ai.provider.OutlineOutputFormat;
+import com.neowadaeum.ai.provider.OutlinePrompt;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.ProviderCapabilities;
@@ -16,6 +18,7 @@ import com.neowadaeum.ai.provider.SafetyClassificationFormat;
 import com.neowadaeum.ai.provider.SummaryPrompt;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.play.port.SummaryRequest;
+import com.neowadaeum.ai.schema.OutlineOutputSchemaException;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.ai.schema.TurnOutputSchemaException;
 import com.neowadaeum.play.port.GeneratedTurn;
@@ -299,8 +302,59 @@ public class OllamaStoryProvider implements StoryProvider {
 		return body;
 	}
 
+	/**
+	 * 챕터·엔딩 초안을 만든다 (R7.14, B-52).
+	 *
+	 * <p><b>초안용 모델을 부른다</b> (R3.6). 로컬 실행이라 청구서는 없지만 <b>시간과 GPU 는 같은
+	 * 자원</b>이며, 작성 화면에서 기다리는 호출이 턴 생성 모델을 붙들면 플레이가 느려진다.
+	 *
+	 * <p><b>{@code format: json} 을 건다.</b> 요약과 다른 점이 이것이다 — 결과가 평문이 아니라
+	 * 목록 둘이다. 다만 이 옵션은 <b>JSON 이라는 것까지만</b> 강제하고 우리 계약을 강제하지
+	 * 못한다 ({@code structuredOutput = false} 인 이유와 같다) — 계약은
+	 * {@link OutlineOutputFormat} 이 확인하고, 어긋나면 재요청 경로가 받는다 (#238).
+	 */
 	@Override
 	public OutlineResult draftOutline(OutlineRequest request) {
-		throw new UnsupportedOperationException("draftOutline is B-52");
+		ObjectNode body = outlineBody(request);
+		long startedAt = System.nanoTime();
+
+		JsonNode response;
+		try {
+			response = this.restClient.post().uri("/api/chat").body(body).retrieve().body(JsonNode.class);
+		}
+		catch (RestClientException ex) {
+			record(AiPurpose.OUTLINE, body, null, startedAt, null);
+			throw new ProviderCallFailedException("ollama outline call failed");
+		}
+
+		record(AiPurpose.OUTLINE, body, response, startedAt, null);
+		return OutlineOutputFormat.parse(outlineText(response), request);
+	}
+
+	/** 초안 요청 본문. 지시는 {@code system} 메시지로 간다 (I-7 과 같은 이유). */
+	private ObjectNode outlineBody(OutlineRequest request) {
+		ObjectNode body = JSON.createObjectNode();
+		body.put("model", modelFor(AiPurpose.OUTLINE));
+		body.put("stream", false);
+		body.put("format", "json");
+
+		var messages = body.putArray("messages");
+		ObjectNode system = messages.addObject();
+		system.put("role", "system");
+		system.put("content", PlatformPrompts.OUTLINE);
+
+		ObjectNode user = messages.addObject();
+		user.put("role", "user");
+		user.put("content", OutlinePrompt.compose(request));
+		return body;
+	}
+
+	/** 응답 본문은 {@code message.content} 하나다. 없으면 <b>계약 위반</b>이다 (#238). */
+	private static String outlineText(JsonNode response) {
+		String content = (response != null) ? response.path("message").path("content").asString(null) : null;
+		if (content == null || content.isBlank()) {
+			throw new OutlineOutputSchemaException("ollama outline response has no message content");
+		}
+		return content;
 	}
 }
