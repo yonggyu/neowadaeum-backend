@@ -3,6 +3,7 @@ package com.neowadaeum.identity.auth;
 import com.neowadaeum.common.web.ErrorResponseSecurityHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -55,6 +56,11 @@ public class ApiSecurityConfiguration {
 			ErrorResponseSecurityHandler errorHandler) throws Exception {
 		return http
 				.securityMatcher(API_PATHS)
+				// #248 — CORS 는 인가보다 먼저 판정돼야 한다. preflight(OPTIONS)에는
+				// Authorization 헤더가 실리지 않으므로, 인가가 먼저 돌면 401 이 나가고 브라우저는
+				// 그것을 CORS 오류로 보고한다 — 원인이 인증이라는 사실이 드러나지 않는다.
+				// 정책 자체는 common 이 소유한다 (CorsConfigurationSource 빈).
+				.cors(Customizer.withDefaults())
 				.csrf(csrf -> csrf.ignoringRequestMatchers(API_PATHS))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(requests -> requests
