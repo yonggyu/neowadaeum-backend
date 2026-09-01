@@ -182,6 +182,22 @@ public class StoryPublisher {
 	}
 
 	/**
+	 * 작성자와 함께 보는 현재 상태 (#245).
+	 *
+	 * <p><b>{@link #statusOf} 와 나눈 것은 의도다.</b> 검수자는 <b>누가 썼는지를 보지 않고</b>
+	 * 판정하며(B-55), 작성자만 할 수 있는 일은 그 반대로 소유를 먼저 확인해야 한다 — 한 조회가
+	 * 둘을 겸하면 검수 경로가 작성자를 알게 된다.
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public Optional<OwnedStory> ownerStatusOf(UUID storyId) {
+		return this.jdbc.sql("SELECT author_ref, review_status, visibility FROM story WHERE id = ?")
+				.param(storyId)
+				.query((rs, rowNum) -> new OwnedStory(rs.getObject("author_ref", UUID.class),
+						rs.getString("review_status"), rs.getString("visibility")))
+				.optional();
+	}
+
+	/**
 	 * <b>사람을 기다리는 작품들</b> (R8.6, B-55).
 	 *
 	 * <p>먼저 만들어진 것부터 준다 — 검수는 순서대로 처리하는 일이고, 나중에 온 것이 앞서면
@@ -290,6 +306,14 @@ public class StoryPublisher {
 	}
 
 	/** 작품의 상태 한 벌. */
+	/**
+	 * 작성자까지 담은 현재 상태 (#245).
+	 *
+	 * @param authorRef 작성자의 {@code player_ref}. <b>{@code user.id} 가 아니다</b> (§5.3)
+	 */
+	public record OwnedStory(UUID authorRef, String reviewStatus, String visibility) {
+	}
+
 	public record StoryStatus(String reviewStatus, String visibility) {
 	}
 

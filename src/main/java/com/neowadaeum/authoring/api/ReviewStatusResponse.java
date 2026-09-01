@@ -1,5 +1,6 @@
 package com.neowadaeum.authoring.api;
 
+import com.neowadaeum.authoring.review.StoryVisibilityService;
 import com.neowadaeum.authoring.review.SubmissionService;
 import java.time.Instant;
 import java.util.List;
@@ -21,5 +22,16 @@ public record ReviewStatusResponse(UUID storyId, String reviewStatus, String vis
 	static ReviewStatusResponse of(SubmissionService.SubmissionOutcome outcome, Instant now) {
 		return new ReviewStatusResponse(outcome.storyId(), outcome.reviewStatus().columnValue(),
 				outcome.visibility().columnValue(), outcome.rejectReasons(), now);
+	}
+
+	/**
+	 * 가시성 변경 결과 (#245).
+	 *
+	 * <p><b>{@code rejectReasons} 는 비어 있다.</b> 이 요청은 판정이 아니라 요청이며, 사유가
+	 * 생기는 자리는 검수다 (R8.7).
+	 */
+	static ReviewStatusResponse of(StoryVisibilityService.VisibilityOutcome outcome, Instant now) {
+		return new ReviewStatusResponse(outcome.storyId(), outcome.reviewStatus().columnValue(),
+				outcome.visibility().columnValue(), List.of(), now);
 	}
 }
