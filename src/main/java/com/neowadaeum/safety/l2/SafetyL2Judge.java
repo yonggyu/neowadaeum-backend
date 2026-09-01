@@ -58,15 +58,39 @@ public class SafetyL2Judge {
 		this.classifier = classifier;
 	}
 
-	/** 본문과 선택지를 함께 판정한다 (§9.1 의 L2 행). */
-	public SafetyJudgement judge(List<String> paragraphs, List<String> choices) {
+	/**
+	 * 본문과 선택지와 <b>화자 이름</b>을 함께 판정한다 (§9.1 의 L2 행, #243).
+	 *
+	 * <p><b>화자 이름도 모델이 만든 문자열이고 사용자에게 도달한다</b> (R5.2, #84). 넘기지 않으면
+	 * <b>검수를 거치지 않고 화면에 닿는 자리가 하나 남는다</b> — I-2 는 AI 응답이 L2 를 통과하기
+	 * 전에는 사용자에게 도달하지 않는다고 적고, 화자 이름은 그 응답의 일부다.
+	 *
+	 * <p><b>그런데 화자 이름은 가리지 않는다</b> (#243 의 결정). 1단은 자리를 알므로 가릴 수는
+	 * 있지만, 이름을 통째로 가린 대사는 <b>누가 말했는지가 사라진 대사</b>이고 그것은 본문의 뜻이
+	 * 달라지는 일이다 — 마스킹이 아니라 훼손이다. 그래서 화자 이름의 탐지는 재생성으로 올린다.
+	 *
+	 * <p>그 때문에 1단을 <b>두 번</b> 부른다. 한 번은 가릴 수 있는 것(본문·선택지)에, 한 번은
+	 * 가리지 않을 것(화자 이름)에. 나눠 부른 대가는 <b>화자 이름과 본문에 걸친 표현을 잡지
+	 * 못한다</b>는 것이다 — 두 값은 화면에서 이어져 보이지만 서로 다른 필드이며, 이어 붙여
+	 * 대조하면 마스킹이 가릴 자리와 판정의 근거가 어긋난다.
+	 *
+	 * @param speakerNames 문단의 화자. {@code null} 과 빈 문자열은 나레이션이며 판정할 것이 없다
+	 */
+	public SafetyJudgement judge(List<String> paragraphs, List<String> choices,
+			List<String> speakerNames) {
 		SafetyJudgement first = this.rules.judge(paragraphs, choices);
 		if (first.blocked()) {
 			// 이미 가장 강한 결과다. 여기서 2단을 부르면 결과는 그대로이고 비용만 는다 (§9.2).
 			return first;
 		}
 
-		List<String> texts = texts(paragraphs, choices);
+		SafetyJudgement speakers = judgeSpeakerNames(speakerNames);
+		if (speakers.blocked()) {
+			return new SafetyJudgement(SafetyOutcome.BLOCK,
+					union(first.categories(), speakers.categories()));
+		}
+
+		List<String> texts = texts(paragraphs, choices, speakerNames);
 		if (texts.isEmpty()) {
 			// 판정할 문자열이 없다. 그런 응답은 파서가 먼저 거부하지만(R5.1), 여기서 빈 요청을
 			// 만들어 부르지는 않는다.
@@ -86,14 +110,30 @@ public class SafetyL2Judge {
 			return new SafetyJudgement(SafetyOutcome.BLOCK, first.categories());
 		}
 
-		Set<SafetyCategory> all = new LinkedHashSet<>(first.categories());
-		all.addAll(semantic);
+		Set<SafetyCategory> all = union(union(first.categories(), speakers.categories()), semantic);
 
 		SafetyOutcome outcome = CategoryPolicy.decide(all);
 		if (outcome != SafetyOutcome.MASKED) {
 			return new SafetyJudgement(outcome, all);
 		}
-		return masked(first, semantic, all);
+		return masked(first, speakers, semantic, all);
+	}
+
+	/**
+	 * 화자 이름만 1단에 건다 (#243).
+	 *
+	 * <p><b>나레이션뿐이면 부르지 않는다.</b> 판정할 문자열이 없는데 블록리스트를 읽으면 <b>비용만
+	 * 는다</b> — 1단이 통과로 답할 것을 이미 알고 있다.
+	 */
+	private SafetyJudgement judgeSpeakerNames(List<String> speakerNames) {
+		List<String> named = named(speakerNames);
+		return named.isEmpty() ? SafetyJudgement.pass() : this.rules.judge(named, List.of());
+	}
+
+	private static Set<SafetyCategory> union(Set<SafetyCategory> left, Set<SafetyCategory> right) {
+		Set<SafetyCategory> all = new LinkedHashSet<>(left);
+		all.addAll(right);
+		return all;
 	}
 
 	/**
@@ -106,10 +146,13 @@ public class SafetyL2Judge {
 	 * <p>그래서 이 경우는 가리지 않고 <b>결과를 폐기한다.</b> 재생성은 오케스트레이터가 1회만
 	 * 수행하며, 다시 걸리면 차단이다 (fail-closed).
 	 */
-	private static SafetyJudgement masked(SafetyJudgement first, Set<SafetyCategory> semantic,
-			Set<SafetyCategory> all) {
+	private static SafetyJudgement masked(SafetyJudgement first, SafetyJudgement speakers,
+			Set<SafetyCategory> semantic, Set<SafetyCategory> all) {
 
-		if (CategoryPolicy.anyMasked(semantic) || first.masked() == null) {
+		// #243 — 화자 이름에서 온 것은 가리지 않는다. 1단이 자리를 알아도 이름을 통째로 가리면
+		// 누가 말했는지가 사라지고, 그것은 마스킹이 아니라 본문의 훼손이다.
+		if (CategoryPolicy.anyMasked(semantic) || !speakers.categories().isEmpty()
+				|| first.masked() == null) {
 			return new SafetyJudgement(SafetyOutcome.REGENERATE, all);
 		}
 		return new SafetyJudgement(SafetyOutcome.MASKED, all, first.masked());
@@ -118,17 +161,25 @@ public class SafetyL2Judge {
 	/**
 	 * 판정 대상 문자열.
 	 *
-	 * <p><b>선택지도 함께 넘긴다.</b> 1단이 둘을 나눠 보지 않는 것과 같은 이유다 — 선택지 텍스트도
-	 * 사용자에게 도달한다.
+	 * <p><b>선택지와 화자 이름도 함께 넘긴다.</b> 1단이 나눠 보지 않는 것과 같은 이유다 — 셋 다
+	 * 사용자에게 도달하는 문자열이다 (#243).
 	 */
-	private static List<String> texts(List<String> paragraphs, List<String> choices) {
+	private static List<String> texts(List<String> paragraphs, List<String> choices,
+			List<String> speakerNames) {
 		List<String> texts = new ArrayList<>();
-		if (paragraphs != null) {
-			paragraphs.stream().filter(text -> text != null && !text.isBlank()).forEach(texts::add);
-		}
-		if (choices != null) {
-			choices.stream().filter(text -> text != null && !text.isBlank()).forEach(texts::add);
-		}
+		texts.addAll(named(paragraphs));
+		texts.addAll(named(choices));
+		// #243 — 2단도 화자 이름을 본다. 1단이 못 잡는 것을 2단이 잡는 자리이며, 이름 역시
+		// 블록리스트에 적혀 있지 않은 방식으로 같은 것을 말할 수 있다.
+		texts.addAll(named(speakerNames));
 		return texts;
+	}
+
+	/** 있는 문자열만. {@code null} 과 공백은 판정할 것이 없다. */
+	private static List<String> named(List<String> texts) {
+		if (texts == null) {
+			return List.of();
+		}
+		return texts.stream().filter(text -> text != null && !text.isBlank()).toList();
 	}
 }
