@@ -16,7 +16,11 @@ import com.neowadaeum.play.api.ResumeView;
 import com.neowadaeum.play.api.StoryDetailResponse;
 import com.neowadaeum.play.api.TurnView;
 import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,7 +29,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.util.ClassUtils;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -335,5 +347,81 @@ class OpenApiContractTests {
 		assertThat(new ClassPathResource("static/openapi/openapi.yaml").exists()).isFalse();
 		assertThat(new ClassPathResource("static/openapi.yaml").exists()).isFalse();
 		assertThat(new ClassPathResource("public/openapi.yaml").exists()).isFalse();
+	}
+
+	// ── 4. 계약 → 구현 ───────────────────────────────────────
+
+	/**
+	 * <b>계약에 있는 오퍼레이션은 전부 핸들러를 갖는다</b> (#245).
+	 *
+	 * <p>이 클래스의 나머지는 <b>구현 ⊆ 계약</b> 한 방향만 본다 — B-06 이 계약 우선이므로 아직
+	 * 구현되지 않은 엔드포인트가 스펙에 먼저 존재하는 것이 정상이었다. <b>§12 의 작업이 전부
+	 * 머지된 뒤에는 그 관용이 반대 방향의 공백을 덮는다:</b> 계약에만 있고 아무도 구현하지 않은
+	 * 경로가 남아도 어떤 테스트도 깨지지 않는다. #245 가 그렇게 1년 가까이 남아 있었다.
+	 *
+	 * <p><b>경로 변수의 이름은 보지 않는다.</b> {@code {storyId}} 와 {@code {id}} 는 같은 자리다 —
+	 * 계약과 구현이 다르게 불러도 라우팅은 같으며, 이름 차이로 실패하면 이 테스트는 곧 꺼진다.
+	 *
+	 * <p><b>반대 방향(구현에만 있는 경로)은 여기서 보지 않는다.</b> {@code dev} 콘솔(B-47)과 계약
+	 * 서빙 경로는 계약의 대상이 아니고, 그 둘은 각자의 프로파일 테스트가 지킨다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void B06_every_operation_in_the_contract_has_a_handler() {
+		Set<String> handlers = handlerMappings();
+
+		List<String> missing = new ArrayList<>();
+		paths().forEach((path, node) -> ((Map<String, Object>) node).keySet().stream()
+				.map(key -> key.toUpperCase(Locale.ROOT))
+				.filter(HTTP_METHODS::contains)
+				.map(verb -> verb + " " + samePlace(path))
+				.filter(operation -> !handlers.contains(operation))
+				.forEach(missing::add));
+
+		assertThat(missing)
+				.as("계약에 있는데 핸들러가 없다 — 프론트가 있다고 믿는 경로가 404 다 (#245)")
+				.isEmpty();
+	}
+
+	private static final Set<String> HTTP_METHODS =
+			Set.of("GET", "POST", "PUT", "PATCH", "DELETE");
+
+	/** {@code @RestController} 가 선언한 매핑. 컨텍스트를 띄우지 않고 애노테이션만 읽는다. */
+	private static Set<String> handlerMappings() {
+		ClassPathScanningCandidateComponentProvider scanner =
+				new ClassPathScanningCandidateComponentProvider(false);
+		scanner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
+
+		Set<String> mappings = new LinkedHashSet<>();
+		for (BeanDefinition candidate : scanner.findCandidateComponents("com.neowadaeum")) {
+			Class<?> controller = ClassUtils.resolveClassName(candidate.getBeanClassName(), null);
+			String base = firstPathOf(AnnotatedElementUtils.findMergedAnnotation(controller,
+					RequestMapping.class));
+			for (Method method : controller.getDeclaredMethods()) {
+				RequestMapping mapping =
+						AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
+				if (mapping == null) {
+					continue;
+				}
+				String full = samePlace(base + firstPathOf(mapping));
+				for (RequestMethod verb : mapping.method()) {
+					mappings.add(verb.name() + " " + full);
+				}
+			}
+		}
+		return mappings;
+	}
+
+	private static String firstPathOf(RequestMapping mapping) {
+		if (mapping == null || mapping.path().length == 0) {
+			return "";
+		}
+		return mapping.path()[0];
+	}
+
+	/** 경로 변수의 이름을 지운다 — 같은 자리인지만 본다. */
+	private static String samePlace(String path) {
+		String normalized = path.replaceAll("\\{[^}]*\\}", "{}");
+		return normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized;
 	}
 }
