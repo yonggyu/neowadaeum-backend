@@ -1,0 +1,125 @@
+# ─────────────────────────────────────────────────────────────
+# 이미지 빌드·검증·게시 (B-63)
+#
+# **이 워크플로의 핵심은 게시가 아니라 검증이다.** 이미지는 레지스트리에 남고 어디로든
+# 복사된다 — 한 번 들어간 값은 나중에 지워도 레이어에 남는다. 그래서 게시 전에 **이미지 안에
+# 시크릿이 없다는 것을 실제로 확인한다** (S-2).
+#
+# ※ §7.2 — `.github/**/*.yml` 은 `*.yml` 전면 무시의 예외다.
+#    시크릿을 넣지 않는다. 내장 GITHUB_TOKEN 외의 자격 증명을 쓰지 않는다 — GHCR 을 고른
+#    이유가 이것이다(§13 기본 채택안). 다른 레지스트리로 옮기면 시크릿 등록이 함께 필요하다.
+# ─────────────────────────────────────────────────────────────
+name: Release
+
+on:
+  # 태그가 곧 릴리스다. 브랜치 머지가 배포를 부르지 않는다 — 언제 나가는지는 사람이 정한다.
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  # Dockerfile 이 바뀌면 **머지 전에** 확인한다. 게시는 하지 않는다.
+  pull_request:
+    branches: [backend, dev, main]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/release.yml"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "src/main/resources/application.yml.template"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # 게시할 때만 쓴다. PR 실행에서는 로그인하지 않는다.
+      packages: write
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 이미지 빌드
+        run: docker build --tag "$IMAGE:${GITHUB_SHA}" .
+
+      # ── S-2 검증 ─────────────────────────────────────────────
+      # 파일 목록을 눈으로 확인하는 절차는 반드시 빠진다. 여기서 실패시킨다.
+      - name: 이미지에 시크릿이 없는지 확인
+        run: |
+          set -euo pipefail
+          container="$(docker create "$IMAGE:${GITHUB_SHA}")"
+          trap 'docker rm -f "$container" > /dev/null' EXIT
+          docker export "$container" | tar -tf - > /tmp/image-files.txt
+
+          # **`.env` 는 이미지 어디에도 있으면 안 된다.** 베이스 이미지가 만들 이유가 없는
+          # 이름이므로, 나오면 그것은 우리가 넣은 것이다.
+          if grep -Eq '(^|/)\.env($|\.)' /tmp/image-files.txt; then
+            echo "이미지에 .env 가 있다:"
+            grep -E '(^|/)\.env($|\.)' /tmp/image-files.txt
+            exit 1
+          fi
+
+          # **키·인증서는 우리가 넣은 경로에서만 본다.**
+          # 이미지 전체를 보면 베이스 OS 의 **공개 루트 인증서**(/etc/ssl/certs/*.pem)가 걸린다 —
+          # 그것은 시크릿이 아니라 신뢰 저장소이고, 베이스는 다이제스트로 고정돼 있어 우리가
+          # 판정할 대상이 아니다. 확인해야 하는 것은 **우리가 넣은 것 안에 시크릿이 없는가**다.
+          ours='^(app|home/app|tmp)/'
+          keys='\.pem$|\.p8$|\.p12$|\.jks$|\.keystore$|-key\.json$|(^|/)docs/internal/'
+          if grep -E "$ours" /tmp/image-files.txt | grep -Eq "$keys"; then
+            echo "우리가 넣은 경로에 시크릿으로 분류되는 파일이 있다:"
+            grep -E "$ours" /tmp/image-files.txt | grep -E "$keys"
+            exit 1
+          fi
+
+          # 설정 파일은 **템플릿 그대로**여야 한다. 한 글자라도 다르면 값이 채워진 것이다.
+          docker cp "$container:/app/config/application.yml" /tmp/image-application.yml
+          if ! diff -u src/main/resources/application.yml.template /tmp/image-application.yml; then
+            echo "이미지의 설정이 템플릿과 다르다 — 값이 채워졌을 수 있다 (S-2)."
+            exit 1
+          fi
+
+      - name: 기동 확인
+        run: |
+          set -euo pipefail
+          # **값을 주지 않고 띄운다.** §7.3 이 요구하는 것은 "값이 없으면 부팅 실패"이므로,
+          # 여기서 성공하면 그것이 오히려 결함이다 — 어딘가에 기본값이 박혀 있다는 뜻이다.
+          #
+          # 매달리는 것도 실패로 본다. 값이 없는데 무언가를 기다리고 있다면 그것은 "빠르게
+          # 실패한다"가 아니다.
+          status=0
+          timeout 120 docker run --rm "$IMAGE:${GITHUB_SHA}" > /tmp/boot.log 2>&1 || status=$?
+          tail -40 /tmp/boot.log
+          case "$status" in
+            0)   echo "설정 없이 부팅에 성공했다 — 기본값이 박혀 있다 (§7.3)."; exit 1 ;;
+            124) echo "설정 없이 부팅이 끝나지 않았다 — 실패해야 할 자리에서 기다린다."; exit 1 ;;
+            *)   echo "설정 없이는 부팅하지 않는다 (exit $status) — 기대한 동작이다." ;;
+          esac
+
+      - name: GHCR 로그인
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: 게시
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          # **이동 가능한 태그를 만들지 않는다** (B-04-1 의 관례). 롤백은 "이전 SHA 로 되돌린다"
+          # 여야 하고, latest 가 있으면 무엇으로 되돌리는지가 흐려진다.
+          docker push "$IMAGE:${GITHUB_SHA}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            docker tag "$IMAGE:${GITHUB_SHA}" "$IMAGE:${GITHUB_REF_NAME}"
+            docker push "$IMAGE:${GITHUB_REF_NAME}"
+          fi

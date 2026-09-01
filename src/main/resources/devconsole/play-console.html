@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>너와다음 dev 플레이 콘솔</title>
+<!--
+  S-10 (B-47) — dev 프로파일 전용 임시 검증 UI. 프론트 레포와 무관하다.
+
+  이 파일은 클라이언트일 뿐이다. 판정·검증은 전부 서버에 있다 (S-5~S-9).
+  - 선택지는 서버 발급 choiceId 만 보낸다 (I-1). 자유입력 UI 는 없다 (I-18).
+  - provider / model 선택 UI 를 두지 않는다 (I-14).
+  - "다시 시도"는 같은 Idempotency-Key 재전송이다 (R6.2).
+
+  B-12 이후 — 인증 우회가 사라졌다 (#34). 콘솔도 액세스 토큰을 직접 들고 보낸다.
+  토큰은 브라우저 localStorage 에만 두고 서버로 되돌리지 않는다(Authorization 헤더 제외).
+  발급 방법: POST /api/v1/auth/oauth/google 에 구글 ID 토큰을 보내 accessToken 을 받는다.
+-->
+<style>
+  :root { --ink: #222; --dim: #777; --line: #ddd; --accent: #2a6db0; --warn: #b03030; }
+  body { font-family: system-ui, sans-serif; color: var(--ink); max-width: 720px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+  h1 { font-size: 1.1rem; } h1 small { color: var(--dim); font-weight: normal; }
+  fieldset { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 1rem; }
+  input[type=text] { width: 24rem; max-width: 100%; font-family: monospace; padding: .3rem; }
+  button { padding: .4rem .9rem; cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .5; }
+  .turn { border-top: 1px solid var(--line); padding: .8rem 0; }
+  .meta { color: var(--dim); font-size: .8rem; }
+  .interstitial { background: #f2f6fa; border-left: 3px solid var(--accent); padding: .4rem .8rem; margin: .5rem 0; }
+  .speaker { font-weight: bold; }
+  .dialogue { margin-left: 0.75rem; }
+  .choices button { display: block; width: 100%; text-align: left; margin: .3rem 0; }
+  .ending { background: #faf4ec; border: 1px solid #e0cfae; border-radius: 6px; padding: .8rem; margin-top: 1rem; }
+  .error { color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: .6rem .8rem; margin: .8rem 0; }
+  .error code { font-weight: bold; }
+  details.raw { margin-top: .3rem; } details.raw pre { background: #f7f7f7; overflow-x: auto; padding: .5rem; font-size: .75rem; }
+  #status { color: var(--dim); font-style: italic; }
+</style>
+</head>
+<body>
+<h1>너와다음 dev 플레이 콘솔 <small>— S-10 · dev 전용 · AI 생성 콘텐츠</small></h1>
+
+<fieldset>
+  <legend>인증</legend>
+  <label>accessToken <input type="text" id="accessToken" placeholder="Bearer 없이 토큰만"></label>
+  <div class="meta">B-12 이후 <b>토큰 없이는 401</b> 이다 — dev 고정 player_ref 우회는 제거됐다 (#34).</div>
+  <div class="meta">이 값은 이 브라우저의 localStorage 에만 남는다.</div>
+</fieldset>
+
+<fieldset>
+  <legend>세션</legend>
+  <label>storyId <input type="text" id="storyId" value="11111111-1111-4111-8111-000000000001"></label>
+  <button id="startBtn">세션 시작</button>
+  <div class="meta" id="sessionInfo"></div>
+  <div class="meta">이미 active 세션이 있으면 409 SESSION_ALREADY_ACTIVE 다 — resume 은 B-17 범위라 콘솔에 없다.</div>
+</fieldset>
+
+<div id="feed"></div>
+<div id="choicePanel" class="choices"></div>
+<div id="errorPanel"></div>
+<div id="status"></div>
+
+<script>
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  sessionId: null,
+  shownTurnNo: null,   // 지금 화면에 떠 있는 턴 — 다음 요청의 turnNo (R6.1)
+  lastAttempt: null,   // 재시도용: { url, body, idempotencyKey } (R6.2)
+  totalChapters: null,
+};
+
+// 액세스 토큰은 이 브라우저에만 둔다. 새로고침해도 남도록 localStorage 를 쓴다.
+const TOKEN_KEY = 'neowadaeum.devconsole.accessToken';
+
+function accessToken() {
+  return ($('accessToken').value || '').trim();
+}
+
+async function post(url, body, idempotencyKey) {
+  const headers = { 'Content-Type': 'application/json' };
+  const token = accessToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+  const res = await fetch(url, { method: 'POST', headers, credentials: 'same-origin',
+    body: body ? JSON.stringify(body) : null });
+  let json = null;
+  try { json = await res.json(); } catch (e) { /* 비 JSON 응답 */ }
+  return { ok: res.ok, status: res.status, json };
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function setStatus(text) { $('status').textContent = text || ''; }
+
+function showError(status, payload, retryable) {
+  const panel = $('errorPanel');
+  panel.replaceChildren();
+  const box = el('div', 'error');
+  const err = payload || {};
+  const line = el('div');
+  line.append(el('code', null, `${status} ${err.error || ''}`), ` ${err.message || '(응답 본문 없음)'}`);
+  box.append(line);
+  if (err.details && Object.keys(err.details).length) {
+    box.append(el('div', 'meta', 'details: ' + JSON.stringify(err.details)));
+  }
+  if (err.error === 'TURN_CONFLICT' && err.details && err.details.currentTurnNo !== undefined) {
+    state.shownTurnNo = err.details.currentTurnNo;
+    box.append(el('div', 'meta', `turnNo 를 서버의 현재 턴(${state.shownTurnNo})으로 맞췄다. 선택지를 다시 골라라.`));
+  }
+  if (retryable && state.lastAttempt) {
+    const retry = el('button', null, '다시 시도 (같은 Idempotency-Key)');
+    retry.onclick = () => resend();
+    box.append(retry);
+  }
+  panel.append(box);
+}
+
+function clearError() { $('errorPanel').replaceChildren(); }
+
+function renderTurn(turn) {
+  const feed = $('feed');
+  const box = el('div', 'turn');
+  box.append(el('div', 'meta', `턴 ${turn.turnNo} · ${turn.progressHint ?? ''}`));
+  if (turn.chapterChanged) {
+    box.append(el('div', 'interstitial', `— Chapter ${turn.chapterNo}. ${turn.chapterTitle ?? ''} —`));
+  }
+  // #84 — 문단마다 종류와 화자가 온다. 대사는 화자를 앞에 붙이고 나레이션은 그대로 쓴다 (R5.2).
+  let lastSpeaker = null;
+  for (const p of turn.paragraphs || []) {
+    if (p.type === 'dialogue' && p.speakerName && p.speakerName !== lastSpeaker) {
+      box.append(el('div', 'speaker', p.speakerName));
+      lastSpeaker = p.speakerName;
+    }
+    if (p.type !== 'dialogue') lastSpeaker = null;
+    box.append(el('p', p.type === 'dialogue' ? 'dialogue' : null, p.text));
+  }
+
+  const raw = el('details', 'raw');
+  raw.append(el('summary', null, '응답 JSON'));
+  const pre = el('pre'); pre.textContent = JSON.stringify(turn, null, 2);
+  raw.append(pre);
+  box.append(raw);
+  feed.append(box);
+
+  state.shownTurnNo = turn.turnNo;
+  renderChoices(turn);
+  if (turn.isEnding) renderEnding(turn);
+  box.scrollIntoView({ block: 'end' });
+}
+
+function renderChoices(turn) {
+  const panel = $('choicePanel');
+  panel.replaceChildren();
+  for (const c of turn.choices || []) {
+    const btn = el('button', null, `${c.order}. ${c.text}`);
+    btn.disabled = !!c.disabled;                       // 서버가 판정한 값 그대로 (I-11)
+    if (c.disabledReason) btn.title = c.disabledReason;
+    btn.onclick = () => choose(c.choiceId);
+    panel.append(btn);
+  }
+}
+
+function renderEnding(turn) {
+  const box = el('div', 'ending');
+  box.append(el('div', 'speaker', 'ENDING'));
+  const index = turn.endingIndex === null ? '시크릿' : `${turn.endingIndex} / ${turn.totalEndings}`;
+  box.append(el('div', 'meta', `endingId: ${turn.endingId} · ${index}`));
+  const again = el('button', null, '새 세션 시작');
+  again.onclick = () => startSession();
+  box.append(again);
+  $('feed').append(box);
+}
+
+function lockChoices(locked) {
+  for (const btn of $('choicePanel').querySelectorAll('button')) btn.disabled = locked;
+}
+
+async function startSession() {
+  clearError();
+  const storyId = $('storyId').value.trim();
+  $('feed').replaceChildren();
+  $('choicePanel').replaceChildren();
+  $('sessionInfo').textContent = '';
+  setStatus('세션 생성 중…');
+  state.lastAttempt = null;
+
+  const res = await post(`/api/v1/stories/${storyId}/sessions`, null, null);
+  setStatus('');
+  if (!res.ok) { showError(res.status, res.json, false); return; }
+
+  state.sessionId = res.json.sessionId;
+  $('sessionInfo').textContent = `sessionId: ${state.sessionId}`;
+  renderTurn(res.json.turn);
+}
+
+async function choose(choiceId) {
+  // 시도(attempt)마다 새 키, 같은 시도의 재전송은 같은 키 (R6.2).
+  state.lastAttempt = {
+    url: `/api/v1/sessions/${state.sessionId}/turns`,
+    body: { choiceId, turnNo: state.shownTurnNo },
+    idempotencyKey: crypto.randomUUID(),
+  };
+  await resend();
+}
+
+async function resend() {
+  const attempt = state.lastAttempt;
+  clearError();
+  lockChoices(true);
+  setStatus('턴 생성 중…');
+  let res;
+  try {
+    res = await post(attempt.url, attempt.body, attempt.idempotencyKey);
+  } catch (e) {
+    setStatus('');
+    lockChoices(false);
+    showError(0, { error: 'NETWORK', message: String(e) }, true);
+    return;
+  }
+  setStatus('');
+  if (!res.ok) {
+    lockChoices(false);
+    // 쿨다운·타임아웃·충돌 등 — 코드는 서버 계약(§11) 그대로 노출한다.
+    showError(res.status, res.json, true);
+    return;
+  }
+  state.lastAttempt = null;
+  renderTurn(res.json);
+}
+
+$('startBtn').onclick = () => startSession();
+
+// 토큰을 이 브라우저에만 보관한다. 새로고침해도 남되 서버로는 헤더 외에 나가지 않는다.
+$('accessToken').value = localStorage.getItem(TOKEN_KEY) || '';
+$('accessToken').addEventListener('change', () => localStorage.setItem(TOKEN_KEY, accessToken()));
+</script>
+</body>
+</html>

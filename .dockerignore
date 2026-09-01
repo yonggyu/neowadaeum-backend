@@ -1,0 +1,51 @@
+# ── 빌드 컨텍스트에서 제외한다 ───────────────────────────────
+#
+# **S-2 — 이미지에 시크릿을 담지 않는다.** 이미지는 어디로든 복사되고 레지스트리에 남는다.
+# `COPY . .` 한 줄이 .env 를 통째로 실어 나르는 것을 막는 것이 이 파일의 첫 번째 일이다.
+#
+# **.gitignore 와 같은 값을 다시 적는 이유** — 도커는 .gitignore 를 읽지 않는다. git 이 무시하는
+# 파일은 대개 **로컬에만 있는 진짜 값**이므로, 여기서 빠지면 커밋되지 않은 시크릿이 이미지에
+# 들어간다. 두 파일이 어긋나면 이쪽이 더 위험하다.
+
+# 시크릿 · 실제 설정
+.env
+.env.*
+!.env.example
+*.properties
+!gradle.properties
+!gradle/wrapper/gradle-wrapper.properties
+src/main/resources/application.yml
+src/main/resources/application-*.yml
+
+# 키 · 인증서
+*.pem
+*.p8
+*.p12
+*.jks
+*.keystore
+*-key.json
+secrets/
+
+# 공개하지 않는 내부 문서 (S-11)
+docs/internal/
+
+# **`docs/` 를 통째로 제외하지 않는다.** processResources 가 `docs/openapi.yaml` 을 클래스패스로
+# 복사하므로(build.gradle.kts), 빠지면 계약을 서빙하지 못하는 이미지가 조용히 만들어진다.
+# 나머지 문서는 컨텍스트에만 들어가고 **런타임 이미지에는 jar 와 설정만 복사된다.**
+
+# 빌드 산출물 — 컨텍스트를 키우고, 호스트에서 만든 것이 이미지에 섞인다
+build/
+out/
+bin/
+.gradle/
+*.log
+
+# 이미지가 쓰지 않는 것
+.git/
+.github/
+.githooks/
+.idea/
+.vscode/
+scripts/
+docker/
+docker-compose.yml
