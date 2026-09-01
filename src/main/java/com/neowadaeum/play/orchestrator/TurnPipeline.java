@@ -372,7 +372,9 @@ public class TurnPipeline {
 	}
 
 	/**
-	 * L2 대상은 본문과 선택지 둘 다다 (§9.1).
+	 * L2 대상은 본문과 선택지와 화자 이름이다 (§9.1, #243).
+	 *
+	 * <p><b>화자 이름도 함께 넘긴다</b> (#243) — 모델이 만들었고 사용자에게 도달한다.
 	 *
 	 * <p><b>판정 강도는 달라지지 않는다</b> (#84). {@code SafetyL2Judge} 는 받은 것을 전부
 	 * 이어 붙여 정규화하므로, 문단 하나를 넘기든 셋을 넘기든 대조 대상 문자열이 같다 — 문단 경계에
@@ -382,8 +384,12 @@ public class TurnPipeline {
 	private SafetyJudgement screen(GeneratedTurn result) {
 		List<String> choiceTexts = result.choices().stream().map(GeneratedChoice::text).toList();
 		List<String> paragraphTexts = result.paragraphs().stream().map(GeneratedParagraph::text).toList();
+		// #243 — 화자 이름도 모델이 만든 문자열이고 turn.speaker_name 으로 저장돼 화면에 도달한다
+		// (R5.2). 넘기지 않으면 검수를 거치지 않고 사용자에게 닿는 자리가 하나 남는다 (I-2).
+		List<String> speakerNames = result.paragraphs().stream()
+				.map(GeneratedParagraph::speakerName).toList();
 
-		SafetyJudgement judgement = this.safetyJudge.judge(paragraphTexts, choiceTexts);
+		SafetyJudgement judgement = this.safetyJudge.judge(paragraphTexts, choiceTexts, speakerNames);
 		// B-48 — 계측을 판정기가 아니라 부르는 쪽에 둔다. 판정기는 fail-fast 생성자로 조여
 		// 두었고(ADR-0002), 거기에 관측용 의존을 더하면 그 조임이 흐려진다.
 		this.safetyMetrics.record("l2", judgement.blocked(), judgement.categories());

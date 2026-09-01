@@ -27,6 +27,11 @@ import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.StorySummaryRepository;
 import com.neowadaeum.play.repository.TurnRepository;
+import com.neowadaeum.authoring.blocklist.InMemoryBlocklistQuery;
+import com.neowadaeum.common.spi.BlocklistEntry;
+import com.neowadaeum.common.spi.SafetyCategory;
+import com.neowadaeum.common.support.TextNormalizer;
+import com.neowadaeum.safety.l2.RuleBasedSafetyJudge;
 import com.neowadaeum.safety.l2.SafetyL2Judge;
 import java.time.Clock;
 import java.time.Instant;
@@ -470,9 +475,86 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 	}
 
 	private TurnPipeline pipelineWith(StoryProvider storyProvider) {
+		return pipelineWith(storyProvider, this.safetyJudge);
+	}
+
+	private TurnPipeline pipelineWith(StoryProvider storyProvider, SafetyL2Judge judge) {
 		return new TurnPipeline(this.sessions, this.turns, this.snapshots, this.storyVersions, storyProvider,
-				this.safetyJudge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
+				judge, this.gameStateEngine, this.chapterEngine, this.endingEngine, RecentTurnsProperties.defaults(),
 				this.summaries, this.summaryTrigger, this.playTransactionManager, FIXED, TurnBudgetProperties.defaults(),
 				new TurnMetrics(METERS), new SafetyMetrics(METERS));
+	}
+
+	// ── #243 화자 이름도 L2 를 지난다 ────────────────────────
+
+	/**
+	 * <b>#243 의 회귀 테스트</b> — 화자 이름이 검수를 지나지 않고 사용자에게 닿지 않는다 (I-2).
+	 *
+	 * <p>본문과 선택지는 깨끗하고 <b>화자 이름만</b> 걸린다. 이전에는
+	 * {@code TurnPipeline#screen} 이 판정기에 문단 본문과 선택지만 넘겼으므로 이 턴이 그대로
+	 * 저장되고 {@code turn.speaker_name} 으로 화면에 도달했다 — <b>아무 테스트도 깨지지 않은</b>
+	 * 이유가 그것이다.
+	 *
+	 * <p><b>S-11 — 픽스처의 문자열은 아무 의미 없는 값이다.</b>
+	 */
+	@Test
+	void I2_a_listed_speaker_name_blocks_the_turn() {
+		UUID sessionId = newSession();
+		String listed = "픽스처항목";
+		String rawFromModel = """
+				{
+				  "speakerName": "%s",
+				  "paragraphs": [
+				    { "type": "dialogue", "text": "복도 끝에서 발소리가 멈췄다." }
+				  ],
+				  "choices": [{ "order": 1, "text": "계속한다" }],
+				  "stateChanges": {},
+				  "chapterAdvanceSuggested": false,
+				  "endingSuggested": null
+				}
+				""".formatted(listed);
+
+		TurnOutcome outcome = pipelineWith(parsingProvider(rawFromModel),
+				judgeBlocking(listed, SafetyCategory.REAL_PERSON_HARM)).advance(sessionId, null);
+
+		assertThat(outcome.status()).as("화자 이름이 검수를 지나지 않았다 (I-2, #243)")
+				.isEqualTo(TurnOutcome.TurnStatus.SAFETY_BLOCKED);
+		assertThat(outcome.turnId()).as("차단된 턴에 본문이 남았다 (I-2)").isNull();
+	}
+
+	/**
+	 * <b>본문이 걸린 경우와 같은 강도로 막는다.</b>
+	 *
+	 * <p>같은 문자열이 문단 본문에 있을 때 차단된다는 것은 이미 지켜지고 있었다. 화자 이름에
+	 * 있을 때 통과하면 <b>모델이 어디에 쓰느냐로 검수를 우회할 수 있다</b>는 뜻이 된다.
+	 */
+	@Test
+	void I2_the_same_string_in_the_body_blocks_it_too() {
+		UUID sessionId = newSession();
+		String listed = "픽스처항목";
+		String rawFromModel = """
+				{
+				  "speakerName": null,
+				  "paragraphs": [
+				    { "type": "narration", "text": "%s 가 지나갔다." }
+				  ],
+				  "choices": [{ "order": 1, "text": "계속한다" }],
+				  "stateChanges": {},
+				  "chapterAdvanceSuggested": false,
+				  "endingSuggested": null
+				}
+				""".formatted(listed);
+
+		TurnOutcome outcome = pipelineWith(parsingProvider(rawFromModel),
+				judgeBlocking(listed, SafetyCategory.REAL_PERSON_HARM)).advance(sessionId, null);
+
+		assertThat(outcome.status()).isEqualTo(TurnOutcome.TurnStatus.SAFETY_BLOCKED);
+	}
+
+	/** 이 픽스처 항목 하나만 아는 판정기. 실제 블록리스트를 건드리지 않는다 (S-11). */
+	private static SafetyL2Judge judgeBlocking(String listed, SafetyCategory category) {
+		RuleBasedSafetyJudge rules = new RuleBasedSafetyJudge(new InMemoryBlocklistQuery(
+				List.of(new BlocklistEntry(TextNormalizer.normalize(listed), category))));
+		return new SafetyL2Judge(rules, request -> java.util.Set.of());
 	}
 }

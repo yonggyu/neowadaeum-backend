@@ -30,6 +30,9 @@ class SafetyL2JudgeTests {
 
 	private static final List<String> CHOICES = List.of("계속한다");
 
+	/** 나레이션만인 턴 — 판정할 화자 이름이 없다 (R5.2). */
+	private static final List<String> NO_SPEAKERS = List.of();
+
 	/** 세는 판정기. 몇 번 불렸는지가 §9.2 의 비용 규칙을 지키는지를 말해 준다. */
 	private static final class CountingClassifier implements SafetyClassifier {
 
@@ -77,7 +80,7 @@ class SafetyL2JudgeTests {
 		CountingClassifier classifier = CountingClassifier.finding();
 
 		SafetyJudgement judgement = new SafetyL2Judge(rulesFindingNothing(), classifier)
-				.judge(PARAGRAPHS, CHOICES);
+				.judge(PARAGRAPHS, CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.PASS);
 		assertThat(classifier.calls).hasValue(1);
@@ -92,7 +95,7 @@ class SafetyL2JudgeTests {
 	void R9_2_stage_two_catches_what_the_blocklist_cannot() {
 		SafetyJudgement judgement = new SafetyL2Judge(rulesFindingNothing(),
 				CountingClassifier.finding(SafetyCategory.RATING_EXCEEDED))
-				.judge(PARAGRAPHS, CHOICES);
+				.judge(PARAGRAPHS, CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
 		assertThat(judgement.categories()).containsExactly(SafetyCategory.RATING_EXCEEDED);
@@ -108,7 +111,7 @@ class SafetyL2JudgeTests {
 		CountingClassifier classifier = CountingClassifier.finding();
 
 		SafetyJudgement judgement = new SafetyL2Judge(rulesFinding(SafetyCategory.MINOR_SEXUAL), classifier)
-				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.BLOCK);
 		assertThat(classifier.calls).as("즉시차단인데 2단이 불렸다").hasValue(0);
@@ -124,7 +127,7 @@ class SafetyL2JudgeTests {
 	void S9_2_stage_two_can_escalate_a_regeneration_into_a_block() {
 		SafetyJudgement judgement = new SafetyL2Judge(rulesFinding(SafetyCategory.RATING_EXCEEDED),
 				CountingClassifier.finding(SafetyCategory.NON_CONSENSUAL))
-				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.BLOCK);
 		assertThat(judgement.categories())
@@ -140,7 +143,7 @@ class SafetyL2JudgeTests {
 	@Test
 	void B30_a_failed_classification_blocks_instead_of_passing() {
 		SafetyJudgement judgement = new SafetyL2Judge(rulesFindingNothing(), CountingClassifier.failing())
-				.judge(PARAGRAPHS, CHOICES);
+				.judge(PARAGRAPHS, CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.BLOCK);
 	}
@@ -163,7 +166,7 @@ class SafetyL2JudgeTests {
 	void R9_2_a_term_the_blocklist_located_is_masked_and_passes() {
 		SafetyJudgement judgement = new SafetyL2Judge(
 				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA), CountingClassifier.finding())
-				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.MASKED);
 		assertThat(judgement.masked().paragraphs().getFirst()).doesNotContain(LISTED);
@@ -179,7 +182,7 @@ class SafetyL2JudgeTests {
 	void S13_21_a_semantic_only_detection_is_regenerated_not_masked() {
 		SafetyJudgement judgement = new SafetyL2Judge(rulesFindingNothing(),
 				CountingClassifier.finding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA))
-				.judge(PARAGRAPHS, CHOICES);
+				.judge(PARAGRAPHS, CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
 		assertThat(judgement.masked()).isNull();
@@ -196,7 +199,7 @@ class SafetyL2JudgeTests {
 		SafetyJudgement judgement = new SafetyL2Judge(
 				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA),
 				CountingClassifier.finding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA))
-				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
 		assertThat(judgement.masked()).isNull();
@@ -208,7 +211,7 @@ class SafetyL2JudgeTests {
 		SafetyJudgement judgement = new SafetyL2Judge(
 				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA),
 				CountingClassifier.finding(SafetyCategory.HATE_SPEECH))
-				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
 		assertThat(judgement.masked()).isNull();
@@ -219,8 +222,101 @@ class SafetyL2JudgeTests {
 	void R9_6_the_judgement_does_not_carry_the_offending_text() {
 		SafetyJudgement judgement = new SafetyL2Judge(rulesFinding(SafetyCategory.HATE_SPEECH),
 				CountingClassifier.finding())
-				.judge(List.of(LISTED + " 가 나온다."), CHOICES);
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES, NO_SPEAKERS);
 
 		assertThat(judgement.toString()).doesNotContain(LISTED);
+	}
+
+	// ── #243 화자 이름 ──────────────────────────────────────
+
+	/**
+	 * <b>화자 이름도 판정 대상이다</b> (I-2, #243).
+	 *
+	 * <p>모델이 만든 문자열이고 {@code turn.speaker_name} 으로 저장돼 사용자에게 도달한다
+	 * (R5.2). 본문과 선택지가 깨끗해도 이름 하나가 검수를 지나지 않으면 <b>검수를 거치지 않고
+	 * 화면에 닿는 자리</b>가 남는다.
+	 */
+	@Test
+	void I2_a_speaker_name_is_screened_like_any_other_text() {
+		SafetyJudgement judgement = new SafetyL2Judge(
+				rulesFinding(SafetyCategory.MINOR_SEXUAL), CountingClassifier.finding())
+				.judge(PARAGRAPHS, CHOICES, List.of(LISTED));
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.BLOCK);
+		assertThat(judgement.categories()).contains(SafetyCategory.MINOR_SEXUAL);
+	}
+
+	/** <b>즉시차단은 화자 이름에서도 즉시차단이다</b> — 2단을 부르지 않는다 (§9.2). */
+	@Test
+	void R9_2_an_immediate_block_in_a_speaker_name_skips_stage_two() {
+		CountingClassifier classifier = CountingClassifier.finding();
+
+		new SafetyL2Judge(rulesFinding(SafetyCategory.REAL_PERSON_HARM), classifier)
+				.judge(PARAGRAPHS, CHOICES, List.of(LISTED));
+
+		assertThat(classifier.calls).hasValue(0);
+	}
+
+	/**
+	 * <b>화자 이름은 가리지 않는다 — 재생성으로 올린다</b> (#243 의 결정, §13-46 과 다른 자리).
+	 *
+	 * <p>1단은 이름 안의 자리를 알므로 가릴 수는 있다. 그러나 이름을 통째로 가린 대사는
+	 * <b>누가 말했는지가 사라진 대사</b>이고, 그것은 본문의 뜻이 달라지는 일이다 — 마스킹이
+	 * 아니라 훼손이다.
+	 */
+	@Test
+	void R9_2_a_listed_speaker_name_is_regenerated_not_masked() {
+		SafetyJudgement judgement = new SafetyL2Judge(
+				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA), CountingClassifier.finding())
+				.judge(PARAGRAPHS, CHOICES, List.of(LISTED));
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.REGENERATE);
+		assertThat(judgement.masked()).isNull();
+	}
+
+	/**
+	 * <b>본문의 마스킹은 그대로다</b> (§13-46).
+	 *
+	 * <p>#243 이 바꾼 것은 화자 이름의 처리이고, <b>자리를 아는 본문을 가린 뒤 통과시키는</b>
+	 * 기존 정책은 건드리지 않았다.
+	 */
+	@Test
+	void R9_2_masking_the_body_still_passes_when_no_speaker_is_listed() {
+		SafetyJudgement judgement = new SafetyL2Judge(
+				rulesFinding(SafetyCategory.THIRD_PARTY_PERSONAL_DATA), CountingClassifier.finding())
+				.judge(List.of(LISTED + " 가 나온다."), CHOICES, List.of("이름 없는 사람"));
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.MASKED);
+		assertThat(judgement.masked().paragraphs()).doesNotContain(LISTED + " 가 나온다.");
+	}
+
+	/** <b>2단도 화자 이름을 본다</b> — 1단이 못 잡는 것을 잡는 자리는 이름에도 있다 (R9.2). */
+	@Test
+	void R9_2_stage_two_receives_the_speaker_names_too() {
+		java.util.List<String> seen = new java.util.ArrayList<>();
+		SafetyClassifier recording = request -> {
+			seen.addAll(request.texts());
+			return Set.of();
+		};
+
+		new SafetyL2Judge(rulesFindingNothing(), recording)
+				.judge(PARAGRAPHS, CHOICES, List.of("서린"));
+
+		assertThat(seen).contains("서린");
+	}
+
+	/**
+	 * <b>나레이션만인 턴은 1단을 한 번만 부른다.</b>
+	 *
+	 * <p>판정할 이름이 없는데 블록리스트를 다시 읽으면 비용만 는다 — {@code null} 화자는
+	 * 나레이션이라는 R5.2 의 규칙이 여기서도 그대로다.
+	 */
+	@Test
+	void R5_2_a_narration_only_turn_has_no_speaker_to_screen() {
+		SafetyJudgement judgement = new SafetyL2Judge(rulesFindingNothing(),
+				CountingClassifier.finding())
+				.judge(PARAGRAPHS, CHOICES, java.util.Arrays.asList(null, "  "));
+
+		assertThat(judgement.outcome()).isEqualTo(SafetyOutcome.PASS);
 	}
 }
