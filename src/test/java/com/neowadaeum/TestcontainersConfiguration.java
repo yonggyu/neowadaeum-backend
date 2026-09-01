@@ -103,6 +103,18 @@ public class TestcontainersConfiguration {
 	}
 
 	/**
+	 * {@code app.cors.allowed-origins} 도 런타임 전용이다 (#248). {@code ${CORS_ALLOWED_ORIGINS}}
+	 * 는 테스트에 {@code .env} 가 없어 플레이스홀더 문자열 그대로 남고, {@code CorsProperties} 의
+	 * 형식 검사가 <b>부팅을 세운다</b> — {@code JWT_SECRET} 과 같은 이유이며 §7.3 이 의도한 동작이다.
+	 *
+	 * <p><b>테스트 전용 오리진이다.</b> 운영 오리진은 이 레포 어디에도 없다 (S-11).
+	 */
+	@Bean
+	DynamicPropertyRegistrar corsAllowedOriginsRegistrar() {
+		return registry -> registry.add("app.cors.allowed-origins", () -> "http://localhost:5173");
+	}
+
+	/**
 	 * 호출 한도를 테스트에서 올린다 (B-38).
 	 *
 	 * <p><b>§15 의 값이 테스트를 막는다.</b> 40턴 E2E(B-44)는 <b>한 테스트가 정당하게 40번을
