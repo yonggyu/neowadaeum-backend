@@ -12,13 +12,32 @@ spring:
   application:
     name: neowadaeum-backend
 
-  # ── B-05 이전 한시적 제외 (§2.5) ───────────────────────────
-  # DataSource Bean 4개(B-05) 이전에는 spring.datasource.url 이 없어 기동이 실패한다.
-  # 더미 접속 정보를 채우지 않고 자동설정만 제외한다.
+  # ── 자동설정 제외 (§2.2, §5.3) ─────────────────────────────
+  # B-05 이전의 한시적 DataSourceAutoConfiguration 제외는 제거했다.
+  # 이제 DataSource 빈이 4개 존재하므로 그 자동설정은 스스로 물러난다.
+  #
+  # 아래 셋은 영구 제외다. 이 프로젝트는 스토어별로 직접 배선한다.
+  #   - JPA 2종 — 자동설정은 EntityManagerFactory 를 1벌만 만든다. 한 EMF 에 네 스키마의
+  #     엔티티가 묶이면 JPQL 한 줄로 크로스 스키마 조인이 가능해져 §5.3 이 무너진다.
+  #     FK 검증(§5.3 테스트)은 FK 만 보므로 이 경로를 잡지 못한다.
+  #     스토어별 EMF / TransactionManager 4벌은 B-05-1 에서 명시 구성한다.
+  #   - Flyway — 자동설정은 인스턴스를 1개만 만든다. 스토어별 4세트는 config 에서 직접 만든다.
+  #
+  # ★ §2.2 — 존재하지 않는 FQCN 을 여기 써도 Spring 은 오류 없이 무시한다.
+  #   Boot 4 에서 자동설정 패키지가 전부 이동했으므로 낡은 이름을 적어도 조용히 통과한다.
+  #   따라서 "파일에 적혀 있다"는 것은 아무것도 보장하지 않는다.
+  #   AutoConfigurationExclusionTests 가 세 이름이 실제 자동설정 클래스이고,
+  #   해당 빈이 컨텍스트에 없다는 것을 동작으로 검증한다.
+  #
+  #   조사 결과(B-05) — 여기 있던 org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+  #   은 Boot 4.1 에서도 유효한 이름이었다. 즉 B-02~B-04 구간의 제외는 실제로 동작하고 있었다.
+  #   이 경고는 사후 확인 결과이지 이 프로젝트에서 발생한 사고의 기록이 아니다.
+  #   같은 확인을 반복하지 않도록 남긴다.
   autoconfigure:
     exclude:
-      # TODO(B-05): DataSource Bean 4개 정의 후 이 블록을 통째로 삭제한다.
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration
+      - org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
 
   # ── 로컬 인프라 자동 기동 (§2.5) ───────────────────────────
   # 커넥션 정보는 자동 주입되지 않는다. 컨테이너 수명 관리 용도로만 쓴다.
@@ -38,8 +57,9 @@ spring:
     property-naming-strategy: LOWER_CAMEL_CASE   # API JSON은 camelCase (§9.1)
 
 # ── 4-스토어 DataSource (§5.3, §2.5) ─────────────────────────
-# DataSource Bean 4개는 B-05에서 이 프로퍼티를 읽어 직접 정의한다.
+# DataSourceConfiguration 이 이 프로퍼티만 읽어 DataSource 빈 4개를 만든다.
 # 스키마 간 FK / JOIN 금지. 각 계정은 자기 스키마에만 권한을 갖는다.
+# URL 에 `?currentSchema=<스키마>` 가 없으면 부팅이 실패한다 — 빠지면 조용히 다른 스키마에 쓴다.
 app:
   datasource:
     identity:
@@ -59,11 +79,52 @@ app:
       username: ${PROMPTLOG_DB_USER}
       password: ${PROMPTLOG_DB_PASSWORD}
 
+# ── 배치 (R2.7, I-20, #159) ──────────────────────────────────
+# 도달률은 배치 갱신이다 — 조회 경로가 계산하지 않는다 (I-20).
+# fixedDelay 이므로 앞 회차가 끝난 뒤부터 센다. 값이 없으면 코드가 1시간을 쓴다.
+# app:
+#   batch:
+#     ending-stat:
+#       delay: PT1H
+
+# ── 호출 한도 (§15, S-8, #157) ───────────────────────────────
+# 값의 출처는 §15 다 — 턴 생성 분당 10회, precheck 분당 20회, 계정당 일일 한도.
+# auth-per-minute-per-ip 는 S-8 이다: 인증 전 경로는 계정 기준으로 셀 수 없다.
+# turn-per-day 는 "일일 토큰 한도"를 턴 수로 대리한다 (§13-28) — 토큰 원장에는
+# playerRef 가 없고(I-3) 그것이 의도된 설계다.
+# 값이 없으면 코드가 §15 의 값을 쓴다. B-46 실측 후 조정한다.
+# app:
+#   rate-limit:
+#     turn-per-minute: 10
+#     precheck-per-minute: 20
+#     auth-per-minute-per-ip: 20
+#     turn-per-day: 200
+
+# ── 턴 예산 (§6.3, #116) ─────────────────────────────────────
+# ai.provider.timeout-ms 와 다른 것을 가리킨다 — 그쪽은 호출 하나의 상한이고, 이쪽은
+# 한 턴의 외부 호출을 전부 합친 상한이다. 한 턴에 생성·판정·재생성·재판정 넷이 돌 수 있고
+# 각각 25초를 다 쓰면 100초가 된다. 값이 없으면 코드가 계약값(28초)을 쓴다.
+# B-46 이 p95 를 실측한 뒤 조정할 값이라 설정으로 둔다.
+# play:
+#   turn:
+#     budget-ms: 28000
+
 # ── 인증 (§12 B-12) ──────────────────────────────────────────
+# secret 에 기본값을 두지 않는다 (§7.3). 없으면 부팅이 실패해야 한다.
+# 32바이트 미만이면 JwtProperties 가 부팅을 세운다 — 짧은 HS256 키는 서명이 신뢰의 근거가 되지 못한다.
 auth:
   jwt:
     secret: ${JWT_SECRET}
+    # 액세스는 짧게, 리프레시는 길게. 값 자체는 시크릿이 아니므로 여기 적는다.
+    access-token-ttl: PT30M
+    refresh-token-ttl: P30D
+    # 관리자 단계 승격 수명 (B-40, S-4). 액세스 토큰보다 짧다 — 길게 잡으면 2FA 가
+    # 로그인 때 한 번 하는 절차가 되고, 자리를 비운 사이의 화면이 관리자 콘솔이 된다.
+    admin-step-up-ttl: PT15M
 
+# client-id 는 ID 토큰의 대상(aud) 검증에 쓴다 (B-12). 없으면 다른 서비스용으로 발급된
+# 구글 토큰이 이 서버에서도 통한다 — 구글이 서명한 것은 맞지만 우리에게 발급된 것이 아니다.
+# jwk-set-uri 는 코드가 기본값(구글 공개 JWKS)을 갖는다. 배포마다 정할 값이 아니다.
 security:
   oauth2:
     google:
@@ -72,18 +133,99 @@ security:
 
 # ── AI Provider (§12 B-18, B-24) ─────────────────────────────
 # Provider 활성/비활성은 설정으로 전환한다 (R3.1). 키는 절대 기본값을 두지 않는다.
+#
+# ★ `provider`(단수)와 `providers`(복수)는 다른 것이다.
+#     provider  — 어느 어댑터를 붙이든 같아야 하는 공통 값. 시간 제한이 여기다
+#     providers — 어댑터별 키·엔드포인트
+#   한 글자 차이라 오타가 조용히 무시된다. B-18 에서 확인한 결과 두 이름은 다른 것을
+#   가리키므로 합치지 않는다 — 공통 값과 어댑터별 값이며, 합치면 어댑터 하나가 시간
+#   제한을 자기 것으로 덮어쓸 수 있게 된다 (#25 의 후속).
 ai:
+  provider:
+    # R6.4 · §6.3 · §11 이 못박은 계약값이다. 배포마다 정하는 값이 아니므로
+    # 빠져도 부팅을 막지 않는다 — ProviderProperties 가 같은 값을 알고 있다.
+    # 테스트는 @DynamicPropertySource 로 짧은 값을 주입해 25초를 기다리지 않는다 (#25).
+    #
+    # ★ 한 번의 호출이 아니라 재요청까지 포함한 생성 전체의 상한이다 (§13-19, B-21-2).
+    #   첫 호출이 이 값의 대부분을 쓰면 재요청에 남는 시간은 그만큼 줄고, 남지 않으면
+    #   재요청은 걸리지도 않는다 — 이미 끝난 예산으로 호출을 걸어 놓고 취소하는 것보다 싸다.
+    timeout-ms: 25000
+
+    # R3.1 — 어느 어댑터가 실제로 불릴지. 코드 배포 없이 이 값만 바꿔 전환한다 (B-18).
+    # 비워 두면 등록된 어댑터가 정확히 하나일 때만 뜬다. 둘 이상이면 부팅이 멈춘다 —
+    # 모호한 상태에서 서버가 임의로 하나를 고르지 않는다. Provider 선택은 관리자 전용이다 (I-14).
+    #
+    # B-22 로 anthropic 어댑터가 생겼다. 다만 그것이 등록되려면 아래 providers.anthropic 의
+    # api-key 와 model 이 둘 다 있어야 한다 — 지목했는데 없으면 부팅이 멈춘다. dev 에서는
+    # 결정론 Provider 도 함께 등록되므로, 둘 다 있는 상태에서는 이 값을 반드시 지목해야 한다.
+    # active: anthropic
+
+  # 최근 턴의 세 경계 (§13-2, B-20). 서로 다른 것을 가리키므로 한 값으로 합칠 수 없다.
+  #   verbatim      — 가장 최근 몇 턴을 본문 원문으로 싣는가. 나머지는 압축본
+  #   in-prompt     — 프롬프트에 싣는 턴 수 (R4.7)
+  #   summary-merge — 이보다 오래된 턴이 요약에 병합된다 (R4.5). 그 사이는 완충지대
+  # §13-2 가 8 과 2 를 `[결정 필요]` 로 남기고 B-46 실측 후 조정한다고 적었다 — 그래서 설정이다.
+  prompt:
+    recent-turns:
+      verbatim: 2
+      in-prompt: 5
+      summary-merge: 8
+
+  # 어댑터별 접속 정보 (B-22, B-23).
   providers:
+    # 키와 모델이 둘 다 있어야 어댑터가 등록된다. 하나만 있는 상태는 설정을 하다 만 것이며,
+    # 그대로 등록되면 누락이 첫 턴 요청에서야 드러난다.
+    #
+    # base-url · max-tokens 는 코드가 기본값을 갖는다 — 배포마다 정할 값이 아니다.
+    # 용도별 모델 분리(R3.6)는 B-24 다. 지금은 턴 생성 하나뿐이다.
+    # R3.6 — 용도별 모델을 나눈다. 턴 생성은 고성능, 요약·검수·아웃라인은 저비용이다.
+    # 넷을 한 값으로 합치지 않는다 — 합쳐 두면 요약 한 번이 턴 생성만큼 든다.
+    #
+    # 등록 조건은 api-key 와 models.turn 둘뿐이다. 나머지는 그 기능(B-34 · B-52)이 붙을 때
+    # 채운다 — 없는 기능의 설정을 강요하면 그 자리에 아무 값이나 들어간다.
+    #
+    # ★ models.safety 는 B-30 이 실제로 부른다. 비워 두면 판정 호출이 실패하고, 판정 실패는
+    #   통과가 아니라 차단이다 (fail-closed). 즉 이 값을 비워 둔 채 판정이 배선되면 모든 턴이
+    #   막힌다 — 조용히 턴 생성 모델을 빌려 쓰는 것보다 낫다는 판단이다 (R3.6).
+    #
+    # models.safety 는 생성 모델과 같은 값이어도 된다. 다만 그것은 설정의 선택이지
+    # 구조가 강요하는 것이 아니다 (I-12 — L2 는 생성 모델과 별개 판정기다).
     anthropic:
       api-key: ${ANTHROPIC_API_KEY}
+      # models:
+      #   turn: claude-opus-5
+      #   summary: claude-haiku-4-5
+      #   safety: claude-haiku-4-5
+      #   outline: claude-haiku-4-5
     openai:
       api-key: ${OPENAI_API_KEY}
+    # R3.2 — 로컬 LLM. API 키가 없으므로 base-url 이 등록 조건이다.
+    # structuredOutput=false 로 보고하므로 스키마 위반 시 재요청이 2회다 (R3.3).
+    #
+    # 등록되면 fallback 체인에 자동으로 들어간다 (R3.7, ADR-0007) — 지목된 provider 가
+    # 죽었을 때만 쓰이며, 세션의 provider 고정은 바뀌지 않는다 (I-4).
     ollama:
       base-url: ${OLLAMA_BASE_URL}
+      # models:
+      #   turn: llama3.1
 
-# ── 관리자 (§7.5 S-4) ────────────────────────────────────────
+# ── 관리자 (§7.5 S-4, #163) ──────────────────────────────────
+# 역할·IP·2FA 셋을 모두 요구한다 (S-4). 여기는 그중 IP 다.
+#
+# **비어 있으면 관리자 경로가 통째로 닫힌다.** 비어 있음을 "제한 없음"으로 읽으면
+# 설정 누락이 전면 허용이 된다 — 그 방향의 실수는 되돌릴 수 없다.
+#
+# 쉼표로 구분한 CIDR 또는 단일 주소. 실제 주소를 이 파일에 적지 않는다 (S-11).
 admin:
   allowed-cidr: ${ADMIN_ALLOWED_CIDR}
+  totp:
+    # 관리자 TOTP 비밀을 감싸는 키다. base64 로 적은 32바이트.
+    #
+    # 서명 키(auth.jwt.secret)와 나눈다 — 서명 키는 위조를, 이 키는 **읽히는 것**을 막는다.
+    # 하나를 갈아야 할 때 다른 하나까지 갈면 그 사이 발급된 토큰이 함께 죽는다.
+    #
+    # 값이 없으면 부팅이 실패한다 (§7.3). 실제 값은 .env 에만 둔다.
+    secret-key: ${ADMIN_TOTP_SECRET_KEY}
 
 # ── 관측성 (§12 B-48) ────────────────────────────────────────
 management:
@@ -102,3 +244,36 @@ logging:
   structured:
     format:
       console: ecs
+
+# ── API 계약 문서 (§12 B-06) ─────────────────────────────────
+# docs/openapi.yaml 이 런타임 진실의 원천이다. springdoc 은 **그 파일을 보여 주는 UI** 로만 쓴다.
+#
+# 기본값은 전부 꺼진 상태다 — springdoc 의 자동설정은 둘 다 matchIfMissing = true 라
+# **프로퍼티가 없으면 열린다.** 닫힌 쪽을 기본값으로 못박는 이유가 이것이다.
+# `swagger-ui` 자동설정은 `@ConditionalOnBean(SpringDocConfiguration)` 이므로
+# `api-docs.enabled: false` 하나로 UI 까지 함께 닫힌다(실측 확인).
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+---
+# ── dev 에서만 계약 UI 를 연다 ───────────────────────────────
+# 표현식은 dev 콘솔(B-47)·인증 우회 리졸버(#34)와 같은 `dev & !prod` 다.
+# `!prod` 가 없으면 프로파일 미지정 배포에서 열리고, `dev` 만 쓰면 둘이 함께 켜진 조합에서 열린다.
+#
+# `swagger-ui.url` 이 수기 계약 파일을 가리킨다. 런타임 생성본(/v3/api-docs)은 dev 안에 존재하지만
+# **UI 가 보여 주는 것은 계약 파일이다.** 생성본은 계약이 아니다.
+spring:
+  config:
+    activate:
+      on-profile: "dev & !prod"
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    url: /openapi.yaml
+    path: /swagger-ui.html

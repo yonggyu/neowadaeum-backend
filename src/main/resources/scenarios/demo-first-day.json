@@ -1,0 +1,1249 @@
+{
+  "storyVersionRef": "11111111-1111-4111-8111-111111111111",
+  "description": "S-3 결정론 시나리오. 두 갈래 모두 실제 엔진(챕터 전환·엔딩 판정)을 통과해 끝까지 간다 — 선택지 1은 조건부 엔딩(짧은 갈래), 선택지 2는 아무 조건도 채우지 않아 장마다 max_turns 로 밀리다 40턴에서 기본 엔딩에 닿는다(B-44). 개발 도구이며 실제 작품이 아니다. turnNo 1 · chosenChoiceOrder null 은 관리자 자유입력 자리다 — 보통의 턴은 그 자리에 선택지 순서를 갖는다 (B-43).",
+  "entries": [
+    {
+      "turnNo": 0,
+      "chosenChoiceOrder": null,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "전학 첫날. 복도 창으로 들어온 빛이 교실 번호판 위에 걸려 있다."
+        },
+        {
+          "type": "DIALOGUE",
+          "speakerName": "유나",
+          "text": "거기 서 있으면 문 못 열어."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "목소리가 뒤에서 왔다. 돌아보기 전에 발소리가 먼저 지나갔다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 1,
+      "chosenChoiceOrder": 1,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "문을 열자 창가 자리의 유나가 먼저 눈을 맞추고 짧게 고개를 끄덕인다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {
+        "affinity.yuna": 3,
+        "flags.add": [
+          "met_yuna"
+        ]
+      },
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 2,
+      "chosenChoiceOrder": 1,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "\"자리 비었어.\" 유나가 옆 의자를 당겨 준다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {
+        "affinity.yuna": 5
+      },
+      "chapterAdvanceSuggested": true,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 3,
+      "chosenChoiceOrder": 1,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "점심시간. 도시락 뚜껑을 여는 소리가 겹친다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {
+        "affinity.yuna": 5,
+        "flags.add": [
+          "shared_lunch"
+        ]
+      },
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 4,
+      "chosenChoiceOrder": 1,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "\"내일도.\" 유나가 웃으며 대답한다. 하교길 그림자가 길어진다."
+        }
+      ],
+      "choices": [],
+      "proposedStateChanges": {
+        "affinity.yuna": 5
+      },
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": "ending-first-light"
+    },
+    {
+      "turnNo": 1,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "종이 울리고 나서야 문을 연다. 시선은 짧게 스치고 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {
+        "affinity.yuna": 1
+      },
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 1,
+      "chosenChoiceOrder": null,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "관리자 자유입력으로 이어진 장면이다. 결정론 Provider 가 이 한 자리를 갖는다 (B-43)."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 2,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "맨 뒷줄에 앉는다. 아무도 말을 걸지 않았고 그건 생각보다 편했다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 3,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "복도 창가에서 혼자 점심을 먹는다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 4,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "오후 수업이 길게 늘어진다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 5,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "청소 당번 명단에서 이름을 확인한다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 6,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실이 비어 간다. 창을 닫고 나선다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 7,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "신발장 앞에서 잠깐 멈춘다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "가까이 다가간다"
+        },
+        {
+          "order": 2,
+          "text": "거리를 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 8,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "가방을 메고 먼저 교문을 나선다. 이름을 세 개쯤 외웠다."
+        }
+      ],
+      "choices": [],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": "ending-quiet-exit"
+    },
+    {
+      "turnNo": 9,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실은 아직 이름표 없는 자리들로 가득하다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "칠판 위 시계가 한 칸 움직였다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 10,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "복도 끝에서 누군가 뛰어갔고, 이름은 모른다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "창밖으로 운동장의 호루라기 소리가 들어왔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 11,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "급식실 줄은 길고, 아는 얼굴은 없다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "식판 위에서 국이 천천히 식었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 12,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "자습 시간의 형광등은 조금 시끄럽다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "노트의 첫 줄만 세 번 고쳐 썼다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 13,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "장마가 시작됐다는 방송이 나왔다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "우산꽂이에 우산이 하나 남아 있었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 14,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "축제 준비물이 교실 뒤에 쌓였다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "이름표를 붙이는 손이 여럿 지나갔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 15,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실은 아직 이름표 없는 자리들로 가득하다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "칠판 위 시계가 한 칸 움직였다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 16,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "복도 끝에서 누군가 뛰어갔고, 이름은 모른다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "창밖으로 운동장의 호루라기 소리가 들어왔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 17,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "급식실 줄은 길고, 아는 얼굴은 없다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "식판 위에서 국이 천천히 식었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 18,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "자습 시간의 형광등은 조금 시끄럽다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "노트의 첫 줄만 세 번 고쳐 썼다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 19,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "장마가 시작됐다는 방송이 나왔다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "우산꽂이에 우산이 하나 남아 있었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 20,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "축제 준비물이 교실 뒤에 쌓였다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "이름표를 붙이는 손이 여럿 지나갔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 21,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실은 아직 이름표 없는 자리들로 가득하다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "칠판 위 시계가 한 칸 움직였다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 22,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "복도 끝에서 누군가 뛰어갔고, 이름은 모른다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "창밖으로 운동장의 호루라기 소리가 들어왔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 23,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "급식실 줄은 길고, 아는 얼굴은 없다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "식판 위에서 국이 천천히 식었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 24,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "자습 시간의 형광등은 조금 시끄럽다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "노트의 첫 줄만 세 번 고쳐 썼다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 25,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "장마가 시작됐다는 방송이 나왔다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "우산꽂이에 우산이 하나 남아 있었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 26,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "축제 준비물이 교실 뒤에 쌓였다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "이름표를 붙이는 손이 여럿 지나갔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 27,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실은 아직 이름표 없는 자리들로 가득하다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "칠판 위 시계가 한 칸 움직였다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 28,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "복도 끝에서 누군가 뛰어갔고, 이름은 모른다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "창밖으로 운동장의 호루라기 소리가 들어왔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 29,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "급식실 줄은 길고, 아는 얼굴은 없다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "식판 위에서 국이 천천히 식었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 30,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "자습 시간의 형광등은 조금 시끄럽다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "노트의 첫 줄만 세 번 고쳐 썼다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 31,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "장마가 시작됐다는 방송이 나왔다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "우산꽂이에 우산이 하나 남아 있었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 32,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "축제 준비물이 교실 뒤에 쌓였다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "이름표를 붙이는 손이 여럿 지나갔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 33,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실은 아직 이름표 없는 자리들로 가득하다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "칠판 위 시계가 한 칸 움직였다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 34,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "복도 끝에서 누군가 뛰어갔고, 이름은 모른다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "창밖으로 운동장의 호루라기 소리가 들어왔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 35,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "급식실 줄은 길고, 아는 얼굴은 없다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "식판 위에서 국이 천천히 식었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 36,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "자습 시간의 형광등은 조금 시끄럽다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "노트의 첫 줄만 세 번 고쳐 썼다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 37,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "장마가 시작됐다는 방송이 나왔다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "우산꽂이에 우산이 하나 남아 있었다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 38,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "축제 준비물이 교실 뒤에 쌓였다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "이름표를 붙이는 손이 여럿 지나갔다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    },
+    {
+      "turnNo": 39,
+      "chosenChoiceOrder": 2,
+      "paragraphs": [
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "교실은 아직 이름표 없는 자리들로 가득하다."
+        },
+        {
+          "type": "NARRATION",
+          "speakerName": null,
+          "text": "칠판 위 시계가 한 칸 움직였다. 아무 일도 크게 일어나지 않는 하루가 또 지나간다."
+        }
+      ],
+      "choices": [
+        {
+          "order": 1,
+          "text": "먼저 말을 건다"
+        },
+        {
+          "order": 2,
+          "text": "그대로 둔다"
+        }
+      ],
+      "proposedStateChanges": {},
+      "chapterAdvanceSuggested": false,
+      "endingSuggested": null
+    }
+  ]
+}

@@ -1,0 +1,166 @@
+# ─────────────────────────────────────────────────────────────
+# backend 머지 시 연결 이슈 자동 종료 (B-04-1)
+#
+# 브랜치 모델(§8.2)의 기본 브랜치는 `main` 이고 작업 공간은 `backend` 다.
+# GitHub 는 **기본 브랜치로 머지된** PR 의 `Closes #N` 만 처리하므로
+# `feat/* → backend` 머지에서는 연결 이슈가 열린 채로 남는다.
+# 이 워크플로가 그 자리를 대신한다.
+#
+# ※ dev / main 대상 워크플로는 만들지 않는다. main 은 GitHub 가 알아서 처리하고,
+#    dev 는 통합 검증 지점이라 이슈 종료 시점이 아니다 (§8.7).
+# ※ §7.2 — `.github/**/*.yml` 은 `*.yml` 전면 무시의 예외 2종 중 하나다.
+#    시크릿을 넣지 않는다. 내장 GITHUB_TOKEN 외의 자격 증명을 쓰지 않는다.
+# ─────────────────────────────────────────────────────────────
+name: Close linked issues
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [backend]
+
+# 필요한 최소 권한만 준다. 이 잡은 이슈를 닫고 PR 을 읽는 것 외에 아무것도 하지 않는다.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  close-linked-issues:
+    # 머지된 PR 만 대상이다. 그냥 닫힌 PR 은 "하지 않기로 한 일"이므로 이슈를 닫지 않는다.
+    #
+    # 포크에서 온 PR 은 GITHUB_TOKEN 이 읽기 전용이라 이슈를 닫을 수 없다. 조용히 건너뛴다.
+    # 이 제약을 pull_request_target 으로 우회하지 않는다 — 포크가 보낸 코드에
+    # 쓰기 토큰을 노출하는 구조이며, 이 레포는 공개다 (S-11).
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # 이동 가능한 태그(v9, main)는 쓰지 않는다. 태그는 다시 가리킬 수 있고,
+      # 그 순간 우리가 검토한 적 없는 코드가 쓰기 권한을 가진 잡에서 실행된다.
+      - name: Close issues linked by closing keywords
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+
+            // ── 아래 구간은 .github/scripts/test-closing-keywords.mjs 가 그대로 잘라내 검증한다.
+            //    표식(testable:start / testable:end)을 지우거나 옮기면 테스트가 대상을 찾지 못하고 실패한다.
+            // testable:start
+
+            // 정규식 메타문자를 포함한 레포 이름(예: `my.repo`)이 패턴을 깨뜨리지 않게 한다.
+            const escapeForRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            // GitHub 는 코드 스팬·펜스 블록 안의 `#N` 을 참조로 처리하지 않는다. B-04-1 은
+            // "기본 브랜치에서 GitHub 가 해 주는 일을 backend 에서 대신한다"가 목적이므로
+            // 인식 범위도 GitHub 와 같아야 한다.
+            //
+            // 이 처리가 없어 #9(결정 이슈)가 PR #8 본문의 코드 스팬 예시 때문에 잘못 닫혔다 (#11).
+            // 이 워크플로를 설명하는 문서가 곧 이 워크플로의 입력이 되므로, 같은 사고가 반복되기 쉽다.
+            const stripMarkdownCode = (text) => text
+              .replace(/<!--[\s\S]*?-->/g, ' ')
+              .replace(/^[ \t]*(`{3,}|~{3,})[\s\S]*?^[ \t]*\1[ \t]*$/gm, ' ')
+              .replace(/(`+)[\s\S]*?\1/g, ' ');
+
+            // GitHub 공식 키워드 집합과 동일하게 맞춘다.
+            // close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved
+            const KEYWORDS = '(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)';
+
+            // `#12` · `GH-12` · 같은 레포의 issues URL. 다른 레포 URL 은 의도적으로 인식하지 않는다.
+            const REFERENCE = '(?:#(\\d+)|GH-(\\d+)|https?://(?:www\\.)?github\\.com/'
+              + escapeForRegExp(owner) + '/' + escapeForRegExp(repo) + '/issues/(\\d+))';
+
+            // 뒤에 단어 문자가 붙으면(`#5x`) 참조로 보지 않는다. 애매한 표기로 엉뚱한 이슈를 닫는 것보다
+            // 인식하지 못하고 넘어가는 편이 낫다 — 못 닫은 이슈는 눈에 띄지만 잘못 닫은 이슈는 묻힌다.
+            const LINK = new RegExp('\\b' + KEYWORDS + '\\b\\s*:?\\s*' + REFERENCE + '(?![\\w-])', 'gi');
+
+            const findLinkedIssues = (text) => {
+              const found = new Set();
+              for (const match of stripMarkdownCode(text).matchAll(LINK)) {
+                const number = Number(match[1] ?? match[2] ?? match[3]);
+                if (Number.isInteger(number) && number > 0) {
+                  found.add(number);
+                }
+              }
+              return [...found].sort((a, b) => a - b);
+            };
+            // testable:end
+
+            // §8.5 가 feat/* → backend 를 Squash merge 로 정해 두었다. 스쿼시 시 PR 본문이
+            // 커밋 메시지에 남지 않을 수 있으므로 제목·본문·커밋 메시지를 모두 훑는다.
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const haystack = [pr.title, pr.body, ...commits.map((commit) => commit.commit.message)]
+              .filter(Boolean)
+              .join('\n');
+
+            const issueNumbers = findLinkedIssues(haystack);
+
+            if (issueNumbers.length === 0) {
+              core.info('닫기 키워드로 연결된 이슈가 없다.');
+              return;
+            }
+
+            const commentBody = [
+              'PR #' + pr.number + ' 머지로 완료되었다.',
+              '',
+              '| | |',
+              '|---|---|',
+              '| PR | #' + pr.number + ' |',
+              '| base 브랜치 | `' + pr.base.ref + '` |',
+              '| 머지 커밋 | `' + (pr.merge_commit_sha ?? '(알 수 없음)') + '` |',
+              '',
+              '기본 브랜치가 `main` 이라(§8.2) `backend` 로 머지된 PR 의 닫기 키워드를 GitHub 가 처리하지 않는다.',
+              '이 종료는 `.github/workflows/close-linked-issues.yml`(B-04-1) 이 대신 수행한 것이다.',
+            ].join('\n');
+
+            for (const issueNumber of issueNumbers) {
+              // 한 이슈의 실패가 나머지 이슈와 잡 전체를 끌고 내려가지 않게 한다.
+              // 존재하지 않는 번호를 참조한 것은 오타이지 빌드 실패 사유가 아니다.
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                });
+
+                // 이슈 API 는 PR 도 돌려준다. `Closes #6` 처럼 PR 번호를 적은 경우를 걸러낸다.
+                if (issue.pull_request) {
+                  core.info('#' + issueNumber + ': 이슈가 아니라 PR 이므로 건너뛴다.');
+                  continue;
+                }
+
+                // 멱등성 — 재실행하거나 이미 수동으로 닫은 이슈에 코멘트를 중복으로 남기지 않는다.
+                if (issue.state === 'closed') {
+                  core.info('#' + issueNumber + ': 이미 닫혀 있어 건너뛴다.');
+                  continue;
+                }
+
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  body: commentBody,
+                });
+
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+
+                core.info('#' + issueNumber + ': 코멘트를 남기고 종료했다.');
+              } catch (error) {
+                core.warning('#' + issueNumber + ' 처리에 실패했다: '
+                  + (error.status ? error.status + ' ' : '') + error.message);
+              }
+            }

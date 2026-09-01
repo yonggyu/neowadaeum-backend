@@ -1,0 +1,139 @@
+# ─────────────────────────────────────────────────────────────
+# CI 파이프라인 (B-04)
+#
+# 잡은 정확히 3개이며 이름이 곧 브랜치 보호의 필수 status check 이름이다.
+# 이름을 바꾸면 세 브랜치의 보호 설정이 조용히 헐거워진다 — docs/branch-protection.md 를 함께 고친다.
+#
+# ※ §7.2 — `.github/**/*.yml` 은 `*.yml` 전면 무시의 예외 2종 중 하나다.
+#    시크릿을 넣지 않는다. 내장 GITHUB_TOKEN 외의 자격 증명을 쓰지 않는다.
+# ─────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  pull_request:
+    branches: [backend, dev, main]
+  push:
+    branches: [backend]
+
+# 이 워크플로는 어떤 리소스도 변경하지 않는다. 읽기 권한만 준다.
+permissions:
+  contents: read
+
+# 같은 ref 에 새 푸시가 오면 진행 중인 실행을 취소한다. 낡은 결과가 체크를 통과시키는 일을 막는다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 이동 가능한 태그를 쓰지 않는다는 관례(B-04-1)를 바이너리에도 적용한다.
+  # 체크섬은 릴리스의 gitleaks_<버전>_checksums.txt 에 게시된 값이다.
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: JDK 21 (temurin) + Gradle 캐시
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      # §7.2 로 application*.yml 은 추적되지 않는다. 템플릿에서 복사하지 않으면
+      # 플레이스홀더가 해석되지 않아 컨텍스트 로드가 깨진다 (#1 과 같은 계열의 실패다).
+      - name: application.yml 준비
+        run: cp src/main/resources/application.yml.template src/main/resources/application.yml
+
+      - name: 빌드 (테스트 제외)
+        run: ./gradlew build -x test --no-daemon
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: JDK 21 (temurin) + Gradle 캐시
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: application.yml 준비
+        run: cp src/main/resources/application.yml.template src/main/resources/application.yml
+
+      # Testcontainers 는 러너에 이미 있는 Docker 를 쓴다. 서비스 컨테이너를 따로 띄우지 않고,
+      # 접속 정보는 @DynamicPropertySource 로 주입한다 (§7.2, §10).
+      #
+      # ★ 두 태스크를 모두 돌린다. `test` 는 컨테이너 없이 도는 것만, `integrationTest` 는
+      #   @Tag("container") 가 붙은 것만이다. 로컬 개발 루프를 빠르게 하려고 나눈 것이므로
+      #   CI 에서는 반드시 둘 다 돈다 — 하나라도 빠지면 분리가 곧 검증 축소가 된다.
+      - name: 테스트
+        run: ./gradlew test integrationTest --no-daemon
+
+      # 초록일 때도 올린다 (#89). 실패 시에만 올리면 "몇 개가 돌았는가"를 사후에 확인할 방법이
+      # 없고, 0개를 돌린 태스크는 실패하지 않으므로 그 사실이 아무 데도 남지 않는다.
+      #
+      # integrationTest 리포트도 함께 올린다 — 이전에는 test 것만 올렸다. 컨테이너 테스트가
+      # 실패해도 그 리포트는 어디에도 남지 않았다.
+      - name: 테스트 리포트
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-report
+          path: |
+            build/reports/tests/test
+            build/reports/tests/integrationTest
+            build/test-results/test
+            build/test-results/integrationTest
+            build/perf
+          retention-days: 7
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # 전체 이력을 봐야 한다. 얕은 클론이면 과거 커밋의 유출을 못 본다.
+      #
+      # fetch-depth: 0 은 이 레포의 **모든 브랜치**를 가져온다. 따라서 스캔 범위도
+      # PR 의 커밋이 아니라 origin 에 존재하는 모든 브랜치의 커밋이다.
+      # 좁히지 않는다 — 공개 레포에서는 브랜치도 공개이므로, 어느 브랜치에 있든 유출은 유출이다.
+      #
+      # 대가는 하나다. 어떤 브랜치에 시크릿이 있으면 **무관한 PR 까지 전부 빨개진다.**
+      # 그것이 의도한 동작이다. 고치는 방법은 체크를 우회하는 것이 아니라 그 브랜치를 없애는 것이고,
+      # 이미 푸시된 자격 증명이라면 삭제가 아니라 로테이션이 먼저다 (§7.1-4).
+      - name: 체크아웃 (전체 이력)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # 액션 대신 바이너리를 직접 받는다. 버전·체크섬을 우리가 고정하고,
+      # 조직 소유로 이관되더라도 라이선스 키 요구에 걸리지 않는다.
+      - name: gitleaks 설치
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+
+      # --redact 는 생략하지 않는다. 탐지된 값이 로그에 그대로 찍히면
+      # 공개 레포의 실행 로그가 두 번째 유출 경로가 된다 (S-3, S-11).
+      - name: 전체 이력 스캔
+        run: /tmp/gitleaks git . --redact --no-banner --verbose
