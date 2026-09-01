@@ -150,10 +150,10 @@ public class ReviewQueueService {
 				yield ReviewStatus.APPROVED;
 			}
 			case REJECT -> {
-				// #245 — 승격 재검수는 **이미 게시돼 있던** 작품을 in_review 로 되돌린 것이고,
-				// 반려는 그 승격을 거절하는 일이지 원래 갖고 있던 공개를 빼앗는 일이 아니다.
-				// 있던 자리로 돌아간다 (§13-42).
-				if (promotionOfAPublishedStory(stored)) {
+				// #245 · #249 — 승격과 재제출은 **이미 게시돼 있던** 작품을 in_review 로 되돌린
+				// 것이고, 반려는 그 요청을 거절하는 일이지 원래 갖고 있던 공개를 빼앗는 일이
+				// 아니다. 있던 자리로 돌아간다 (§13-42, §13-48, §13-50).
+				if (aReReviewOfAPublishedStory(stored)) {
 					this.publisher.applyReview(storyId, APPROVED_STATUS, stored.visibility());
 					yield ReviewStatus.APPROVED;
 				}
@@ -179,16 +179,21 @@ public class ReviewQueueService {
 	}
 
 	/**
-	 * <b>이 검수는 이미 게시된 작품의 승격인가</b> (#245).
+	 * <b>이 검수는 이미 게시돼 있던 작품의 재검수인가</b> (#245, #249).
 	 *
-	 * <p>표식은 <b>남겨 둔 가시성</b>이다. 제출·재제출은 {@code public} 을 원할 때
-	 * {@code visibility} 를 {@code private} 로 저장하므로 (B-54), {@code in_review} 인데
-	 * {@code private} 이 아닌 작품은 {@link StoryVisibilityService} 가 올려 둔 것뿐이다.
+	 * <p>표식은 <b>남겨 둔 가시성</b>이다. 승격({@link StoryVisibilityService})과
+	 * 재제출({@link SubmissionService})은 이미 승인된 작품을 {@code in_review} 로 되돌리면서
+	 * <b>가시성을 지우지 않는다</b> — 지울 이유가 없기 때문이다. R2.3 의 조회 조건이
+	 * {@code approved} <b>AND</b> {@code visibility <> private} 이므로 {@code review_status}
+	 * 하나로 이미 가려진다.
+	 *
+	 * <p>반면 <b>처음 내는 작품</b>은 아무에게도 보인 적이 없어 남겨 둘 자리가 없고, 그래서
+	 * {@code private} 으로 들어온다. 두 경우가 그 값에서 이미 갈라져 있다.
 	 *
 	 * <p><b>새 컬럼을 만들지 않은 이유가 이것이다.</b> 지금 답이 하나인 값을 위해 상태를 두 곳에
 	 * 두면, 컬럼과 이력이 어긋났을 때 어느 쪽이 진실인지 매번 문제가 된다 (§13-39, §13-42).
 	 */
-	private static boolean promotionOfAPublishedStory(StoryPublisher.StoryStatus stored) {
+	private static boolean aReReviewOfAPublishedStory(StoryPublisher.StoryStatus stored) {
 		return ReviewStatus.IN_REVIEW.columnValue().equals(stored.reviewStatus())
 				&& !PRIVATE_VISIBILITY.equals(stored.visibility());
 	}

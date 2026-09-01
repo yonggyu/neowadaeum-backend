@@ -188,7 +188,12 @@ public class SubmissionService {
 	 * 자동 검수를 통과했다.
 	 *
 	 * <p><b>{@code public} 은 여기서 열리지 않는다</b> (R8.6) — {@code in_review} 로 두고 사람을
-	 * 기다린다. 그동안 작품은 {@code private} 이다: <b>검수 중인 작품이 보이면 검수의 의미가 없다.</b>
+	 * 기다린다. 그동안 <b>아무도 그 작품을 볼 수 없다</b>: R2.3 의 타인 조회 조건이
+	 * {@code approved} <b>AND</b> {@code visibility <> private} 이므로 {@code in_review} 하나로
+	 * 이미 가려진다.
+	 *
+	 * <p><b>이미 승인돼 있던 작품의 가시성은 지우지 않는다</b> (#249, §13-50) — 지우면 개정판이
+	 * 반려됐을 때 <b>돌아갈 자리가 없다.</b>
 	 *
 	 * <p><b>재제출은 작품을 늘리지 않는다</b> (R8.8, B-56). 이미 낸 적이 있으면 같은 작품에 새
 	 * 버전을 얹는다 — 새 작품을 만들면 <b>같은 이야기가 라이브러리에 둘</b>이 되고, 도달률은
@@ -201,9 +206,9 @@ public class SubmissionService {
 			Visibility visibility) {
 		boolean needsHuman = visibility == Visibility.PUBLIC;
 		ReviewStatus status = needsHuman ? ReviewStatus.IN_REVIEW : ReviewStatus.APPROVED;
-		Visibility effective = needsHuman ? Visibility.PRIVATE : visibility;
 
 		return this.transactions.execute(status2 -> {
+			Visibility effective = needsHuman ? keptVisibilityOf(existingStoryId) : visibility;
 			StoryPublisher.PublishedVersion published = (existingStoryId == null)
 					? this.publisher.publishNew(definition, STATE_SCHEMA)
 					: this.publisher.publishRevision(existingStoryId, definition, STATE_SCHEMA);
@@ -217,6 +222,31 @@ public class SubmissionService {
 					ReviewVerdict.PASS, "[]", null, null, Instant.now(this.clock)));
 			return new SubmissionOutcome(published.storyId(), status, effective, List.of());
 		});
+	}
+
+	/**
+	 * 검수를 기다리는 동안 남겨 둘 가시성 (#249).
+	 *
+	 * <p><b>이미 승인돼 있던 작품의 가시성을 지우지 않는다.</b> 재검수 동안 작품이 목록에서
+	 * 내려가는 것은 {@code review_status} 하나로 이미 성립한다 — R2.3 의 타인 조회 조건이
+	 * {@code approved} <b>AND</b> {@code visibility <> private} 이기 때문이다 (§13-40 이 받아들인
+	 * 대가). 여기서 {@code private} 으로 함께 내리면 <b>돌아갈 자리가 사라지고</b>, 개정판이
+	 * 반려됐을 때 작성자는 <b>고치기 전에 갖고 있던 게시까지</b> 잃는다.
+	 *
+	 * <p><b>"있던 자리"는 승인돼 있던 자리다.</b> 정지·반려 상태에서 낸 재제출은 그 취급을
+	 * 받지 않는다 — 그것까지 되돌리면 <b>반려가 정지를 푸는 길</b>이 된다.
+	 *
+	 * <p>처음 내는 작품은 {@code private} 이다. 아무에게도 보인 적이 없으므로 남겨 둘 자리가
+	 * 없다 (R8.6 — {@code public} 은 사람이 연다).
+	 */
+	private Visibility keptVisibilityOf(UUID existingStoryId) {
+		if (existingStoryId == null) {
+			return Visibility.PRIVATE;
+		}
+		return this.publisher.statusOf(existingStoryId)
+				.filter(stored -> ReviewStatus.APPROVED.columnValue().equals(stored.reviewStatus()))
+				.map(stored -> Visibility.valueOf(stored.visibility().toUpperCase(java.util.Locale.ROOT)))
+				.orElse(Visibility.PRIVATE);
 	}
 
 	/**
