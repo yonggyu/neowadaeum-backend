@@ -12,6 +12,14 @@ import java.util.UUID;
  * <p><b>{@code progressPercent} 를 만들지 않는다</b> (R7.5). AI 생성이라 챕터당 턴 수가 가변이므로
  * 62% 같은 숫자는 근거가 없다. {@code progressHint} 만 준다.
  *
+ * <p><b>{@code storyId} 와 {@code title} 이 여기 있는 이유</b> (#259). 플레이 화면의 라우트는
+ * {@code /sessions/{sessionId}} 라 URL 에 작품이 없고, 작품 상세에서 바로 시작한 경우 클라이언트는
+ * 어느 작품인지 알 길이 없다. 헤더("제목 · Chapter n")와 엔딩의 "다른 결말 보기"
+ * ({@code POST /stories/{storyId}/sessions?restart=true}) 가 둘 다 이것을 필요로 한다.
+ * <b>매 턴 {@code resume} 를 함께 부르는 것으로 대신하지 않는다</b> — 턴 경로에 요청이 하나 는다.
+ *
+ * @param storyId       이 세션이 진행 중인 작품. 세션이 들고 있는 값이므로 조회가 늘지 않는다
+ * @param title         작품 제목. <b>세션이 고정한 버전 기준</b>이다 (I-4)
  * @param turnNo        생성된 턴 번호. <b>요청값 + 1</b> 이다 (§4.3 턴 번호 계약)
  * @param chapterNo     판정 후 챕터
  * @param chapterTitle  전환 시 클라이언트가 인터스티셜에 쓴다 (R7.3)
@@ -34,6 +42,8 @@ import java.util.UUID;
  *                      표본이 적으면 {@code null} 이다 (R2.8). 엔딩이 아닌 턴에서도 {@code null}
  */
 public record TurnView(
+		UUID storyId,
+		String title,
 		int turnNo,
 		int chapterNo,
 		String chapterTitle,

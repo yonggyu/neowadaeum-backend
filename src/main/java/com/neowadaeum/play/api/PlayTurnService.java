@@ -183,8 +183,12 @@ public class PlayTurnService {
 		StoryVersionView version = this.storyVersions.findByVersionId(storyVersionId)
 				.orElseThrow(() -> new IllegalStateException("작품 버전을 찾지 못했다: " + storyVersionId));
 
-		return toView(turn, version, outcome.endingIndex(),
-				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session(turn), turn));
+		// #259 — 세션은 도달률 판정에서 이미 읽던 값이다. 여기로 끌어올려 storyId 를 함께 쓰므로
+		// 조회가 늘지 않는다.
+		PlaySession session = session(turn);
+
+		return toView(session, turn, version, outcome.endingIndex(),
+				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session, turn));
 	}
 
 	/**
@@ -208,7 +212,7 @@ public class PlayTurnService {
 				.sorted(java.util.Comparator.comparingInt(StoryVersionView.EndingView::endingNo))
 				.toList();
 
-		return toView(turn, version, endingIndexOf(visible, turn.getEndingId()),
+		return toView(session, turn, version, endingIndexOf(visible, turn.getEndingId()),
 				turn.isEnding() ? visible.size() : null, reachRateOf(session, turn));
 	}
 
@@ -275,9 +279,12 @@ public class PlayTurnService {
 		return null;
 	}
 
-	private static TurnView toView(Turn turn, StoryVersionView version, Integer endingIndex,
+	private static TurnView toView(PlaySession session, Turn turn, StoryVersionView version, Integer endingIndex,
 			Integer totalEndings, Double reachRate) {
 		return new TurnView(
+				// #259 — 세션이 들고 있는 값이다. 제목은 세션이 고정한 버전에서 온다 (I-4).
+				session.getStoryId(),
+				version.storyTitle(),
 				turn.getTurnNo(),
 				turn.getChapterNo(),
 				chapterTitle(version, turn.getChapterNo()),
