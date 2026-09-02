@@ -86,12 +86,13 @@ class CatalogProfileAndStatMappingTests extends ContainerTestBase {
 	void B15_profiles_are_readable_in_one_batch() {
 		UUID first = UUID.randomUUID();
 		UUID second = UUID.randomUUID();
-		this.profiles.save(AuthorProfile.of(first, "가", NOW));
-		this.profiles.save(AuthorProfile.of(second, "나", NOW));
+		// 두 글자 이상이어야 한다 (#287). 한 글자 이름은 도메인이 거절한다.
+		this.profiles.save(AuthorProfile.of(first, "가나", NOW));
+		this.profiles.save(AuthorProfile.of(second, "다라", NOW));
 
 		assertThat(this.profiles.findByPlayerRefIn(List.of(first, second, UUID.randomUUID())))
 				.extracting(AuthorProfile::getDisplayName)
-				.containsExactlyInAnyOrder("가", "나");
+				.containsExactlyInAnyOrder("가나", "다라");
 	}
 
 	/**
