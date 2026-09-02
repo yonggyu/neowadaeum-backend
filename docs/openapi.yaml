@@ -1753,7 +1753,7 @@ components:
 
     StoryCard:
       type: object
-      required: [storyId, title, coverImage, genres, shortDescription, isNew, authorType]
+      required: [storyId, title, coverImage, genres, shortDescription, isNew, authorType, authorDisplayName]
       properties:
         storyId:
           type: string
@@ -1774,6 +1774,12 @@ components:
           type: boolean
         authorType:
           $ref: '#/components/schemas/AuthorType'
+        authorDisplayName:
+          type: [string, 'null']
+          description: >-
+            UGC 작성자 닉네임 (R13.1, §13-7). 커뮤니티 섹션이 작성자를 표기한다.
+            `authorType` 이 `official` 이거나 작성자 프로필이 없으면 `null` 이다.
+            **`playerRef` 를 노출하지 않는다**
 
     ContinueSession:
       type: object
