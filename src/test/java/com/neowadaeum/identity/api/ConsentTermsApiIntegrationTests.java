@@ -48,7 +48,9 @@ class ConsentTermsApiIntegrationTests extends ContainerTestBase {
 
 	@AfterEach
 	void clear() {
-		this.configs.deleteAll();
+		// 이 클래스가 심은 키만 지운다 — 표 전체를 비우면 다른 테스트가 원인 없이 깨진다 (#272).
+		this.configs.deleteById("consent.terms");
+		this.configs.deleteById("ai.notice");
 	}
 
 	/** <b>인증 없이 열린다</b> — 가입 전에 불리는 화면이다 (계약의 {@code security: []}). */
@@ -100,7 +102,8 @@ class ConsentTermsApiIntegrationTests extends ContainerTestBase {
 	 */
 	@Test
 	void R10_2_an_unconfigured_term_fails_instead_of_inventing_a_version() throws Exception {
-		this.configs.deleteAll();
+		this.configs.deleteById("consent.terms");
+		this.configs.deleteById("ai.notice");
 
 		MvcResult result = this.mockMvc.perform(get("/api/v1/consents")).andReturn();
 

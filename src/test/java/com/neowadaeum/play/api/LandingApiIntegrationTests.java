@@ -46,7 +46,8 @@ class LandingApiIntegrationTests extends ContainerTestBase {
 
 	@AfterEach
 	void clear() {
-		this.configs.deleteAll();
+		// 이 클래스가 심은 키만 지운다 — 표 전체를 비우면 다른 테스트가 원인 없이 깨진다 (#272).
+		this.configs.deleteById("ai.notice");
 	}
 
 	/** <b>인증 없이 열린다</b> — 로그인 전 화면이다 (계약의 {@code security: []}). */
@@ -82,7 +83,7 @@ class LandingApiIntegrationTests extends ContainerTestBase {
 	 */
 	@Test
 	void S11_the_landing_fails_when_the_notice_is_not_configured() throws Exception {
-		this.configs.deleteAll();
+		this.configs.deleteById("ai.notice");
 
 		MvcResult result = this.mockMvc.perform(get("/api/v1/landing")).andReturn();
 
