@@ -89,6 +89,10 @@ public class SocialAccountRegistrar {
 	 * <p>{@link ConsentType#AGE} 는 화면의 체크박스가 아니다. 사용자가 "만 15세 이상입니다"에
 	 * 체크했다는 사실보다 <b>서버가 생년월일로 확인했다는 사실</b>이 증빙이다 (R10.2).
 	 * 판본은 판정 기준인 최소 연령을 그대로 쓴다.
+	 *
+	 * <p><b>그래서 아래 반복문은 {@code AGE} 를 만나지 않는다</b> — 클라이언트가 섞어 보내도
+	 * {@link SignupInfo} 가 이미 걸렀다 (이슈 #270). 거르지 않으면 두 저장이 겹쳐
+	 * {@code consent_log} 에 같은 종류가 두 줄 남는다.
 	 */
 	private void recordConsents(UUID userId, SignupInfo signup, String ipHash, Instant now) {
 		for (SignupInfo.ConsentDecision decision : signup.consents()) {

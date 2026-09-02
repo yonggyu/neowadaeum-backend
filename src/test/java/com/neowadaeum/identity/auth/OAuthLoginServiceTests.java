@@ -249,6 +249,38 @@ class OAuthLoginServiceTests {
 	}
 
 	/**
+	 * <b>클라이언트가 {@code age} 를 섞어 보내도 저장되지 않는다</b> (R10.2, §13-24, 이슈 #270).
+	 *
+	 * <p>{@code GET /consents} 가 목록에 {@code age} 를 실어 보내므로(이슈 #261) 클라이언트가
+	 * 그것을 되돌려 보낼 수 있다. 가입을 실패시키지는 않되 <b>저장 대상에서는 뺀다</b> —
+	 * 그대로 저장하면 {@code consent_log} 에 같은 종류가 두 줄 남고, 판본도 서로 갈린다.
+	 */
+	@Test
+	void R10_2_client_sent_age_consent_is_not_stored() {
+		givenNewAccount();
+		SignupInfo withAge = new SignupInfo(ADULT_ENOUGH, List.of(
+				new SignupInfo.ConsentDecision(ConsentType.TOS, "v1", true),
+				new SignupInfo.ConsentDecision(ConsentType.PRIVACY, "v1", true),
+				new SignupInfo.ConsentDecision(ConsentType.AI_NOTICE, "v1", true),
+				new SignupInfo.ConsentDecision(ConsentType.AGE, "client-sent-version", true)));
+
+		this.service.login(OauthProvider.GOOGLE, "id-token", withAge, "ip-hash");
+
+		ArgumentCaptor<ConsentLog> saved = ArgumentCaptor.forClass(ConsentLog.class);
+		verify(this.consentLogs, times(4)).save(saved.capture());
+		assertThat(saved.getAllValues()).extracting(ConsentLog::getConsentType)
+				.as("age 가 두 줄로 남지 않는다")
+				.containsExactlyInAnyOrder(ConsentType.TOS, ConsentType.PRIVACY, ConsentType.AI_NOTICE,
+						ConsentType.AGE);
+		assertThat(saved.getAllValues())
+				.filteredOn(log -> log.getConsentType() == ConsentType.AGE)
+				.singleElement()
+				.extracting(ConsentLog::getVersion)
+				.as("판본은 서버의 판정 기준이다 — 클라이언트가 보낸 값이 아니다")
+				.isEqualTo(AgeGate.consentVersion());
+	}
+
+	/**
 	 * <b>기존 회원은 가입 정보 없이 로그인한다.</b>
 	 *
 	 * <p>로그인할 때마다 동의를 다시 받으면 동의 이력이 로그인 이력이 되고, "언제 무엇에
