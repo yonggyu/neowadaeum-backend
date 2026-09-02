@@ -392,19 +392,48 @@ class CatalogSeedTests extends ContainerTestBase {
 		assertRejected(UNIQUE_VIOLATION, () -> insertStory("first-day", "짧은 설명", "official"));
 	}
 
+	/**
+	 * R13.1 (#269) — 공식 작품은 {@code author_ref} 를 가질 수 없다.
+	 *
+	 * <p>이 제약이 없으면 공식 작품 행에 {@code author_ref} 가 채워지는 순간 상세 경로만 그것을
+	 * 읽어 닉네임을 표시한다 — 목록은 조인 조건으로 막지만 그 방어는 조회마다 반복해야 한다.
+	 */
+	@Test
+	void R13_1_official_story_cannot_have_author_ref() {
+		assertRejected(CHECK_VIOLATION,
+				() -> insertStory("official-with-author-ref", "짧은 설명", "official", UUID.randomUUID()));
+	}
+
+	/**
+	 * R13.1 (#269) — 사용자 작품은 {@code author_ref} 없이 존재할 수 없다.
+	 *
+	 * <p>양방향 CHECK 라 반대 방향도 함께 막힌다 — "작성자 없는 UGC" 는 표시할 이름이 없는 행이다.
+	 */
+	@Test
+	void R13_1_user_story_requires_author_ref() {
+		assertRejected(CHECK_VIOLATION,
+				() -> insertStory("user-without-author-ref", "짧은 설명", "user", null));
+	}
+
 	// ── helpers ──────────────────────────────────────────────
 
 	private void insertStory(String slug, String shortDesc, String authorType) throws SQLException {
+		insertStory(slug, shortDesc, authorType, null);
+	}
+
+	private void insertStory(String slug, String shortDesc, String authorType, UUID authorRef)
+			throws SQLException {
 		try (Connection connection = dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
-						INSERT INTO story (id, slug, title, short_desc, author_type,
+						INSERT INTO story (id, slug, title, short_desc, author_type, author_ref,
 						                   visibility, review_status, created_at)
-						VALUES (?, ?, '검증용', ?, ?, 'private', 'draft', now())
+						VALUES (?, ?, '검증용', ?, ?, ?, 'private', 'draft', now())
 						""")) {
 			statement.setObject(1, UUID.randomUUID());
 			statement.setString(2, slug);
 			statement.setString(3, shortDesc);
 			statement.setString(4, authorType);
+			statement.setObject(5, authorRef);
 			statement.executeUpdate();
 		}
 	}
