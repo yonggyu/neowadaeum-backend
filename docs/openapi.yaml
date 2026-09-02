@@ -1709,7 +1709,7 @@ components:
     # ── §13.2 Library ───────────────────────────────────────
     LibraryResponse:
       type: object
-      required: [genres, sections, continueSessions]
+      required: [genres, sections, continueSessions, noticeText]
       properties:
         genres:
           type: array
@@ -1723,6 +1723,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ContinueSession'
+        noticeText:
+          type: string
+          description: |
+            AI 사전 고지 문구. **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+            Footer 가 상시 표시하므로 이 응답이 함께 싣는다 — 화면마다 `/landing` 을 다시 부르지 않는다.
 
     Genre:
       type: object
@@ -1805,7 +1810,7 @@ components:
     # ── §13.3 Story Detail ──────────────────────────────────
     StoryDetailResponse:
       type: object
-      required: [story, characters, mySession]
+      required: [story, characters, mySession, noticeText]
       properties:
         story:
           $ref: '#/components/schemas/StoryDetail'
@@ -1818,6 +1823,11 @@ components:
           oneOf:
             - $ref: '#/components/schemas/MySessionBrief'
             - type: 'null'
+        noticeText:
+          type: string
+          description: |
+            AI 사전 고지 문구. **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+            Footer 가 상시 표시하므로 이 응답이 함께 싣는다 — 화면마다 `/landing` 을 다시 부르지 않는다.
 
     StoryDetail:
       type: object

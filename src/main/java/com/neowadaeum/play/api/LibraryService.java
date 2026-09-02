@@ -7,6 +7,8 @@ import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.catalog.query.StoryPage;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.spi.AiNotice;
+import com.neowadaeum.common.spi.AiNoticeQuery;
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SessionStatus;
 import com.neowadaeum.play.repository.PlaySessionRepository;
@@ -14,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +29,9 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>조회 수를 세면서 만든다</b> (§15 — p95 300ms). 이어하기가 다섯 개여도 catalog 조회는
  * 두 번이고, 장르 섹션은 <b>실제로 쓰이는 장르만</b> 만든다.
+ *
+ * <p><b>고지 문구도 여기서 싣는다</b> (#257). 이 화면의 Footer 가 그것을 상시 표시하므로, 주지
+ * 않으면 클라이언트가 {@code /landing} 을 한 번 더 부른다.
  */
 @Service
 public class LibraryService {
@@ -39,17 +46,33 @@ public class LibraryService {
 
 	private static final String COMMUNITY_TITLE = "사용자 작품";
 
+	private static final Logger log = LoggerFactory.getLogger(LibraryService.class);
+
 	private final StoryCatalogFacade stories;
 
 	private final PlaySessionRepository sessions;
 
-	public LibraryService(StoryCatalogFacade stories, PlaySessionRepository sessions) {
+	private final AiNoticeQuery notices;
+
+	public LibraryService(StoryCatalogFacade stories, PlaySessionRepository sessions,
+			AiNoticeQuery notices) {
 		this.stories = stories;
 		this.sessions = sessions;
+		this.notices = notices;
 	}
 
-	/** 화면 2.1 한 벌. */
+	/**
+	 * 화면 2.1 한 벌.
+	 *
+	 * @throws ApiException {@code INTERNAL_ERROR} — 고지 문구가 설정되지 않았다. 랜딩과 <b>같은
+	 *     판단</b>이다 (R11.1, §11) — 빈 문자열로 흡수하면 고지가 없는 상태가 정상으로 보인다
+	 */
 	public LibraryView library(UUID playerRef) {
+		AiNotice notice = this.notices.current().orElseThrow(() -> {
+			log.error("ai.notice.missing surface=library — 고지 문구 없이 화면을 내보내지 않는다 (R11.1)");
+			return new ApiException(ErrorCode.INTERNAL_ERROR);
+		});
+
 		List<GenreView> genres = this.stories.genres();
 		Map<String, String> labels = genres.stream()
 				.collect(java.util.stream.Collectors.toMap(GenreView::genreId, GenreView::label));
@@ -64,7 +87,7 @@ public class LibraryService {
 		sections.add(section(new LibrarySectionKey(LibrarySectionKey.Kind.COMMUNITY, null),
 				COMMUNITY_TITLE, null, OVERVIEW_PAGE));
 
-		return new LibraryView(genres, sections, continueSessions(playerRef));
+		return new LibraryView(genres, sections, continueSessions(playerRef), notice.text());
 	}
 
 	/**

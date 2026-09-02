@@ -13,12 +13,18 @@ import java.util.UUID;
  * {@code play} 에 있는 이유는 모듈 의존이 {@code play → catalog :: query} 한 방향만 열려 있기
  * 때문이다 (ADR-0006, §13-25).
  *
+ * <p><b>{@code noticeText} 가 여기 있는 이유</b> — 고지 문구는 이 화면의 Footer 에 <b>상시</b>
+ * 표시된다. 이것을 주지 않으면 클라이언트가 화면마다 {@code /landing} 을 한 번 더 부르게 되고,
+ * 두 응답의 캐시 수명이 갈리면 <b>같은 화면에서 다른 문구</b>가 보인다 (#257).
+ *
  * @param genres           화면이 보여 줄 장르 목록
  * @param sections         작품 섹션. <b>공식과 사용자는 섞이지 않는다</b> (R13.1)
  * @param continueSessions 진행 중인 세션. 자기 것만이다 (I-3)
+ * @param noticeText       AI 사전 고지 문구. <b>코드에 없다</b> — {@code service_config} 에서 온다
+ *                         (R11.1)
  */
 public record LibraryView(List<GenreView> genres, List<SectionView> sections,
-		List<ContinueSessionView> continueSessions) {
+		List<ContinueSessionView> continueSessions, String noticeText) {
 
 	/**
 	 * 섹션 하나 (§13.2 의 {@code LibrarySection}).
