@@ -1830,7 +1830,7 @@ components:
 
     LibrarySection:
       type: object
-      required: [sectionKey, sectionTitle, hasMore, stories]
+      required: [sectionKey, sectionTitle, hasMore, stories, noticeText]
       properties:
         sectionKey:
           type: string
@@ -1845,6 +1845,12 @@ components:
             $ref: '#/components/schemas/StoryCard'
         nextCursor:
           type: [string, 'null']
+        noticeText:
+          type: string
+          description: |
+            AI 사전 고지 문구. **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+            Footer 가 상시 표시하므로 이 응답이 함께 싣는다 — 화면마다 `/landing` 을 다시 부르지 않는다.
+          x-implemented-by: '#289'
 
     StoryCard:
       type: object
