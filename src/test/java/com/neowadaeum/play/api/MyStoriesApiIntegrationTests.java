@@ -1,5 +1,7 @@
 package com.neowadaeum.play.api;
 
+import com.neowadaeum.catalog.domain.ServiceConfig;
+import com.neowadaeum.catalog.repository.ServiceConfigRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -43,6 +45,9 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private ServiceConfigRepository configs;
 
 	@Autowired
 	@Qualifier("catalogDataSource")
@@ -232,6 +237,34 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 	}
 
 	// ── 보조 ────────────────────────────────────────────────
+
+
+	/**
+	 * #281 — 이 화면의 Footer 도 고지를 상시 표시한다. 싣지 않으면 클라이언트가 화면마다
+	 * {@code /landing} 을 한 번 더 부르고, 두 응답의 캐시 수명이 갈리면 <b>같은 화면에서 다른
+	 * 문구</b>가 보인다 (R11.1).
+	 */
+	@Test
+	void R11_1_my_sessions_carries_the_notice_text() throws Exception {
+		assertThat(mySessions("active").path("noticeText").asString()).isEqualTo(NOTICE);
+	}
+
+	@Test
+	void R11_1_my_stories_carries_the_notice_text() throws Exception {
+		assertThat(myStories().path("noticeText").asString()).isEqualTo(NOTICE);
+	}
+
+	/** 문구가 없으면 <b>빈 문자열이 아니라</b> 실패다 — 고지 없는 상태가 정상으로 보이면 안 된다. */
+	@Test
+	void R11_1_my_sessions_fails_when_the_notice_is_missing() throws Exception {
+		this.configs.deleteById(NOTICE_KEY);
+
+		MvcResult result = this.mockMvc
+				.perform(get("/api/v1/me/sessions").param("status", "active").with(asPlayer()))
+				.andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(500);
+	}
 
 	private JsonNode mySessions(String status) throws Exception {
 		return mySessions(status, null, null);

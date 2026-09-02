@@ -42,10 +42,6 @@ class StoryDetailApiIntegrationTests extends ContainerTestBase {
 
 	private static final UUID SEED_VERSION = UUID.fromString("11111111-1111-4111-8111-111111111111");
 
-	private static final String NOTICE_KEY = "ai.notice";
-
-	private static final String NOTICE = "이 이야기는 AI가 생성합니다.";
-
 	@Autowired
 	private MockMvc mockMvc;
 
@@ -72,19 +68,6 @@ class StoryDetailApiIntegrationTests extends ContainerTestBase {
 		this.snapshots.deleteAll();
 		this.turns.deleteAll();
 		this.sessions.deleteAll();
-	}
-
-	/** 고지 문구가 없으면 이 화면은 열리지 않는다 (R11.1, #257) — 설정을 먼저 놓는다. */
-	@BeforeEach
-	void configureNotice() {
-		this.configs.save(ServiceConfig.of(NOTICE_KEY,
-				"{\"version\":\"2026-07-21\",\"text\":\"%s\"}".formatted(NOTICE),
-				Instant.parse("2026-08-27T00:00:00Z")));
-	}
-
-	@AfterEach
-	void clearNotice() {
-		this.configs.deleteById(NOTICE_KEY);
 	}
 
 	@AfterEach

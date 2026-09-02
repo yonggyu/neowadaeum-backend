@@ -10,8 +10,11 @@ import java.util.List;
  * 그것이고, 형식에 턴 번호가 들어 있어 재사용이 막히지만 <b>애초에 주지 않는 편이 낫다.</b>
  *
  * @param nextCursor 다음 쪽의 시작점. 없으면 끝이다
+ * @param noticeText AI 사전 고지 문구. <b>코드에 없다</b> — {@code service_config} 에서 온다
+ *                   (R11.1). 이 화면의 Footer 도 문구를 상시 표시한다 (#281)
  */
-public record HistoryView(List<Item> items, String nextCursor, boolean hasMore) {
+public record HistoryView(List<Item> items, String nextCursor, boolean hasMore,
+		String noticeText) {
 
 	public HistoryView {
 		items = List.copyOf(items == null ? List.of() : items);

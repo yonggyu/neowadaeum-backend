@@ -7,8 +7,6 @@ import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.catalog.query.StoryPage;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
-import com.neowadaeum.common.spi.AiNotice;
-import com.neowadaeum.common.spi.AiNoticeQuery;
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SessionStatus;
 import com.neowadaeum.play.repository.PlaySessionRepository;
@@ -16,8 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 
@@ -46,19 +42,18 @@ public class LibraryService {
 
 	private static final String COMMUNITY_TITLE = "사용자 작품";
 
-	private static final Logger log = LoggerFactory.getLogger(LibraryService.class);
 
 	private final StoryCatalogFacade stories;
 
 	private final PlaySessionRepository sessions;
 
-	private final AiNoticeQuery notices;
+	private final AiNoticeText notice;
 
 	public LibraryService(StoryCatalogFacade stories, PlaySessionRepository sessions,
-			AiNoticeQuery notices) {
+			AiNoticeText notice) {
 		this.stories = stories;
 		this.sessions = sessions;
-		this.notices = notices;
+		this.notice = notice;
 	}
 
 	/**
@@ -68,10 +63,7 @@ public class LibraryService {
 	 *     판단</b>이다 (R11.1, §11) — 빈 문자열로 흡수하면 고지가 없는 상태가 정상으로 보인다
 	 */
 	public LibraryView library(UUID playerRef) {
-		AiNotice notice = this.notices.current().orElseThrow(() -> {
-			log.error("ai.notice.missing surface=library — 고지 문구 없이 화면을 내보내지 않는다 (R11.1)");
-			return new ApiException(ErrorCode.INTERNAL_ERROR);
-		});
+		String noticeText = this.notice.require("library");
 
 		List<GenreView> genres = this.stories.genres();
 		Map<String, String> labels = genres.stream()
@@ -87,7 +79,7 @@ public class LibraryService {
 		sections.add(section(new LibrarySectionKey(LibrarySectionKey.Kind.COMMUNITY, null),
 				COMMUNITY_TITLE, null, OVERVIEW_PAGE));
 
-		return new LibraryView(genres, sections, continueSessions(playerRef), notice.text());
+		return new LibraryView(genres, sections, continueSessions(playerRef), noticeText);
 	}
 
 	/**

@@ -1,5 +1,9 @@
 package com.neowadaeum.play.api;
 
+import com.neowadaeum.catalog.domain.ServiceConfig;
+import com.neowadaeum.catalog.repository.ServiceConfigRepository;
+import java.time.Instant;
+import org.junit.jupiter.api.AfterEach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -41,6 +45,9 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private ServiceConfigRepository configs;
 
 	@Autowired
 	private PlaySessionRepository sessions;
@@ -319,6 +326,19 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	}
 
 	// ── 보조 ────────────────────────────────────────────────
+
+
+	/**
+	 * #281 — 플레이 화면의 Footer 도 고지를 상시 표시한다 (R11.1). 매 턴 같은 값이 실리는 것을
+	 * 받아들인 선택이다 — 대안은 플레이 화면이 {@code /landing} 을 따로 부르는 것이고, 그러면
+	 * 캐시 수명이 갈려 같은 화면에서 다른 문구가 보인다.
+	 */
+	@Test
+	void R11_1_the_turn_response_carries_the_notice_text() throws Exception {
+		UUID sessionId = UUID.fromString(startSession().path("sessionId").asString());
+
+		assertThat(current(sessionId).path("noticeText").asString()).isEqualTo(NOTICE);
+	}
 
 	private JsonNode startSession() throws Exception {
 		MvcResult result = this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(asPlayer()))

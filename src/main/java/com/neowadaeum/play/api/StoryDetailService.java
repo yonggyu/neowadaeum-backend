@@ -5,16 +5,12 @@ import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.catalog.query.StoryDetailView;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
-import com.neowadaeum.common.spi.AiNotice;
-import com.neowadaeum.common.spi.AiNoticeQuery;
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SessionStatus;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 
@@ -33,19 +29,18 @@ public class StoryDetailService {
 	/** 작품당 {@code active} 세션은 1개다 (§13-9). 그래도 한 건만 읽는다는 것을 명시한다. */
 	private static final Limit ONE = Limit.of(1);
 
-	private static final Logger log = LoggerFactory.getLogger(StoryDetailService.class);
 
 	private final StoryCatalogFacade stories;
 
 	private final PlaySessionRepository sessions;
 
-	private final AiNoticeQuery notices;
+	private final AiNoticeText notice;
 
 	public StoryDetailService(StoryCatalogFacade stories, PlaySessionRepository sessions,
-			AiNoticeQuery notices) {
+			AiNoticeText notice) {
 		this.stories = stories;
 		this.sessions = sessions;
-		this.notices = notices;
+		this.notice = notice;
 	}
 
 	/**
@@ -58,13 +53,9 @@ public class StoryDetailService {
 		StoryDetailView story = this.stories.detail(storyId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
 
-		AiNotice notice = this.notices.current().orElseThrow(() -> {
-			log.error("ai.notice.missing surface=story_detail — 고지 문구 없이 화면을 내보내지 않는다 (R11.1)");
-			return new ApiException(ErrorCode.INTERNAL_ERROR);
-		});
-
+		// NOT_FOUND 판정이 먼저다 (I-8). 순서가 뒤집히면 문구 설정 여부가 작품의 존재를 알린다.
 		return new StoryDetailResponse(StoryDetailResponse.Story.from(story), story.characters(),
-				mySession(playerRef, storyId), notice.text());
+				mySession(playerRef, storyId), this.notice.require("story_detail"));
 	}
 
 	/**

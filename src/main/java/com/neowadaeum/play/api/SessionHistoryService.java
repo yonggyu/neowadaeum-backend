@@ -41,11 +41,14 @@ public class SessionHistoryService {
 
 	private final StoryVersionFacade storyVersions;
 
+	private final AiNoticeText notice;
+
 	public SessionHistoryService(PlaySessionRepository sessions, TurnRepository turns,
-			StoryVersionFacade storyVersions) {
+			StoryVersionFacade storyVersions, AiNoticeText notice) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.storyVersions = storyVersions;
+		this.notice = notice;
 	}
 
 	/**
@@ -72,7 +75,8 @@ public class SessionHistoryService {
 					chapterTitle(version, turn.getChapterNo()), turn.getSpeakerName(),
 					paragraphsOf(turn), chosenTextOf(turn), isPending(turn, lastTurnNo)));
 		}
-		return new HistoryView(items, more ? String.valueOf(page.getLast().getTurnNo()) : null, more);
+		return new HistoryView(items, more ? String.valueOf(page.getLast().getTurnNo()) : null, more,
+				this.notice.require("history"));
 	}
 
 	/**
