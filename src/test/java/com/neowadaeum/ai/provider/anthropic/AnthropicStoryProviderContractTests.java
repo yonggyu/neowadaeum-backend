@@ -263,7 +263,7 @@ class AnthropicStoryProviderContractTests {
 	 * 값이 새어도 통과한다 ({@code .claude/rules/testing.md}).
 	 */
 	@Test
-	void S3_the_failure_exception_carries_neither_the_key_nor_the_body() {
+	void SEC3_the_failure_exception_carries_neither_the_key_nor_the_body() {
 		this.server.stubFor(post(urlEqualTo("/v1/messages")).willReturn(aResponse()
 				.withStatus(401).withBody("{\"error\":{\"message\":\"invalid x-api-key: test-key\"}}")));
 

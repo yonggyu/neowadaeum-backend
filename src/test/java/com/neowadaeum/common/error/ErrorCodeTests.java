@@ -71,7 +71,7 @@ class ErrorCodeTests {
 
 	/** S-6 — 기본 문구는 사용자에게 보여도 안전해야 한다. 내부 용어가 새지 않는지 확인한다. */
 	@Test
-	void S6_default_messages_do_not_leak_internals() {
+	void SEC6_default_messages_do_not_leak_internals() {
 		for (ErrorCode code : ErrorCode.values()) {
 			assertThat(code.defaultMessage())
 					.as("%s", code.code())

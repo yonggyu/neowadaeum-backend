@@ -176,7 +176,7 @@ class AuthTokenServiceTests {
 	 * <p>액세스 토큰으로 관리자 문이 열리면 2FA 를 둔 이유가 사라진다 — 로그인 하나로 끝난다.
 	 */
 	@Test
-	void S4_an_access_token_does_not_resolve_as_a_step_up() {
+	void SEC4_an_access_token_does_not_resolve_as_a_step_up() {
 		AuthTokenService tokens = serviceAt(NOW);
 
 		assertThatThrownBy(() -> tokens.resolveAdminStepUp(tokens.issue(this.playerRef).accessToken()))
@@ -187,7 +187,7 @@ class AuthTokenServiceTests {
 
 	/** 반대도 같다 — 승격 토큰이 일반 API 를 여는 만능 열쇠가 되면 안 된다. */
 	@Test
-	void S4_a_step_up_does_not_authenticate_ordinary_requests() {
+	void SEC4_a_step_up_does_not_authenticate_ordinary_requests() {
 		AuthTokenService tokens = serviceAt(NOW);
 		String stepUp = tokens.issueAdminStepUp(this.playerRef).token();
 
@@ -197,7 +197,7 @@ class AuthTokenServiceTests {
 
 	/** 승격의 주인은 발급받은 그 사람이다. */
 	@Test
-	void S4_a_step_up_resolves_to_its_owner() {
+	void SEC4_a_step_up_resolves_to_its_owner() {
 		AuthTokenService tokens = serviceAt(NOW);
 
 		assertThat(tokens.resolveAdminStepUp(tokens.issueAdminStepUp(this.playerRef).token()))
@@ -206,7 +206,7 @@ class AuthTokenServiceTests {
 
 	/** <b>수명이 지나면 더 이상 참이 아니다.</b> 승격은 "방금 통과했다"는 사실이다. */
 	@Test
-	void S4_a_step_up_expires() {
+	void SEC4_a_step_up_expires() {
 		String stepUp = serviceAt(NOW).issueAdminStepUp(this.playerRef).token();
 		AuthTokenService later = serviceAt(NOW.plus(STEP_UP_TTL).plusSeconds(1));
 
@@ -215,7 +215,7 @@ class AuthTokenServiceTests {
 
 	/** 클라이언트가 <b>언제 다시 코드를 물어야 하는지</b> 알아야 한다. */
 	@Test
-	void S4_a_step_up_reports_its_lifetime() {
+	void SEC4_a_step_up_reports_its_lifetime() {
 		assertThat(serviceAt(NOW).issueAdminStepUp(this.playerRef).expiresIn())
 				.isEqualTo(STEP_UP_TTL.toSeconds());
 	}

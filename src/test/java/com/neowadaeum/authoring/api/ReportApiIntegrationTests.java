@@ -170,7 +170,7 @@ class ReportApiIntegrationTests extends ContainerTestBase {
 	 * <b>작품을 내릴 수 있는</b> 요청이다.
 	 */
 	@Test
-	void S8_too_many_reports_from_one_address_are_refused() throws Exception {
+	void SEC8_too_many_reports_from_one_address_are_refused() throws Exception {
 		UUID storyId = givenApprovedStory();
 		String oneAddress = uniqueAddress();
 		String body = """

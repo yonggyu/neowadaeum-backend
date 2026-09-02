@@ -391,7 +391,7 @@ class OpenApiContractTests {
 	 * 아니다.
 	 */
 	@Test
-	void S11_the_contract_names_no_host() {
+	void SEC11_the_contract_names_no_host() {
 		assertThat(SPEC).doesNotContainKey("servers");
 	}
 

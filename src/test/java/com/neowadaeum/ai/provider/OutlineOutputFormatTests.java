@@ -107,7 +107,7 @@ class OutlineOutputFormatTests {
 
 	/** <b>S-3 — 예외 메시지에 응답 원문을 담지 않는다.</b> 원문은 {@code ai_call_log} 만 갖는다. */
 	@Test
-	void S3_the_violation_message_does_not_carry_the_response() {
+	void SEC3_the_violation_message_does_not_carry_the_response() {
 		String secret = "이것은 응답 원문이며 로그로 새면 안 된다";
 
 		assertThatThrownBy(() -> OutlineOutputFormat.parse(secret, REQUEST))

@@ -72,7 +72,7 @@ class GlobalExceptionHandlerTests {
 
 	/** S-6 — 처리되지 않은 예외는 500 폴백으로 나가고 내부 정보를 일절 노출하지 않는다. */
 	@Test
-	void S6_unhandled_exception_does_not_leak_internals() throws Exception {
+	void SEC6_unhandled_exception_does_not_leak_internals() throws Exception {
 		MvcResult result = mockMvc.perform(get("/probe/boom"))
 				.andExpect(status().isInternalServerError())
 				.andExpect(jsonPath("$.error").value("INTERNAL_ERROR"))
@@ -100,7 +100,7 @@ class GlobalExceptionHandlerTests {
 
 	/** S-3 / S-7 — 거절된 입력값 원문은 응답으로 되돌려 보내지 않는다. */
 	@Test
-	void S3_rejected_value_is_not_echoed_back() throws Exception {
+	void SEC3_rejected_value_is_not_echoed_back() throws Exception {
 		String secret = "user-typed-secret-0123456789";
 
 		String body = bodyOf(mockMvc.perform(post("/probe/validate")
