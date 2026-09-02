@@ -1,6 +1,7 @@
 package com.neowadaeum.play.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.neowadaeum.ContainerTestBase;
@@ -34,6 +35,9 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	private static final UUID SEED_STORY = UUID.fromString("11111111-1111-4111-8111-000000000001");
+
+	/** 시드 작품의 제목. 마이그레이션이 넣는 값이며 이 테스트가 그것과 함께 움직인다 (#259). */
+	private static final String SEED_STORY_TITLE = "너와 다음";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -151,6 +155,74 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 		assertThat(turn.path("totalEndings").asInt()).isEqualTo(4);
 	}
 
+	// ── 작품 식별 (#259) ────────────────────────────────────
+
+	/**
+	 * #259 — <b>턴 응답이 자기가 속한 작품을 말한다.</b>
+	 *
+	 * <p>플레이 라우트는 {@code /sessions/{sessionId}} 라 URL 에 작품이 없다. 작품 상세에서 바로
+	 * 시작한 경우 클라이언트는 어느 작품인지 알 길이 없었고, 헤더("제목 · Chapter n")를 그릴 수
+	 * 없었다.
+	 */
+	@Test
+	void S259_a_generated_turn_carries_the_story_it_belongs_to() throws Exception {
+		JsonNode start = startSession();
+		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
+
+		assertThat(start.path("turn").path("storyId").asString()).isEqualTo(SEED_STORY.toString());
+		assertThat(start.path("turn").path("title").asString()).isEqualTo(SEED_STORY_TITLE);
+
+		JsonNode turn = advance(sessionId, start.path("turn").path("choices").get(0).path("choiceId").asString(),
+				1, 200);
+
+		assertThat(turn.path("storyId").asString()).isEqualTo(SEED_STORY.toString());
+		assertThat(turn.path("title").asString()).isEqualTo(SEED_STORY_TITLE);
+	}
+
+	/**
+	 * #259 — <b>다시 그리기도 같은 것을 말한다.</b>
+	 *
+	 * <p>{@code GET /current} 와 {@code POST /turns} 는 같은 스키마를 쓴다. 한쪽에만 있으면
+	 * 새로고침에서 헤더가 사라진다.
+	 */
+	@Test
+	void S259_the_current_turn_carries_the_same_story_identity() throws Exception {
+		JsonNode start = startSession();
+		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
+		advance(sessionId, start.path("turn").path("choices").get(0).path("choiceId").asString(), 1, 200);
+
+		JsonNode current = current(sessionId);
+
+		assertThat(current.path("storyId").asString()).isEqualTo(SEED_STORY.toString());
+		assertThat(current.path("title").asString()).isEqualTo(SEED_STORY_TITLE);
+	}
+
+	/**
+	 * #259 — <b>엔딩 턴에도 있다.</b>
+	 *
+	 * <p>없으면 "다른 결말 보기"({@code POST /stories/{storyId}/sessions?restart=true}) 가 부를
+	 * 대상을 모른다 — 그 버튼이 죽는 자리가 정확히 여기다.
+	 */
+	@Test
+	void S259_an_ending_turn_carries_the_story_identity() throws Exception {
+		JsonNode start = startSession();
+		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
+		JsonNode turn = start.path("turn");
+
+		for (int guard = 0; guard < 45 && !turn.path("isEnding").asBoolean(); guard++) {
+			turn = advance(sessionId, turn.path("choices").get(0).path("choiceId").asString(),
+					turn.path("turnNo").asInt(), 200);
+		}
+
+		assertThat(turn.path("isEnding").asBoolean()).as("45턴 안에 끝나지 않았다").isTrue();
+		assertThat(turn.path("storyId").asString()).isEqualTo(SEED_STORY.toString());
+		assertThat(turn.path("title").asString()).isEqualTo(SEED_STORY_TITLE);
+
+		// 엔딩 화면을 새로고침해도 같다.
+		assertThat(current(sessionId).path("storyId").asString()).isEqualTo(SEED_STORY.toString());
+		assertThat(current(sessionId).path("title").asString()).isEqualTo(SEED_STORY_TITLE);
+	}
+
 	// ── 거절 경로 — 상태를 바꾸지 않는다 (R6.6) ─────────────
 
 	/** §13-9 — 작품당 active 세션은 1개다. */
@@ -263,6 +335,14 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 				.andReturn();
 
 		assertThat(result.getResponse().getStatus()).isEqualTo(expectedStatus);
+		return JSON.readTree(result.getResponse().getContentAsString());
+	}
+
+	/** {@code GET /sessions/{id}/current} — 턴 응답과 같은 스키마다 (§13.4). */
+	private JsonNode current(UUID sessionId) throws Exception {
+		MvcResult result = this.mockMvc.perform(get("/api/v1/sessions/{sessionId}/current", sessionId).with(asPlayer()))
+				.andReturn();
+		assertThat(result.getResponse().getStatus()).isEqualTo(200);
 		return JSON.readTree(result.getResponse().getContentAsString());
 	}
 
