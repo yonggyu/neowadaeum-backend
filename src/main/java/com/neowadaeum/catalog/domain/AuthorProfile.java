@@ -35,23 +35,30 @@ public class AuthorProfile {
 	protected AuthorProfile() {
 	}
 
+	/**
+	 * @throws IllegalArgumentException 표시명이 규칙에 맞지 않는다 (#287) — {@link DisplayNames}
+	 */
 	public static AuthorProfile of(UUID playerRef, String displayName, Instant now) {
-		if (playerRef == null || displayName == null || displayName.isBlank()) {
-			throw new IllegalArgumentException("playerRef, displayName are required");
+		if (playerRef == null) {
+			throw new IllegalArgumentException("playerRef is required");
 		}
 		AuthorProfile profile = new AuthorProfile();
 		profile.playerRef = playerRef;
-		profile.displayName = displayName;
+		profile.displayName = DisplayNames.normalize(displayName);
 		profile.updatedAt = now;
 		return profile;
 	}
 
-	/** 표시명을 바꾼다. identity 가 닉네임을 갱신할 때 동기화되는 유일한 경로다. */
+	/**
+	 * 표시명을 바꾼다. identity 가 닉네임을 갱신할 때 동기화되는 유일한 경로다.
+	 *
+	 * <p><b>생성과 같은 규칙을 받는다</b> (#287). 한쪽만 검증하면 <b>바꾸는 길로 규칙을
+	 * 우회</b>할 수 있다.
+	 *
+	 * @throws IllegalArgumentException 표시명이 규칙에 맞지 않는다 — {@link DisplayNames}
+	 */
 	public void rename(String displayName, Instant now) {
-		if (displayName == null || displayName.isBlank()) {
-			throw new IllegalArgumentException("displayName is required");
-		}
-		this.displayName = displayName;
+		this.displayName = DisplayNames.normalize(displayName);
 		this.updatedAt = now;
 	}
 
