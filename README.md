@@ -55,6 +55,24 @@ cp src/main/resources/application.yml.template src/main/resources/application.ym
 
 `.env` 와 `application.yml` 은 **커밋되지 않는다**(§7.2). 실제 값은 절대 소스에 넣지 않는다.
 
+> **새 worktree 마다 반복한다.** `application.yml` 은 `.gitignore` 의 `*.yml` 에 걸려 있는
+> untracked 파일이라, `git worktree add` 로 작업 폴더를 새로 만들면 **함께 오지 않는다** — 브랜치를
+> 옮기는 것과 달리 파일 자체가 그 worktree 에 없는 것이다. 이 상태로 테스트나 `bootRun` 을 돌리면
+> 아래 메시지로 죽는다.
+>
+> ```
+> Caused by: java.lang.IllegalStateException: Flyway migration DataSource missing
+>     at org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration$FlywayConfiguration.getMigrationDataSource(FlywayAutoConfiguration.java:189)
+> ```
+>
+> **이 메시지는 원인을 가리키지 않는다.** `application.yml` 의 `spring.autoconfigure.exclude` 가
+> `FlywayAutoConfiguration` 을 제외해야 정상이다 — 이 프로젝트는 스토어별 Flyway 4벌을 직접
+> 배선하기 때문이다(§2.2, §5.3). 파일이 없으면 그 제외도 없고, Spring Boot 는 대신 Flyway 를
+> 자동설정하려다 자기 방식으로 쓸 `DataSource` 빈을 못 찾아 이 예외를 던진다. "DataSource" 라는
+> 단어 때문에 DB 접속·계정 문제로 보이지만, 실제 원인은 **이 worktree 에 `application.yml` 이
+> 없다는 것**뿐이다. 위 `cp application.yml.template application.yml` 을 이 worktree 에서도
+> 실행하면 해결된다.
+
 ### 2. pre-commit 훅
 
 ```bash
@@ -161,11 +179,58 @@ docker compose down -v && ./gradlew bootRun
 
 - Docker 데몬이 필요하다. WSL 에서 돌린다면 Docker Desktop 의 WSL 통합을 켠다.
   (`docker` CLI 가 PATH 에 없어도 `/var/run/docker.sock` 만 있으면 Testcontainers 는 동작한다.)
+  Docker 가 **colima** 라면 기본 탐색이 통하지 않는다 — 아래 "colima 조합" 참조.
 - 테스트 컨테이너는 로컬과 **같은 이미지 태그**(`docker-compose.yml` 에서 읽는다)와
   **같은 초기화 스크립트**를 쓴다. 스키마 4개·계정 4개가 그대로 만들어진다.
 - 컨테이너는 1개다. 스토어마다 컨테이너를 띄우면 계정 권한 경계가 검증되지 않는다.
 - docker-compose 는 건너뛴다(`spring.docker.compose.skip.in-tests: true`).
   `application-test.yml` 을 만들지 않는다 — `@DynamicPropertySource` 로 런타임 주입한다(§7.2).
+
+### colima 조합
+
+Docker 데몬이 **colima** 로 뜬 환경 — `docker info` 의 `Context:` 또는 `docker context ls` 의
+현재(`*`) 컨텍스트가 `colima` — 에서는 위 "Docker 데몬이 필요하다"만으로 부족하다.
+**`docker info` 는 멀쩡히 답하므로 Docker 가 없는 것처럼 보이지도 않는다.** 값 두 개가 필요하다.
+
+| 변수 | 무엇을 가리키는가 |
+|---|---|
+| `DOCKER_HOST` | **호스트(macOS)에서 보는** 소켓 주소. Testcontainers 의 기본 탐색은 `/var/run/docker.sock` 을 보는데 colima 는 다른 경로에 두므로, 없으면 `Could not find a valid Docker environment` 로 죽는다 |
+| `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` | **컨테이너 안에서 보는** 소켓 경로. Testcontainers 가 정리용 컨테이너(Ryuk)에 소켓을 마운트할 때 쓰는 값이다 |
+
+**둘은 같은 소켓을 가리키지만 관점이 다르다.** 이것이 이 조합에서 가장 틀리기 쉬운 자리다 —
+`DOCKER_HOST` 는 호스트 경로이고, `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` 는 **colima VM 안의
+경로인 `/var/run/docker.sock`** 이다. 뒤엣것에 호스트 경로를 넣으면 Ryuk 이 VM 안에 존재하지 않는
+경로를 마운트하려다 실패한다.
+
+```
+Container startup failed for image testcontainers/ryuk:0.14.0
+...
+Status 500: {"message":"error while creating mount source path '<호스트 소켓 경로>': mkdir <호스트 소켓 경로>: operation not supported"}
+```
+
+호스트 소켓 경로는 **환경마다 다르므로 여기 값을 박지 않는다.** 아래로 확인한다.
+
+```bash
+docker context inspect --format '{{.Endpoints.docker.Host}}'   # unix://<호스트 경로>
+# 또는
+colima status                                                  # "docker socket" 줄
+```
+
+확인한 값을 셸에 둔다.
+
+```bash
+export DOCKER_HOST="$(docker context inspect --format '{{.Endpoints.docker.Host}}')"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock   # VM 안의 경로. 호스트 경로가 아니다
+```
+
+**환경 변수를 바꾼 뒤에는 `./gradlew --stop` 을 먼저 실행한다.** Gradle 데몬은 최초 기동 시의 환경을
+캐싱하므로, 데몬을 멈추지 않으면 새로 내보낸 값이 반영되지 않는다.
+
+> **Ryuk 을 끄는 것으로도 위 실패는 넘어간다. 그러나 그것은 원인이 아니라 증상을 끄는 것이다.**
+> `TESTCONTAINERS_RYUK_DISABLED=true` 는 정리용 컨테이너를 없애므로 마운트 자체가 일어나지 않아
+> 통과하지만, 소켓 경로는 여전히 틀린 채로 남고 **테스트가 비정상 종료하면 컨테이너가 회수되지
+> 않는다.** 위 두 값을 맞추면 Ryuk 을 켠 채로 통과한다 — 끄는 것은 아래 "더 빠르게" 절의
+> 이유(속도)로만 선택한다.
 
 ### 더 빠르게 — Ryuk 끄기 (선택, 로컬 전용)
 
