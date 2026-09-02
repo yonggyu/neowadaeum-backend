@@ -3,6 +3,7 @@ package com.neowadaeum.identity.auth;
 import com.neowadaeum.common.web.ErrorResponseSecurityHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -39,11 +40,15 @@ public class ApiSecurityConfiguration {
 	/**
 	 * 인증 없이 여는 경로.
 	 *
-	 * <p>로그인 둘(§13.1)과 랜딩(§13.10)이다. 계약이 {@code security: []} 로 표시한 것과 같은
-	 * 목록이며, <b>여기 없는 경로는 토큰을 요구한다.</b>
+	 * <p>로그인 둘(§13.1)과 랜딩(§13.10), 그리고 약관 메타(이슈 #261)다. 계약이
+	 * {@code security: []} 로 표시한 것과 같은 목록이며, <b>여기 없는 경로는 토큰을 요구한다.</b>
+	 *
+	 * <p>{@code /api/v1/consents} 가 여기 있는 이유는 <b>가입 전에 불리기 때문</b>이다 — 토큰을
+	 * 요구하면 아직 회원이 아닌 사람이 약관 판본을 읽을 방법이 없다. 그 대신 <b>그 응답에 회원에
+	 * 관한 값이 하나도 없어야 한다</b> (S-9).
 	 */
 	private static final String[] PUBLIC_PATHS = { "/api/v1/auth/oauth/*", "/api/v1/auth/refresh",
-			"/api/v1/landing" };
+			"/api/v1/landing", "/api/v1/consents" };
 
 	/** 이 체인이 맡는 범위. {@code securityMatcher} 와 CSRF 면제가 같은 값을 봐야 한다. */
 	private static final String API_PATHS = "/api/v1/**";
@@ -55,6 +60,11 @@ public class ApiSecurityConfiguration {
 			ErrorResponseSecurityHandler errorHandler) throws Exception {
 		return http
 				.securityMatcher(API_PATHS)
+				// #248 — CORS 는 인가보다 먼저 판정돼야 한다. preflight(OPTIONS)에는
+				// Authorization 헤더가 실리지 않으므로, 인가가 먼저 돌면 401 이 나가고 브라우저는
+				// 그것을 CORS 오류로 보고한다 — 원인이 인증이라는 사실이 드러나지 않는다.
+				// 정책 자체는 common 이 소유한다 (CorsConfigurationSource 빈).
+				.cors(Customizer.withDefaults())
 				.csrf(csrf -> csrf.ignoringRequestMatchers(API_PATHS))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(requests -> requests

@@ -244,10 +244,15 @@ public class StoryCatalogFacade {
 	}
 
 	/**
-	 * 작성자 표시명 (§13-7).
+	 * 작성자 표시명 — <b>상세 한 건만</b> (§13-7).
 	 *
 	 * <p><b>{@code playerRef} 는 여기서 끝난다.</b> 밖으로 나가는 것은 닉네임뿐이며, 프로필이
 	 * 없으면 {@code null} 이다 — 식별자를 대신 내보내지 않는다 (I-3).
+	 *
+	 * <p><b>목록은 이것을 쓰지 않는다.</b> {@link #cards} 는 한 쪽의 작품을 한 번에 읽으므로
+	 * 카드마다 이 메서드를 부르면 그대로 N+1 이 된다 (§15 — p95 300ms). 그쪽은 같은 사실을
+	 * {@code author_profile} 조인으로 함께 읽는다. <b>둘을 하나로 합치지 않는 이유</b>는 읽는
+	 * 단위가 다르기 때문이다 — 단건과 한 쪽은 같은 질문이 아니다.
 	 */
 	private String displayNameOf(UUID authorRef) {
 		if (authorRef == null) {
@@ -342,6 +347,9 @@ public class StoryCatalogFacade {
 	 * 같은 시각의 작품들이 쪽 경계에서 <b>중복되거나 사라진다</b> — 시드처럼 한 번에 넣은
 	 * 데이터에서 실제로 일어난다.
 	 *
+	 * <p><b>작성자 표시명은 카드와 같은 조회로 온다</b> (#258, R13.1). 커뮤니티 섹션이
+	 * 작성자를 표기해야 하는데 카드마다 상세를 부르면 목록이 N+1 이 된다.
+	 *
 	 * @param limit  1 이상 {@value #MAX_LIMIT} 이하로 잘린다
 	 * @param cursor 이전 쪽의 {@link StoryPage#nextCursor()}. 처음이면 {@code null}
 	 */
@@ -354,7 +362,7 @@ public class StoryCatalogFacade {
 				.params(params(section, after, size + 1))
 				.query((rs, rowNum) -> new Row(rs.getObject("id", UUID.class), rs.getString("title"),
 						rs.getString("cover_url"), rs.getString("short_desc"), rs.getString("author_type"),
-						rs.getTimestamp("published_at").toInstant()))
+						rs.getString("author_display_name"), rs.getTimestamp("published_at").toInstant()))
 				.list();
 
 		boolean more = rows.size() > size;
@@ -366,7 +374,7 @@ public class StoryCatalogFacade {
 		for (Row row : page) {
 			cards.add(new StoryCardView(row.id(), row.title(), row.coverUrl(),
 					genresByStory.getOrDefault(row.id(), List.of()), row.shortDesc(),
-					row.publishedAt().isAfter(newSince), row.authorType()));
+					row.publishedAt().isAfter(newSince), row.authorType(), row.authorDisplayName()));
 		}
 		return new StoryPage(cards, more ? new Cursor(page.getLast().publishedAt(), page.getLast().id()).encode()
 				: null);
@@ -404,9 +412,18 @@ public class StoryCatalogFacade {
 	 * 다르게 두면 <b>공식이라는 이유로 검수를 건너뛰는 경로</b>가 생긴다.
 	 */
 	private static String sql(LibrarySectionKey section, boolean afterCursor) {
+		// 작성자 표시명은 JOIN 으로 함께 읽는다 (#258) — 카드마다 물으면 20장이 21번의 조회가
+		// 된다. author_profile 은 같은 catalog 스키마이므로 JOIN 이 허용된다 (§5.3 은 스키마
+		// '간' JOIN 을 금지한다).
+		//
+		// 조인 조건에 author_type 이 들어 있는 것이 의도다. 공식 작품의 author_ref 가 어떤
+		// 경위로든 채워져 있어도 닉네임이 실리지 않는다 — DB 는 그 조합을 막지 않는다.
 		String base = """
-				SELECT s.id, s.title, s.cover_url, s.short_desc, s.author_type, s.published_at
+				SELECT s.id, s.title, s.cover_url, s.short_desc, s.author_type, s.published_at,
+				       ap.display_name AS author_display_name
 				FROM story s
+				LEFT JOIN author_profile ap
+				       ON ap.player_ref = s.author_ref AND s.author_type = 'user'
 				WHERE s.review_status = 'approved'
 				  AND s.visibility <> 'private'
 				  AND s.published_at IS NOT NULL
@@ -443,7 +460,7 @@ public class StoryCatalogFacade {
 	}
 
 	private record Row(UUID id, String title, String coverUrl, String shortDesc, String authorType,
-			Instant publishedAt) {
+			String authorDisplayName, Instant publishedAt) {
 	}
 
 	/**

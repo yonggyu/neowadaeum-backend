@@ -113,9 +113,87 @@ class ReviewQueueServiceTests extends ContainerTestBase {
 		this.stories.add(promoted.storyId());
 
 		assertThat(promoted.reviewStatus()).isEqualTo(ReviewStatus.IN_REVIEW);
-		assertThat(promoted.visibility()).isEqualTo(Visibility.PRIVATE);
+		// #249 — 이미 승인돼 있던 가시성을 지우지 않는다. 검수 중 노출은 review_status 하나로
+		// 이미 닫히고(R2.3), 지우면 반려됐을 때 돌아갈 자리가 없다.
+		assertThat(promoted.visibility()).isEqualTo(Visibility.UNLISTED);
 		assertThat(this.queue.pending()).extracting(ReviewQueueService.QueueItem::storyId)
 				.contains(promoted.storyId());
+	}
+
+	/**
+	 * <b>재제출 반려는 이미 갖고 있던 게시를 빼앗지 않는다</b> (#249, §13-50).
+	 *
+	 * <p>작성자가 오타 하나를 고쳤다가 반려되면 <b>고치기 전에 갖고 있던 게시까지</b> 잃던
+	 * 상태였다. 개정판을 거절하는 것과 원본을 내리는 것은 다른 일이다 — 붙이면 <b>요청한
+	 * 것보다 많은 것을 잃고</b>, 그러면 아무도 작품을 고치지 않게 된다.
+	 */
+	@Test
+	void R8_8_rejecting_a_revision_returns_the_story_to_where_it_was() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		var first = this.submissions.submit(authorRef, draftId, Visibility.UNLISTED);
+		this.stories.add(first.storyId());
+		var revision = this.submissions.submit(authorRef, draftId, Visibility.PUBLIC);
+
+		var decision = this.queue.decide(REVIEWER_REF, revision.storyId(), ReviewVerdict.REJECT,
+				List.of(SafetyCategory.RATING_EXCEEDED), null);
+
+		assertThat(decision.reviewStatus()).isEqualTo(ReviewStatus.APPROVED);
+		assertThat(column(revision.storyId(), "review_status")).isEqualTo("approved");
+		assertThat(column(revision.storyId(), "visibility")).isEqualTo("unlisted");
+	}
+
+	/**
+	 * <b>재검수 중에는 내려가 있다</b> (§13-40 이 받아들인 대가).
+	 *
+	 * <p>가시성을 남겨 두는 것이 <b>검수 중 노출</b>을 뜻하지 않는다. R2.3 의 타인 조회 조건이
+	 * {@code approved} <b>AND</b> {@code visibility <> private} 이므로 {@code in_review} 하나로
+	 * 이미 가려진다.
+	 */
+	@Test
+	void R2_3_a_story_under_re_review_is_not_approved_anymore() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		this.stories.add(this.submissions.submit(authorRef, draftId, Visibility.UNLISTED).storyId());
+		var revision = this.submissions.submit(authorRef, draftId, Visibility.PUBLIC);
+
+		assertThat(column(revision.storyId(), "review_status")).isEqualTo("in_review");
+		assertThat(column(revision.storyId(), "visibility")).isNotEqualTo("public");
+	}
+
+	/** <b>재제출 승인은 {@code public} 을 연다</b> (§13-39) — 그것이 재제출의 목표였다. */
+	@Test
+	void R8_8_passing_a_revision_opens_public() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		this.stories.add(this.submissions.submit(authorRef, draftId, Visibility.UNLISTED).storyId());
+		var revision = this.submissions.submit(authorRef, draftId, Visibility.PUBLIC);
+
+		this.queue.decide(REVIEWER_REF, revision.storyId(), ReviewVerdict.PASS, List.of(), null);
+
+		assertThat(column(revision.storyId(), "review_status")).isEqualTo("approved");
+		assertThat(column(revision.storyId(), "visibility")).isEqualTo("public");
+	}
+
+	/**
+	 * <b>"있던 자리"는 승인돼 있던 자리다</b> (#249).
+	 *
+	 * <p>정지된 작품에서 낸 재제출까지 되돌리면 <b>반려가 정지를 푸는 길</b>이 된다 — 신고
+	 * 누적으로 내려간 작품을 작성자가 재제출하고 검수자가 거절하기만 하면 복귀한다.
+	 */
+	@Test
+	void R8_9_a_revision_from_suspension_does_not_inherit_a_place_to_return_to() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		UUID storyId = this.submissions.submit(authorRef, draftId, Visibility.UNLISTED).storyId();
+		this.stories.add(storyId);
+		suspend(storyId);
+
+		var revision = this.submissions.submit(authorRef, draftId, Visibility.PUBLIC);
+		this.queue.decide(REVIEWER_REF, revision.storyId(), ReviewVerdict.REJECT, List.of(), null);
+
+		assertThat(column(revision.storyId(), "review_status")).isEqualTo("rejected");
+		assertThat(column(revision.storyId(), "visibility")).isEqualTo("private");
 	}
 
 	/** <b>승인이 곧 게시다</b> (R8.8) — 열면서 현재 버전을 가리킨다. */
@@ -248,6 +326,13 @@ class ReviewQueueServiceTests extends ContainerTestBase {
 
 	private UUID authorOf(UUID draftId) {
 		return this.draftRows.findById(draftId).orElseThrow().getAuthorRef();
+	}
+
+	/** 신고 누적으로 내려간 상태를 만든다 (B-57). 경로가 아니라 상태가 필요한 테스트다. */
+	private void suspend(UUID storyId) {
+		JdbcClient.create(this.catalog)
+				.sql("UPDATE story SET review_status = 'suspended' WHERE id = ?")
+				.param(storyId).update();
 	}
 
 	private String column(UUID storyId, String name) {

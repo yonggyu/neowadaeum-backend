@@ -1,6 +1,9 @@
 package com.neowadaeum;
 
+import com.neowadaeum.catalog.domain.ServiceConfig;
+import com.neowadaeum.catalog.repository.ServiceConfigRepository;
 import com.neowadaeum.identity.auth.AuthTokenService;
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,6 +65,15 @@ public abstract class ContainerTestBase {
 	@Autowired
 	private StringRedisTemplate redis;
 
+	@Autowired
+	private ServiceConfigRepository serviceConfigs;
+
+	/** {@code service_config} 의 고지 키. 값의 모양은 {@code CatalogAiNoticeQuery} 가 정한다. */
+	protected static final String NOTICE_KEY = "ai.notice";
+
+	/** 시드 문구. <b>운영 문구가 아니다</b> — 테스트가 값으로 대조하기 위한 것뿐이다. */
+	protected static final String NOTICE = "이 이야기는 AI가 생성합니다.";
+
 	/**
 	 * 호출 한도 카운터를 테스트마다 비운다 (B-38).
 	 *
@@ -77,6 +89,24 @@ public abstract class ContainerTestBase {
 		if (keys != null && !keys.isEmpty()) {
 			this.redis.delete(keys);
 		}
+	}
+
+	/**
+	 * 고지 문구를 심는다 (R11.1, #281).
+	 *
+	 * <p><b>여기 있는 이유</b> — 고지를 요구하는 화면이 일곱이 되면서, 세션을 시작하거나 턴을
+	 * 진행하는 <b>거의 모든 통합 테스트</b>가 이 설정을 필요로 하게 됐다. 클래스마다 심으면
+	 * 새 테스트가 그것을 빠뜨렸을 때 <b>500 의 원인이 고지라는 사실이 드러나지 않는다.</b>
+	 *
+	 * <p><b>없는 경우를 검증하는 테스트는 스스로 지운다.</b> 그쪽이 예외이며, 지우는 범위는
+	 * 이 키 하나여야 한다 — {@code service_config} 를 통째로 비우면 다른 테스트가 원인 없이
+	 * 깨진다 (이슈 #272).
+	 */
+	@BeforeEach
+	void configureAiNotice() {
+		this.serviceConfigs.save(ServiceConfig.of(NOTICE_KEY,
+				"{\"version\":\"2026-07-21\",\"text\":\"%s\"}".formatted(NOTICE),
+				Instant.parse("2026-08-27T00:00:00Z")));
 	}
 
 	/** 기본 회원으로 요청한다. */

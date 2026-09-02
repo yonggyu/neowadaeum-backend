@@ -39,9 +39,13 @@ public class MyStoriesService {
 
 	private final StoryCatalogFacade stories;
 
-	public MyStoriesService(PlaySessionRepository sessions, StoryCatalogFacade stories) {
+	private final AiNoticeText notice;
+
+	public MyStoriesService(PlaySessionRepository sessions, StoryCatalogFacade stories,
+			AiNoticeText notice) {
 		this.sessions = sessions;
 		this.stories = stories;
+		this.notice = notice;
 	}
 
 	/**
@@ -81,7 +85,7 @@ public class MyStoriesService {
 		}
 		return new MyStoriesView.Sessions(items,
 				more ? new Cursor(page.getLast().getUpdatedAt(), page.getLast().getId()).encode() : null,
-				more);
+				more, this.notice.require("my_sessions"));
 	}
 
 	/**
@@ -98,7 +102,8 @@ public class MyStoriesService {
 					story.visibility(), story.reviewStatus(), story.rejectReasons(),
 					this.sessions.countByStoryIdAndDeletedAtIsNull(story.storyId()), story.updatedAt()));
 		}
-		return new MyStoriesView.Stories(items, page.nextCursor(), page.hasMore());
+		return new MyStoriesView.Stories(items, page.nextCursor(), page.hasMore(),
+				this.notice.require("my_stories"));
 	}
 
 	/**

@@ -72,13 +72,15 @@ class AiNoticeExposureIntegrationTests extends ContainerTestBase {
 		this.turns.deleteAll();
 		this.sessions.deleteAll();
 		clearIdentity();
-		this.configs.deleteAll();
+		// 이 클래스는 "문구가 없는 상태" 를 직접 만든다. 베이스가 심은 키만 지운다 —
+		// 표 전체를 비우면 다른 테스트가 원인 없이 깨진다 (이슈 #272).
+		this.configs.deleteById(NOTICE_KEY);
 	}
 
 	@AfterEach
 	void clear() {
 		clearIdentity();
-		this.configs.deleteAll();
+		this.configs.deleteById(NOTICE_KEY);
 	}
 
 	/**
@@ -126,18 +128,27 @@ class AiNoticeExposureIntegrationTests extends ContainerTestBase {
 	}
 
 	/**
-	 * <b>문구가 설정되지 않았어도 플레이는 된다.</b>
+	 * <b>문구가 설정되지 않으면 플레이가 시작되지 않는다</b> (§13-27 개정, #281).
 	 *
-	 * <p>기록은 최선 노력이다 — 고지 이력 하나 때문에 서비스가 멈추면 관측을 떼게 된다.
-	 * 대신 그 상태는 로그에 남고 B-48 의 관측 대상이다.
+	 * <p><b>이 테스트는 반대를 단언하고 있었다.</b> B-14 시점의 §13-27 은 플레이 경로를 예외로
+	 * 두었고 그 근거는 <b>거기서 고지가 하는 일이 기록뿐</b>이라는 것이었다 — "기록을 못 남기는
+	 * 것과 고지를 안 보여 주는 것은 무게가 다르다".
+	 *
+	 * <p>#281 이 그 전제를 바꿨다. 턴 응답이 문구를 <b>싣게</b> 되면서 플레이 경로도 표시 경로가
+	 * 됐고, 그러면 다른 화면과 같은 규칙을 받는다 — <b>문구 없이 내보내지 않는다.</b> 구분은
+	 * 여전히 "기록이냐 표시냐"이며, 바뀐 것은 규칙이 아니라 <b>플레이가 어느 쪽인가</b>다.
+	 *
+	 * <p><b>대가를 적어 둔다</b> — 설정을 빠뜨리면 둘러보기만이 아니라 <b>플레이 전체가 멈춘다.</b>
+	 * 그래서 배포 절차의 0번 단계가 그만큼 더 중요해졌다 (`docs/deployment.md`).
 	 */
 	@Test
-	void R11_1_an_unconfigured_notice_does_not_break_play() throws Exception {
+	void R11_1_play_does_not_start_without_a_configured_notice() throws Exception {
 		this.users.save(User.register(TEST_PLAYER_REF, null, NOW));
 
-		startSession();
+		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(asPlayer()))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(500));
 
-		assertThat(this.impressions.count()).isZero();
+		assertThat(this.impressions.count()).as("시작되지 않았으므로 노출도 남지 않는다").isZero();
 	}
 
 	/** 동의 타입이 늘지 않았는지도 함께 본다 — 이 흐름은 동의를 만들지 않는다. */

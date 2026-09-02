@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.neowadaeum.ContainerTestBase;
+import com.neowadaeum.catalog.domain.ServiceConfig;
+import com.neowadaeum.catalog.repository.ServiceConfigRepository;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.TurnRepository;
@@ -55,6 +57,9 @@ class StoryDetailApiIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private GameStateSnapshotRepository snapshots;
+
+	@Autowired
+	private ServiceConfigRepository configs;
 
 	private final List<UUID> created = new ArrayList<>();
 
@@ -182,6 +187,30 @@ class StoryDetailApiIntegrationTests extends ContainerTestBase {
 		assertThat(statusOf(pending)).isEqualTo(404);
 		assertThat(statusOf(privateStory)).isEqualTo(404);
 		assertThat(statusOf(UUID.randomUUID())).isEqualTo(404);
+	}
+
+	/**
+	 * <b>R11.1 — 고지 문구가 이 응답에 실려 온다</b> (#257).
+	 *
+	 * <p>Footer 가 문구를 상시 표시한다. 여기서 주지 않으면 클라이언트가 화면마다
+	 * {@code /landing} 을 한 번 더 부르고, 두 응답의 캐시 수명이 갈리면 <b>같은 화면에서 다른
+	 * 문구</b>가 보인다.
+	 */
+	@Test
+	void R11_1_the_story_detail_carries_the_notice_text() throws Exception {
+		assertThat(detail(SEED_STORY).path("noticeText").asString()).isEqualTo(NOTICE);
+	}
+
+	/**
+	 * <b>문구가 없으면 화면을 내보내지 않는다</b> (§11, R11.1) — 랜딩과 같은 판단이다.
+	 *
+	 * <p>빈 문자열로 흡수하면 <b>고지가 없는 상태가 정상으로 보인다.</b>
+	 */
+	@Test
+	void R11_1_the_story_detail_fails_when_the_notice_is_not_configured() throws Exception {
+		this.configs.deleteById(NOTICE_KEY);
+
+		assertThat(statusOf(SEED_STORY)).isEqualTo(500);
 	}
 
 	/** 승인·공개된 사용자 작품은 보인다 — 가리는 것은 조건이지 종류가 아니다. */

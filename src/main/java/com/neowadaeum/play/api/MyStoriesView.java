@@ -16,8 +16,15 @@ public final class MyStoriesView {
 	private MyStoriesView() {
 	}
 
-	/** 진행 중 / 완료 탭 (§13.7). */
-	public record Sessions(List<SessionItem> items, String nextCursor, boolean hasMore) {
+	/**
+	 * 진행 중 / 완료 탭 (§13.7).
+	 *
+	 * @param noticeText AI 사전 고지 문구. <b>코드에 없다</b> — {@code service_config} 에서 온다
+	 *                   (R11.1). 이 화면의 Footer 도 문구를 상시 표시하므로, 없으면 이 화면이
+	 *                   <b>랜딩을 따로 부르게 된다</b> (#281)
+	 */
+	public record Sessions(List<SessionItem> items, String nextCursor, boolean hasMore,
+			String noticeText) {
 
 		public Sessions {
 			items = List.copyOf(items == null ? List.of() : items);
@@ -36,8 +43,13 @@ public final class MyStoriesView {
 			int chapterNo, int totalChapters, Instant updatedAt) {
 	}
 
-	/** 내가 만든 작품 탭 (R13.4). */
-	public record Stories(List<StoryItem> items, String nextCursor, boolean hasMore) {
+	/**
+	 * 내가 만든 작품 탭 (R13.4).
+	 *
+	 * @param noticeText AI 사전 고지 문구. {@link Sessions#noticeText()} 와 같은 이유다 (#281)
+	 */
+	public record Stories(List<StoryItem> items, String nextCursor, boolean hasMore,
+			String noticeText) {
 
 		public Stories {
 			items = List.copyOf(items == null ? List.of() : items);

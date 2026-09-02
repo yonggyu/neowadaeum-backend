@@ -17,7 +17,12 @@ import tools.jackson.databind.JsonNode;
  * <b>프롬프트의 작품 레이어</b>가 된다 (§5.1 의 WORLD · CHARACTER). 판정 재료와 같은 조회로
  * 가져오는 이유는 위와 같다 — 한 턴에 둘 다 필요하고, 나눠 부르면 같은 버전을 두 번 읽는다.
  *
+ * <p><b>{@code storyTitle} 은 판정에도 프롬프트에도 쓰이지 않는다</b> (#259). 턴 응답의 헤더가
+ * 쓰는 값이며, 여기 담는 이유는 위와 같다 — 같은 조회 한 번에 딸려 오므로 <b>왕복이 늘지
+ * 않는다.</b> 매 턴 제목만 따로 읽으면 그것이 §15 예산에 얹히는 조회 하나다.
+ *
  * @param storyVersionId 버전 식별자
+ * @param storyTitle     이 버전이 속한 작품의 제목. <b>회원 정보가 아니라 작품 데이터다</b> (I-3)
  * @param worldPrompt    작품 세계관. <b>UGC 하드 제한 1,000토큰의 절반을 차지한다</b> (R4.9)
  * @param stateSchema    GameState 화이트리스트 (R4.1)
  * @param choicePolicy   선택지 개수 정책 (§2.3)
@@ -27,6 +32,7 @@ import tools.jackson.databind.JsonNode;
  */
 public record StoryVersionView(
 		UUID storyVersionId,
+		String storyTitle,
 		String worldPrompt,
 		JsonNode stateSchema,
 		JsonNode choicePolicy,
