@@ -40,11 +40,15 @@ public class ApiSecurityConfiguration {
 	/**
 	 * 인증 없이 여는 경로.
 	 *
-	 * <p>로그인 둘(§13.1)과 랜딩(§13.10)이다. 계약이 {@code security: []} 로 표시한 것과 같은
-	 * 목록이며, <b>여기 없는 경로는 토큰을 요구한다.</b>
+	 * <p>로그인 둘(§13.1)과 랜딩(§13.10), 그리고 약관 메타(이슈 #261)다. 계약이
+	 * {@code security: []} 로 표시한 것과 같은 목록이며, <b>여기 없는 경로는 토큰을 요구한다.</b>
+	 *
+	 * <p>{@code /api/v1/consents} 가 여기 있는 이유는 <b>가입 전에 불리기 때문</b>이다 — 토큰을
+	 * 요구하면 아직 회원이 아닌 사람이 약관 판본을 읽을 방법이 없다. 그 대신 <b>그 응답에 회원에
+	 * 관한 값이 하나도 없어야 한다</b> (S-9).
 	 */
 	private static final String[] PUBLIC_PATHS = { "/api/v1/auth/oauth/*", "/api/v1/auth/refresh",
-			"/api/v1/landing" };
+			"/api/v1/landing", "/api/v1/consents" };
 
 	/** 이 체인이 맡는 범위. {@code securityMatcher} 와 CSRF 면제가 같은 값을 봐야 한다. */
 	private static final String API_PATHS = "/api/v1/**";

@@ -97,7 +97,7 @@ public class SocialAccountRegistrar {
 			}
 		}
 		this.consents.save(ConsentLog.agree(userId, ConsentType.AGE,
-				"age-" + AgeGate.MINIMUM_AGE, ipHash, now));
+				AgeGate.consentVersion(), ipHash, now));
 	}
 
 	/**

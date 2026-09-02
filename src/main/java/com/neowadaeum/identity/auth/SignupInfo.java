@@ -23,8 +23,12 @@ public record SignupInfo(LocalDate birthDate, List<ConsentDecision> consents) {
 	 *
 	 * <p>{@link ConsentType#AGE} 는 여기에 없다. <b>그것은 사용자가 체크하는 것이 아니라 서버가
 	 * 생년월일로 판정한 사실</b>이며, 서버가 스스로 기록한다 (R10.2).
+	 *
+	 * <p><b>가입 화면이 무엇을 체크박스로 그릴지도 이 목록이 정한다</b> (이슈 #261) — 프론트가
+	 * 같은 목록을 따로 들고 있으면 항목이 늘어난 날 한쪽만 바뀐다.
 	 */
-	static final Set<ConsentType> REQUIRED = Set.of(ConsentType.TOS, ConsentType.PRIVACY, ConsentType.AI_NOTICE);
+	public static final Set<ConsentType> REQUIRED =
+			Set.of(ConsentType.TOS, ConsentType.PRIVACY, ConsentType.AI_NOTICE);
 
 	public SignupInfo {
 		consents = List.copyOf(consents == null ? List.of() : consents);
