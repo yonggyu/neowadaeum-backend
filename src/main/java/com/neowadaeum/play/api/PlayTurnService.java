@@ -50,10 +50,11 @@ public class PlayTurnService {
 	private final TurnGuards guards;
 	private final IdempotencyStore idempotency;
 	private final StoryCatalogFacade stories;
+	private final AiNoticeText notice;
 
 	public PlayTurnService(PlaySessionRepository sessions, TurnRepository turns,
 			StoryVersionFacade storyVersions, TurnPipeline pipeline, TurnGuards guards,
-			IdempotencyStore idempotency, StoryCatalogFacade stories) {
+			IdempotencyStore idempotency, StoryCatalogFacade stories, AiNoticeText notice) {
 		this.sessions = sessions;
 		this.turns = turns;
 		this.storyVersions = storyVersions;
@@ -61,6 +62,7 @@ public class PlayTurnService {
 		this.guards = guards;
 		this.idempotency = idempotency;
 		this.stories = stories;
+		this.notice = notice;
 	}
 
 	/**
@@ -183,8 +185,13 @@ public class PlayTurnService {
 		StoryVersionView version = this.storyVersions.findByVersionId(storyVersionId)
 				.orElseThrow(() -> new IllegalStateException("작품 버전을 찾지 못했다: " + storyVersionId));
 
-		return toView(turn, version, outcome.endingIndex(),
-				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session(turn), turn));
+		// #259 — 세션은 도달률 판정에서 이미 읽던 값이다. 여기로 끌어올려 storyId 를 함께 쓰므로
+		// 조회가 늘지 않는다.
+		PlaySession session = session(turn);
+
+		return toView(session, turn, version, outcome.endingIndex(),
+				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session, turn),
+				this.notice.require("play"));
 	}
 
 	/**
@@ -208,8 +215,9 @@ public class PlayTurnService {
 				.sorted(java.util.Comparator.comparingInt(StoryVersionView.EndingView::endingNo))
 				.toList();
 
-		return toView(turn, version, endingIndexOf(visible, turn.getEndingId()),
-				turn.isEnding() ? visible.size() : null, reachRateOf(session, turn));
+		return toView(session, turn, version, endingIndexOf(visible, turn.getEndingId()),
+				turn.isEnding() ? visible.size() : null, reachRateOf(session, turn),
+				this.notice.require("play"));
 	}
 
 	/**
@@ -275,9 +283,12 @@ public class PlayTurnService {
 		return null;
 	}
 
-	private static TurnView toView(Turn turn, StoryVersionView version, Integer endingIndex,
-			Integer totalEndings, Double reachRate) {
+	private static TurnView toView(PlaySession session, Turn turn, StoryVersionView version, Integer endingIndex,
+			Integer totalEndings, Double reachRate, String noticeText) {
 		return new TurnView(
+				// #259 — 세션이 들고 있는 값이다. 제목은 세션이 고정한 버전에서 온다 (I-4).
+				session.getStoryId(),
+				version.storyTitle(),
 				turn.getTurnNo(),
 				turn.getChapterNo(),
 				chapterTitle(version, turn.getChapterNo()),
@@ -293,7 +304,9 @@ public class PlayTurnService {
 				// R11.2 — 저장된 사실을 그대로 읽는다. 여기서 판단하지 않는다.
 				turn.isAiGenerated(),
 				// R2.7 · I-20 — 배치 갱신값이다. 여기서 세지 않는다.
-				reachRate);
+				reachRate,
+				// #281 — 플레이 화면의 Footer 도 고지를 상시 표시한다 (R11.1).
+				noticeText);
 	}
 
 	/**

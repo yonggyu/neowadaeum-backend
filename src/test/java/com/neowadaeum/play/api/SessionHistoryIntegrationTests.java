@@ -1,5 +1,9 @@
 package com.neowadaeum.play.api;
 
+import com.neowadaeum.catalog.domain.ServiceConfig;
+import com.neowadaeum.catalog.repository.ServiceConfigRepository;
+import java.time.Instant;
+import org.junit.jupiter.api.AfterEach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,6 +39,9 @@ class SessionHistoryIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private ServiceConfigRepository configs;
 
 	@Autowired
 	private PlaySessionRepository sessions;
@@ -173,6 +180,17 @@ class SessionHistoryIntegrationTests extends ContainerTestBase {
 	// ── 보조 ────────────────────────────────────────────────
 
 	/** 세션을 만들고 {@code turnCount} 개의 턴이 쌓일 때까지 진행한다. */
+
+	/**
+	 * #281 — 기록 화면의 Footer 도 고지를 상시 표시한다 (R11.1).
+	 */
+	@Test
+	void R11_1_history_carries_the_notice_text() throws Exception {
+		UUID sessionId = playTurns(1);
+
+		assertThat(history(sessionId, null, null).path("noticeText").asString()).isEqualTo(NOTICE);
+	}
+
 	private UUID playTurns(int turnCount) throws Exception {
 		MvcResult started = this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY)
 						.with(asPlayer()))

@@ -3,6 +3,7 @@ package com.neowadaeum.common.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.identity.api.ConsentTermsView;
 import com.neowadaeum.play.api.PlayController;
 import com.neowadaeum.play.api.TurnRequestBody;
 import com.neowadaeum.catalog.query.CharacterCardView;
@@ -154,6 +155,34 @@ class OpenApiContractTests {
 		assertThat(paths()).doesNotContainKey(path);
 	}
 
+	/**
+	 * R2.7 — {@code reachRate} 는 <b>0.0~1.0 의 비율</b>이다. 계약이 단위를 잃지 않게 한다.
+	 *
+	 * <p>타입이 {@code number} 뿐이면 {@code 0.12} 인지 {@code 12} 인지 구분되지 않는다.
+	 * 표본이 임계 미만인 동안은 {@code null} 이라(R2.8) 화면에 값이 뜨지 않으므로,
+	 * 단위를 잘못 읽어도 <b>임계를 넘긴 뒤에야</b> 드러난다. 설명·예시·범위를 계약이 못박는다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void R2_7_reach_rate_unit_is_declared_in_the_contract() {
+		Map<String, Object> properties = (Map<String, Object>) schema("TurnResponse").get("properties");
+		Map<String, Object> reachRate = (Map<String, Object>) properties.get("reachRate");
+		assertThat(reachRate).as("TurnResponse 에 reachRate 가 없다").isNotNull();
+
+		assertThat((String) reachRate.get("description")).as("reachRate 의 단위 설명이 없다").isNotBlank();
+		assertThat(reachRate).as("reachRate 에 예시가 없다 — 0.12 인지 12 인지 계약이 말하지 않는다")
+				.containsKey("examples");
+		assertThat((List<Object>) reachRate.get("examples")).isNotEmpty();
+
+		assertThat(((Number) reachRate.get("minimum")).doubleValue()).isEqualTo(0.0d);
+		assertThat(((Number) reachRate.get("maximum")).doubleValue()).isEqualTo(1.0d);
+
+		// 예시도 같은 단위여야 한다 — 백분율 값이 예시로 새어 들어오는 것을 막는다.
+		for (Object example : (List<Object>) reachRate.get("examples")) {
+			assertThat(((Number) example).doubleValue()).isBetween(0.0d, 1.0d);
+		}
+	}
+
 	// ── 2. 에러 코드 ─────────────────────────────────────────
 
 	/**
@@ -178,6 +207,37 @@ class OpenApiContractTests {
 		assertThat(propertiesOf("Error")).containsExactlyInAnyOrder("error", "message", "details");
 		assertThat((List<String>) schema("Error").get("required")).containsExactlyInAnyOrder("error", "message",
 				"details");
+	}
+
+	/**
+	 * <b>약관 판본을 알려 주는 경로가 계약에 있다</b> (#261, R10.2).
+	 *
+	 * <p>이 경로가 없던 동안 프론트는 판본을 <b>상수로 들고 있었다.</b> 약관이 개정되면 그
+	 * 상수가 그대로 동의 이력에 기록된다 — 법적 증빙이 틀리는 방식이고, 서버가 판본을 검증하지
+	 * 않으므로 <b>조용히 틀린다.</b>
+	 *
+	 * <p>{@code security: []} 를 함께 못박는다. <b>가입 전에 불리는 경로</b>이므로 토큰을 요구하면
+	 * 아직 회원이 아닌 사람이 약관을 읽을 방법이 없다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void R10_2_the_contract_declares_the_consent_terms_endpoint() {
+		Map<String, Object> operations = (Map<String, Object>) paths().get("/api/v1/consents");
+
+		assertThat(operations).as("약관 판본을 알려 주는 경로가 계약에 없다 (#261)").isNotNull();
+		assertThat(operations).containsKey("get");
+		assertThat(((Map<String, Object>) operations.get("get")).get("security"))
+				.as("가입 전에 불리는 경로다 — 토큰을 요구하면 아직 회원이 아닌 사람이 읽지 못한다")
+				.isEqualTo(List.of());
+	}
+
+	/** 약관 메타 응답의 모든 필드가 계약에 선언되어 있다 (#261). */
+	@Test
+	void R10_2_implemented_consent_terms_fields_are_all_declared() {
+		assertThat(propertiesOf("ConsentTermsResponse"))
+				.containsAll(recordComponentsOf(ConsentTermsView.class));
+		assertThat(propertiesOf("ConsentTerm"))
+				.containsAll(recordComponentsOf(ConsentTermsView.Term.class));
 	}
 
 	// ── 3. 구현 ⊆ 계약 ───────────────────────────────────────
@@ -423,5 +483,39 @@ class OpenApiContractTests {
 	private static String samePlace(String path) {
 		String normalized = path.replaceAll("\\{[^}]*\\}", "{}");
 		return normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized;
+	}
+
+	// ── 5. 내 계정 조회 (#262) ────────────────────────────────
+
+	/**
+	 * <b>{@code /api/v1/me} 에 읽는 경로가 있다</b> (#262).
+	 *
+	 * <p>이 자리에는 {@code DELETE} 하나뿐이었다 — 탈퇴는 있는데 <b>내가 누구인지 물어볼 곳이
+	 * 없었다.</b> 클라이언트는 토큰을 메모리에만 두므로 새로고침하면 무엇을 들고 있는지 알 수
+	 * 없고, 그것을 확인할 경로가 없으면 <b>"로그인 유지"가 구현 불가능</b>하다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void Issue262_me_can_be_read_not_only_deleted() {
+		Map<String, Object> operations = (Map<String, Object>) paths().get("/api/v1/me");
+		assertThat(operations).as("§13.1 의 /api/v1/me 가 계약에 없다").isNotNull();
+		assertThat(operations).containsKeys("get", "delete");
+	}
+
+	/**
+	 * 내 계정 응답의 모든 필드가 계약에 선언되어 있고, <b>식별정보가 어느 쪽에도 없다</b> (#262).
+	 *
+	 * <p>{@code playerRef} 는 {@code TokenResponse} 가 이미 돌려주지 않기로 한 값이다 (§13-7,
+	 * I-3) — 이 경로가 그것을 되살리면 그 결정이 무의미해진다. {@code isLoggedIn} 이 없는 것은
+	 * {@code LandingResponse} 와 같은 이유다: 로그인 여부는 200 과 401 로 답한다.
+	 */
+	@Test
+	void Issue262_me_response_declares_every_field_and_no_identifiers() {
+		assertThat(propertiesOf("MeResponse"))
+				.containsAll(recordComponentsOf(com.neowadaeum.identity.api.MeResponse.class));
+		assertThat(propertiesOf("MeResponse"))
+				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
+		assertThat(recordComponentsOf(com.neowadaeum.identity.api.MeResponse.class))
+				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
 	}
 }

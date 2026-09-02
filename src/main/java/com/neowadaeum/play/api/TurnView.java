@@ -12,6 +12,14 @@ import java.util.UUID;
  * <p><b>{@code progressPercent} 를 만들지 않는다</b> (R7.5). AI 생성이라 챕터당 턴 수가 가변이므로
  * 62% 같은 숫자는 근거가 없다. {@code progressHint} 만 준다.
  *
+ * <p><b>{@code storyId} 와 {@code title} 이 여기 있는 이유</b> (#259). 플레이 화면의 라우트는
+ * {@code /sessions/{sessionId}} 라 URL 에 작품이 없고, 작품 상세에서 바로 시작한 경우 클라이언트는
+ * 어느 작품인지 알 길이 없다. 헤더("제목 · Chapter n")와 엔딩의 "다른 결말 보기"
+ * ({@code POST /stories/{storyId}/sessions?restart=true}) 가 둘 다 이것을 필요로 한다.
+ * <b>매 턴 {@code resume} 를 함께 부르는 것으로 대신하지 않는다</b> — 턴 경로에 요청이 하나 는다.
+ *
+ * @param storyId       이 세션이 진행 중인 작품. 세션이 들고 있는 값이므로 조회가 늘지 않는다
+ * @param title         작품 제목. <b>세션이 고정한 버전 기준</b>이다 (I-4)
  * @param turnNo        생성된 턴 번호. <b>요청값 + 1</b> 이다 (§4.3 턴 번호 계약)
  * @param chapterNo     판정 후 챕터
  * @param chapterTitle  전환 시 클라이언트가 인터스티셜에 쓴다 (R7.3)
@@ -30,10 +38,15 @@ import java.util.UUID;
  * @param totalEndings  비시크릿 엔딩 수 (R7.11)
  * @param isAiGenerated 이 턴의 본문이 AI 생성물인가 (R11.2, §11). <b>상수가 아니라 저장된 사실</b>이며
  *                      턴을 만든 경로가 그 값을 넣는다
+ * @param noticeText    AI 사전 고지 문구. <b>코드에 없다</b> — {@code service_config} 에서 온다
+ *                      (R11.1). <b>매 턴 같은 값이 실린다</b> — 플레이 화면의 Footer 가 문구를
+ *                      상시 표시하므로, 주지 않으면 이 화면이 랜딩을 따로 부른다 (#281)
  * @param reachRate     도달한 엔딩의 도달률 (R2.7). <b>배치 갱신값을 읽을 뿐</b>이며(I-20),
  *                      표본이 적으면 {@code null} 이다 (R2.8). 엔딩이 아닌 턴에서도 {@code null}
  */
 public record TurnView(
+		UUID storyId,
+		String title,
 		int turnNo,
 		int chapterNo,
 		String chapterTitle,
@@ -47,7 +60,8 @@ public record TurnView(
 		Integer endingIndex,
 		Integer totalEndings,
 		boolean isAiGenerated,
-		Double reachRate) {
+		Double reachRate,
+		String noticeText) {
 
 	/**
 	 * 본문 한 문단 (R5.1, R5.2).
