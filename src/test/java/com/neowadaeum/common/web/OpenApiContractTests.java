@@ -518,4 +518,140 @@ class OpenApiContractTests {
 		assertThat(recordComponentsOf(com.neowadaeum.identity.api.MeResponse.class))
 				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
 	}
+
+	// ── 6. AI 고지 Footer (#291) ──────────────────────────────
+
+	/** 면제 표시. 값은 <b>왜 면제인지</b>를 적은 문장이며, {@code true} 로 갈음하지 않는다. */
+	private static final String NOTICE_EXEMPT = "x-notice-exempt";
+
+	/** 계약이 쓰는 표기는 소문자다. 위 {@code HTTP_METHODS} 는 컨트롤러 쪽 대문자 표기라 따로 둔다. */
+	private static final Set<String> SPEC_METHODS = Set.of("get", "post", "put", "patch", "delete");
+
+	/**
+	 * <b>응답은 고지 문구를 싣거나, 왜 싣지 않는지 말하거나 둘 중 하나다</b> (#291, R11.1).
+	 *
+	 * <p>AI 고지 Footer 를 그리는 화면의 응답에 {@code noticeText} 가 빠지는 일이 <b>세 번</b>
+	 * 있었다 — #257(라이브러리 · 작품 상세) · #284(내 이야기 · 내 작품 · 플레이 · 기록) ·
+	 * #289(섹션 전체 보기). 매번 <b>프론트가 화면을 붙이다 발견했다.</b> 응답을 하나씩 채우는
+	 * 방식은 열 번째 화면에서 같은 이슈를 다시 부른다.
+	 *
+	 * <p><b>어려운 쪽은 "무엇을 검사할 것인가"였다.</b> "Footer 를 그리는 화면"은 계약에 표시되어
+	 * 있지 않아 판정 기준이 없었다. 표시를 <b>대상 쪽</b>에 두는 안(Footer 응답에 표시하고 표시된
+	 * 것만 강제)은 <b>표시를 잊으면 그대로 샌다</b> — #257 → #284 → #289 가 정확히 그 모양이었다.
+	 * 그래서 뒤집었다. <b>기본이 "싣는다"</b>이고, 싣지 않는 응답이 면제를 밝힌다. 빠뜨리면
+	 * 여기서 깨지므로 침묵하지 않는다.
+	 *
+	 * <p>값을 {@code true} 가 아니라 <b>문장</b>으로 받는 이유는, 면제가 늘어날 때 그것이
+	 * 판단이었는지 관성이었는지를 나중에 구분할 수 있어야 하기 때문이다.
+	 *
+	 * <p>본문이 없는 응답({@code 204}, {@code 202})은 화면이 아니므로 보지 않는다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void Issue291_every_success_response_carries_the_notice_text_or_says_why_not() {
+		List<String> silent = new ArrayList<>();
+		paths().forEach((path, operations) -> ((Map<String, Object>) operations).forEach((method, operation) -> {
+			if (!SPEC_METHODS.contains(method)) {
+				return;
+			}
+			Map<String, Object> responses = (Map<String, Object>) ((Map<String, Object>) operation).get("responses");
+			if (responses == null) {
+				return;
+			}
+			responses.forEach((code, response) -> {
+				if (!code.startsWith("2")) {
+					return;
+				}
+				Map<String, Object> body = jsonBodyOf(response);
+				if (body == null || carriesNoticeText(body) || declaresExemption(body)) {
+					return;
+				}
+				silent.add("%s %s (%s) → %s".formatted(method.toUpperCase(Locale.ROOT), path, code,
+						schemaNameOf(response)));
+			});
+		}));
+
+		assertThat(silent)
+				.as("이 응답들은 고지 문구를 싣지도, 왜 싣지 않는지 말하지도 않는다 (#291). "
+						+ "Footer 를 그리는 화면이면 noticeText 를 required 로 더하고, 아니면 응답 스키마에 "
+						+ "%s: '<왜 면제인지>' 를 적는다", NOTICE_EXEMPT)
+				.isEmpty();
+	}
+
+	/**
+	 * 면제 표시가 <b>이유를 적고 있다</b> (#291).
+	 *
+	 * <p>{@code true} 나 빈 문자열을 받아 주면 표시는 남지만 근거가 사라진다. 그러면 면제 목록이
+	 * 늘어날 때 그것이 판단이었는지 관성이었는지 알 수 없다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void Issue291_every_exemption_says_why() {
+		Map<String, Object> schemas = (Map<String, Object>) ((Map<String, Object>) SPEC.get("components"))
+				.get("schemas");
+		schemas.forEach((name, schema) -> {
+			Object reason = ((Map<String, Object>) schema).get(NOTICE_EXEMPT);
+			if (reason == null) {
+				return;
+			}
+			assertThat(reason).as("%s 의 %s 는 이유를 적은 문장이어야 한다", name, NOTICE_EXEMPT)
+					.isInstanceOf(String.class);
+			assertThat((String) reason).as("%s 의 면제 이유가 비어 있다", name).isNotBlank();
+		});
+	}
+
+	/**
+	 * 성공 응답의 JSON 본문 스키마. 본문이 없으면 {@code null} 이다.
+	 *
+	 * <p>{@code $ref} 는 끝까지 따라간다 — 응답 자체가 {@code components/responses} 를 가리킬 수도,
+	 * 그 안의 스키마가 {@code components/schemas} 를 가리킬 수도 있다.
+	 */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> jsonBodyOf(Object response) {
+		Map<String, Object> resolved = resolve(response, "responses");
+		Map<String, Object> content = (Map<String, Object>) resolved.get("content");
+		if (content == null) {
+			return null;
+		}
+		Map<String, Object> json = (Map<String, Object>) content.get("application/json");
+		if (json == null || json.get("schema") == null) {
+			return null;
+		}
+		return resolve(json.get("schema"), "schemas");
+	}
+
+	/** {@code $ref} 하나를 푼다. 참조가 아니면 그대로 돌려준다. */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> resolve(Object node, String bucket) {
+		Map<String, Object> map = (Map<String, Object>) node;
+		Object ref = map.get("$ref");
+		if (!(ref instanceof String pointer)) {
+			return map;
+		}
+		String name = pointer.substring(pointer.lastIndexOf('/') + 1);
+		Map<String, Object> components = (Map<String, Object>) SPEC.get("components");
+		Map<String, Object> found = (Map<String, Object>) ((Map<String, Object>) components.get(bucket)).get(name);
+		assertThat(found).as("스펙이 없는 %s 를 가리킨다: %s", bucket, pointer).isNotNull();
+		return found;
+	}
+
+	/** 표시를 어디에 붙여야 하는지 실패 메시지가 스스로 말하게 한다. */
+	@SuppressWarnings("unchecked")
+	private static String schemaNameOf(Object response) {
+		Map<String, Object> resolved = resolve(response, "responses");
+		Map<String, Object> json = (Map<String, Object>) ((Map<String, Object>) resolved.get("content"))
+				.get("application/json");
+		Object ref = ((Map<String, Object>) json.get("schema")).get("$ref");
+		return (ref instanceof String pointer) ? pointer.substring(pointer.lastIndexOf('/') + 1) : "(인라인 스키마)";
+	}
+
+	@SuppressWarnings("unchecked")
+	private static boolean carriesNoticeText(Map<String, Object> schema) {
+		List<String> required = (List<String>) schema.get("required");
+		return required != null && required.contains("noticeText");
+	}
+
+	private static boolean declaresExemption(Map<String, Object> schema) {
+		return schema.get(NOTICE_EXEMPT) != null;
+	}
 }
