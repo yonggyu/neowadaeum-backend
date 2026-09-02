@@ -880,6 +880,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/LandingResponse'
 
+  # ── 약관 메타 — 가입 화면이 판본을 읽어 간다 (#261) ──────────
+  /api/v1/consents:
+    get:
+      tags: [auth]
+      operationId: getConsentTerms
+      summary: 약관 메타
+      description: |
+        지금 동의를 받아야 할 약관의 **종류 · 판본 · 본문 주소**다.
+
+        가입 화면은 여기서 읽은 `version` 을 `POST /api/v1/auth/oauth/{provider}` 의
+        `consents[].version` 에 **그대로 되돌려 보낸다.** 클라이언트가 판본을 상수로 들고 있으면
+        약관이 개정된 날부터 **동의 이력에 옛 판본이 기록된다** (#261).
+
+        `age` 는 사용자가 체크하는 항목이 아니다 — 서버가 생년월일로 판정해 스스로 기록하며
+        (R10.2), 판본도 서버의 판정 기준이다. 그래서 `required: false` 이고 **가입 요청에 넣지
+        않는다.**
+
+        판본은 **하드코딩하지 않는다** — `service_config` 에서 온다. `ai_notice` 만은 사용자가
+        실제로 본 고지의 판본을 그대로 쓴다 (R11.3).
+      security: []
+      x-implemented-by: '#261'
+      responses:
+        '200':
+          description: 동의 종류별 현재 약관
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentTermsResponse'
+
   # ── §14 Admin — 역할·IP·2FA 를 모두 통과해야 한다 (S-4) ──────
   /api/v1/admin/sessions/{sessionId}/debug:
     get:
@@ -1680,8 +1709,45 @@ components:
           enum: [tos, privacy, ai_notice, age]
         version:
           type: string
+          description: |
+            `GET /api/v1/consents` 가 알려 준 값을 **그대로 되돌려 보낸다.**
+            클라이언트가 상수로 들고 있으면 개정된 날부터 옛 판본이 이력에 남는다 (#261)
         agreed:
           type: boolean
+
+    ConsentTermsResponse:
+      type: object
+      description: |
+        가입 화면이 읽는 약관 메타 (#261). **회원에 관한 값이 하나도 없다** — 인증 없이 열리는
+        경로다 (S-9).
+      required: [terms]
+      properties:
+        terms:
+          type: array
+          description: '순서는 `tos → privacy → ai_notice → age` 다'
+          items:
+            $ref: '#/components/schemas/ConsentTerm'
+
+    ConsentTerm:
+      type: object
+      required: [consentType, version, documentUrl, required]
+      properties:
+        consentType:
+          type: string
+          enum: [tos, privacy, ai_notice, age]
+        version:
+          type: string
+          description: '지금 유효한 판본. `service_config` 에서 온다 — 코드에 없다 (R10.2)'
+        documentUrl:
+          type: [string, 'null']
+          description: |
+            약관 본문 주소. **`null` 일 수 있다** — AI 사전 고지는 문구를 랜딩이 이미 내보내고
+            (§13.10), 연령 확인은 문서가 존재하지 않는다
+        required:
+          type: boolean
+          description: |
+            가입에 **사용자의 동의**가 필요한가. `age` 만 `false` 이며 그것은 서버가 판정해
+            스스로 기록하는 사실이다 (R10.2, §13-24)
 
     RefreshRequest:
       type: object

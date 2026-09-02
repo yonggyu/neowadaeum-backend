@@ -3,6 +3,7 @@ package com.neowadaeum.common.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.identity.api.ConsentTermsView;
 import com.neowadaeum.play.api.PlayController;
 import com.neowadaeum.play.api.TurnRequestBody;
 import com.neowadaeum.catalog.query.CharacterCardView;
@@ -178,6 +179,37 @@ class OpenApiContractTests {
 		assertThat(propertiesOf("Error")).containsExactlyInAnyOrder("error", "message", "details");
 		assertThat((List<String>) schema("Error").get("required")).containsExactlyInAnyOrder("error", "message",
 				"details");
+	}
+
+	/**
+	 * <b>약관 판본을 알려 주는 경로가 계약에 있다</b> (#261, R10.2).
+	 *
+	 * <p>이 경로가 없던 동안 프론트는 판본을 <b>상수로 들고 있었다.</b> 약관이 개정되면 그
+	 * 상수가 그대로 동의 이력에 기록된다 — 법적 증빙이 틀리는 방식이고, 서버가 판본을 검증하지
+	 * 않으므로 <b>조용히 틀린다.</b>
+	 *
+	 * <p>{@code security: []} 를 함께 못박는다. <b>가입 전에 불리는 경로</b>이므로 토큰을 요구하면
+	 * 아직 회원이 아닌 사람이 약관을 읽을 방법이 없다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void R10_2_the_contract_declares_the_consent_terms_endpoint() {
+		Map<String, Object> operations = (Map<String, Object>) paths().get("/api/v1/consents");
+
+		assertThat(operations).as("약관 판본을 알려 주는 경로가 계약에 없다 (#261)").isNotNull();
+		assertThat(operations).containsKey("get");
+		assertThat(((Map<String, Object>) operations.get("get")).get("security"))
+				.as("가입 전에 불리는 경로다 — 토큰을 요구하면 아직 회원이 아닌 사람이 읽지 못한다")
+				.isEqualTo(List.of());
+	}
+
+	/** 약관 메타 응답의 모든 필드가 계약에 선언되어 있다 (#261). */
+	@Test
+	void R10_2_implemented_consent_terms_fields_are_all_declared() {
+		assertThat(propertiesOf("ConsentTermsResponse"))
+				.containsAll(recordComponentsOf(ConsentTermsView.class));
+		assertThat(propertiesOf("ConsentTerm"))
+				.containsAll(recordComponentsOf(ConsentTermsView.Term.class));
 	}
 
 	// ── 3. 구현 ⊆ 계약 ───────────────────────────────────────

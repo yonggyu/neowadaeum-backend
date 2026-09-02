@@ -35,6 +35,18 @@ public class AgeGate {
 	}
 
 	/**
+	 * {@code age} 동의의 판본 (§13-24, R10.2).
+	 *
+	 * <p><b>판정 기준을 그대로 판본으로 쓴다.</b> 그 값이 곧 "무엇을 확인했는가"이며, 기준이
+	 * 바뀌면 판본도 함께 바뀌어야 한다 — 두 곳에 따로 적으면 한쪽만 바뀐 날 이력이 거짓이 된다.
+	 * 기록하는 쪽({@code SocialAccountRegistrar})과 알려 주는 쪽(가입 화면, 이슈 #261)이 <b>같은
+	 * 출처</b>를 보게 하는 것이 이 메서드의 존재 이유다.
+	 */
+	public static String consentVersion() {
+		return "age-" + MINIMUM_AGE;
+	}
+
+	/**
 	 * 만 {@value #MINIMUM_AGE} 세가 됐는가.
 	 *
 	 * <p><b>생일 당일은 통과한다.</b> 만 나이는 생일에 오르므로 그날 이미 15세다 — 경계가
