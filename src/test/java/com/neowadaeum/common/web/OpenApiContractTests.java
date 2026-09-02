@@ -154,6 +154,34 @@ class OpenApiContractTests {
 		assertThat(paths()).doesNotContainKey(path);
 	}
 
+	/**
+	 * R2.7 — {@code reachRate} 는 <b>0.0~1.0 의 비율</b>이다. 계약이 단위를 잃지 않게 한다.
+	 *
+	 * <p>타입이 {@code number} 뿐이면 {@code 0.12} 인지 {@code 12} 인지 구분되지 않는다.
+	 * 표본이 임계 미만인 동안은 {@code null} 이라(R2.8) 화면에 값이 뜨지 않으므로,
+	 * 단위를 잘못 읽어도 <b>임계를 넘긴 뒤에야</b> 드러난다. 설명·예시·범위를 계약이 못박는다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void R2_7_reach_rate_unit_is_declared_in_the_contract() {
+		Map<String, Object> properties = (Map<String, Object>) schema("TurnResponse").get("properties");
+		Map<String, Object> reachRate = (Map<String, Object>) properties.get("reachRate");
+		assertThat(reachRate).as("TurnResponse 에 reachRate 가 없다").isNotNull();
+
+		assertThat((String) reachRate.get("description")).as("reachRate 의 단위 설명이 없다").isNotBlank();
+		assertThat(reachRate).as("reachRate 에 예시가 없다 — 0.12 인지 12 인지 계약이 말하지 않는다")
+				.containsKey("examples");
+		assertThat((List<Object>) reachRate.get("examples")).isNotEmpty();
+
+		assertThat(((Number) reachRate.get("minimum")).doubleValue()).isEqualTo(0.0d);
+		assertThat(((Number) reachRate.get("maximum")).doubleValue()).isEqualTo(1.0d);
+
+		// 예시도 같은 단위여야 한다 — 백분율 값이 예시로 새어 들어오는 것을 막는다.
+		for (Object example : (List<Object>) reachRate.get("examples")) {
+			assertThat(((Number) example).doubleValue()).isBetween(0.0d, 1.0d);
+		}
+	}
+
 	// ── 2. 에러 코드 ─────────────────────────────────────────
 
 	/**

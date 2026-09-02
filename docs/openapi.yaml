@@ -2024,8 +2024,14 @@ components:
           x-implemented-by: B-17
         reachRate:
           type: [number, 'null']
+          minimum: 0
+          maximum: 1
           description: |
-            도달률. **배치 갱신값이다** (I-20, R2.7). 표본이 적으면 `null` 을 반환한다 (R2.8).
+            도달률. **0.0~1.0 의 비율이다 — 백분율이 아니다.** `0.12` 는 12% 를 뜻한다.
+            화면에 `%` 로 그리려면 클라이언트가 100 을 곱한다.
+
+            **배치 갱신값이다** (I-20, R2.7). 표본이 적으면 `null` 을 반환한다 (R2.8).
+          examples: [0.12]
           x-implemented-by: B-39
         stats:
           oneOf:
