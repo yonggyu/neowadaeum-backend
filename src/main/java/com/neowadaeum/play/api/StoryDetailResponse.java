@@ -11,9 +11,15 @@ import java.util.UUID;
  * <p><b>{@code characters} 가 빈 배열이면 클라이언트가 섹션을 숨긴다</b> — {@code null} 을 주지
  * 않는다 (§13.3).
  *
- * @param mySession 진행 중인 내 세션. 없으면 {@code null} — 이 화면에서 "이어하기"가 뜰지를 정한다
+ * <p><b>{@code noticeText} 가 여기 있는 이유</b> — 고지 문구는 이 화면의 Footer 에 <b>상시</b>
+ * 표시된다. 이것을 주지 않으면 클라이언트가 화면마다 {@code /landing} 을 한 번 더 부르게 되고,
+ * 두 응답의 캐시 수명이 갈리면 <b>같은 화면에서 다른 문구</b>가 보인다 (#257).
+ *
+ * @param mySession  진행 중인 내 세션. 없으면 {@code null} — 이 화면에서 "이어하기"가 뜰지를 정한다
+ * @param noticeText AI 사전 고지 문구. <b>코드에 없다</b> — {@code service_config} 에서 온다 (R11.1)
  */
-public record StoryDetailResponse(Story story, List<CharacterCardView> characters, MySession mySession) {
+public record StoryDetailResponse(Story story, List<CharacterCardView> characters, MySession mySession,
+		String noticeText) {
 
 	/**
 	 * 작품 한 벌.
