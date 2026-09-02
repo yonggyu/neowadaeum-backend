@@ -424,4 +424,38 @@ class OpenApiContractTests {
 		String normalized = path.replaceAll("\\{[^}]*\\}", "{}");
 		return normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized;
 	}
+
+	// ── 5. 내 계정 조회 (#262) ────────────────────────────────
+
+	/**
+	 * <b>{@code /api/v1/me} 에 읽는 경로가 있다</b> (#262).
+	 *
+	 * <p>이 자리에는 {@code DELETE} 하나뿐이었다 — 탈퇴는 있는데 <b>내가 누구인지 물어볼 곳이
+	 * 없었다.</b> 클라이언트는 토큰을 메모리에만 두므로 새로고침하면 무엇을 들고 있는지 알 수
+	 * 없고, 그것을 확인할 경로가 없으면 <b>"로그인 유지"가 구현 불가능</b>하다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void Issue262_me_can_be_read_not_only_deleted() {
+		Map<String, Object> operations = (Map<String, Object>) paths().get("/api/v1/me");
+		assertThat(operations).as("§13.1 의 /api/v1/me 가 계약에 없다").isNotNull();
+		assertThat(operations).containsKeys("get", "delete");
+	}
+
+	/**
+	 * 내 계정 응답의 모든 필드가 계약에 선언되어 있고, <b>식별정보가 어느 쪽에도 없다</b> (#262).
+	 *
+	 * <p>{@code playerRef} 는 {@code TokenResponse} 가 이미 돌려주지 않기로 한 값이다 (§13-7,
+	 * I-3) — 이 경로가 그것을 되살리면 그 결정이 무의미해진다. {@code isLoggedIn} 이 없는 것은
+	 * {@code LandingResponse} 와 같은 이유다: 로그인 여부는 200 과 401 로 답한다.
+	 */
+	@Test
+	void Issue262_me_response_declares_every_field_and_no_identifiers() {
+		assertThat(propertiesOf("MeResponse"))
+				.containsAll(recordComponentsOf(com.neowadaeum.identity.api.MeResponse.class));
+		assertThat(propertiesOf("MeResponse"))
+				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
+		assertThat(recordComponentsOf(com.neowadaeum.identity.api.MeResponse.class))
+				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
+	}
 }
