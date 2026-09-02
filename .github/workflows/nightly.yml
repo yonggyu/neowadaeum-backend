@@ -66,6 +66,78 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      # 회차 하나만으로는 백분위를 말할 수 없다 (#255). 매 회차를 **누적 표에 한 줄**로 쌓아
+      # 회차 간 비교가 손으로 옮겨 적는 일이 되지 않게 한다.
+      #
+      # 왜 이슈인가 — 아티팩트는 30일 뒤에 사라지고, 레포에 커밋하려면 이 워크플로에 쓰기
+      # 권한과 보호 브랜치 우회가 필요하다. 이슈는 둘 다 없이 남는다.
+      #
+      # 열 정의는 이 파일이 아니라 테스트가 갖는다. 여기서 아는 것은 "앞 두 줄은 머리글,
+      # 마지막 줄은 이번 회차"뿐이다 — 열이 늘어도 이 스텝을 고치지 않는다.
+      - name: 회차 누적
+        if: success()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const fs = require('fs');
+            const source = 'build/perf/turn-latency-run.md';
+            if (!fs.existsSync(source)) {
+              core.info('회차 파일이 없다 — 측정이 돌지 않은 실행이다.');
+              return;
+            }
+            const lines = fs.readFileSync(source, 'utf8').trim().split('\n');
+            const header = lines.slice(0, 2);
+            const row = lines[lines.length - 1];
+
+            const title = '지연 실측 회차 누적 (B-46)';
+            const intro = [
+              '`TurnLatencyNightlyTests` 가 nightly 마다 잰 값을 한 줄씩 쌓는다 (#255).',
+              '',
+              '**손으로 고치지 않는다** — 다음 회차가 이 본문을 통째로 다시 쓴다.',
+              '판단이 달라진 회차만 `docs/perf/turn-latency.md` 로 옮겨 적는다.',
+              '',
+              '숫자는 **Provider 인위 지연을 뺀 서버 몫**이다. 전체 지연은 여기에 `Provider ms` 를 더한 값이다.',
+              '조건 열(표본 · 동시성 · Provider ms)이 다른 회차는 **같은 열에서 비교하지 않는다.**',
+              '',
+            ];
+
+            // 365 회차 = 1년. 이슈 본문에는 길이 제한이 있고, 그보다 오래된 회차는 표가 아니라
+            // 문서가 기억해야 할 값이다.
+            const KEEP = 365;
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'area:infra',
+              per_page: 100,
+            });
+            const hit = open.find((issue) => issue.title === title);
+
+            const previous = (hit && hit.body) ? hit.body.split('\n') : [];
+            const separator = previous.findIndex((line) => line.startsWith('|---'));
+            const kept = (separator < 0)
+              ? []
+              : previous.slice(separator + 1).filter((line) => line.startsWith('| '));
+            const body = intro.concat(header, kept.concat([row]).slice(-KEEP)).join('\n');
+
+            if (hit) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: hit.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['area:infra'],
+              });
+            }
+
       - name: 테스트 리포트 (실패 시에만)
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
