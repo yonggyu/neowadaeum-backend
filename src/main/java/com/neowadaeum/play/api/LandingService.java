@@ -4,12 +4,7 @@ import com.neowadaeum.catalog.query.LibrarySectionKey;
 import com.neowadaeum.catalog.query.StoryCardView;
 import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.common.error.ApiException;
-import com.neowadaeum.common.error.ErrorCode;
-import com.neowadaeum.common.spi.AiNotice;
-import com.neowadaeum.common.spi.AiNoticeQuery;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -28,15 +23,14 @@ public class LandingService {
 	/** 첫 화면에 거는 작품 수. 스크롤 없이 보이는 만큼이다. */
 	private static final int FEATURED = 6;
 
-	private static final Logger log = LoggerFactory.getLogger(LandingService.class);
 
 	private final StoryCatalogFacade stories;
 
-	private final AiNoticeQuery notices;
+	private final AiNoticeText notice;
 
-	public LandingService(StoryCatalogFacade stories, AiNoticeQuery notices) {
+	public LandingService(StoryCatalogFacade stories, AiNoticeText notice) {
 		this.stories = stories;
-		this.notices = notices;
+		this.notice = notice;
 	}
 
 	/**
@@ -44,10 +38,7 @@ public class LandingService {
 	 *     조용히 넘어가서는 안 된다</b> (R11.1, §11)
 	 */
 	public LandingView landing() {
-		AiNotice notice = this.notices.current().orElseThrow(() -> {
-			log.error("ai.notice.missing surface=landing — 고지 문구 없이 랜딩을 내보내지 않는다 (R11.1)");
-			return new ApiException(ErrorCode.INTERNAL_ERROR);
-		});
+		String noticeText = this.notice.require("landing");
 
 		List<StoryCardView> cards = this.stories
 				.cards(new LibrarySectionKey(LibrarySectionKey.Kind.RECOMMENDED, null), null, FEATURED)
@@ -55,6 +46,6 @@ public class LandingService {
 
 		return new LandingView(cards.stream()
 				.map(card -> new LandingView.FeaturedStory(card.storyId(), card.title(), card.coverImage()))
-				.toList(), notice.text());
+				.toList(), noticeText);
 	}
 }

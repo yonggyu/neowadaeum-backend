@@ -40,7 +40,7 @@ class StoryDetailServiceTests {
 	private final AiNoticeQuery notices = mock(AiNoticeQuery.class);
 
 	private final StoryDetailService service = new StoryDetailService(this.stories, this.sessions,
-			this.notices);
+			new AiNoticeText(this.notices));
 
 	@BeforeEach
 	void visibleStoryWithoutSession() {

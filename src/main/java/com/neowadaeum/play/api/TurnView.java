@@ -38,6 +38,9 @@ import java.util.UUID;
  * @param totalEndings  비시크릿 엔딩 수 (R7.11)
  * @param isAiGenerated 이 턴의 본문이 AI 생성물인가 (R11.2, §11). <b>상수가 아니라 저장된 사실</b>이며
  *                      턴을 만든 경로가 그 값을 넣는다
+ * @param noticeText    AI 사전 고지 문구. <b>코드에 없다</b> — {@code service_config} 에서 온다
+ *                      (R11.1). <b>매 턴 같은 값이 실린다</b> — 플레이 화면의 Footer 가 문구를
+ *                      상시 표시하므로, 주지 않으면 이 화면이 랜딩을 따로 부른다 (#281)
  * @param reachRate     도달한 엔딩의 도달률 (R2.7). <b>배치 갱신값을 읽을 뿐</b>이며(I-20),
  *                      표본이 적으면 {@code null} 이다 (R2.8). 엔딩이 아닌 턴에서도 {@code null}
  */
@@ -57,7 +60,8 @@ public record TurnView(
 		Integer endingIndex,
 		Integer totalEndings,
 		boolean isAiGenerated,
-		Double reachRate) {
+		Double reachRate,
+		String noticeText) {
 
 	/**
 	 * 본문 한 문단 (R5.1, R5.2).

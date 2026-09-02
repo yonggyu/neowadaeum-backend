@@ -2068,7 +2068,7 @@ components:
         `progressPercent` 를 만들지 않는다 (R7.5) — AI 생성이라 챕터당 턴 수가 가변이므로 백분율에 근거가 없다.
 
         엔딩이면 `isEnding: true` 이고 `choices` 는 **빈 배열**이다 (R7.8).
-      required: [storyId, title, turnNo, chapterNo, chapterTitle, chapterChanged, progressHint, speakerName, paragraphs, choices, isEnding, endingId, endingIndex, totalEndings]
+      required: [storyId, title, turnNo, chapterNo, chapterTitle, chapterChanged, progressHint, speakerName, paragraphs, choices, isEnding, endingId, endingIndex, totalEndings, noticeText]
       properties:
         storyId:
           type: string
@@ -2148,6 +2148,15 @@ components:
             **배치 갱신값이다** (I-20, R2.7). 표본이 적으면 `null` 을 반환한다 (R2.8).
           examples: [0.12]
           x-implemented-by: B-39
+        noticeText:
+          type: string
+          description: |
+            AI 사전 고지 문구. **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+            플레이 화면의 Footer 도 문구를 상시 표시하므로 자기 응답에 싣는다.
+
+            **매 턴 같은 값이 실린다.** 대안(플레이 화면만 `/landing` 을 따로 부르는 것)은
+            요청이 늘고 캐시 수명이 갈리는 문제를 그대로 남기므로 이쪽을 골랐다 (#281).
+          x-implemented-by: '#281'
         stats:
           oneOf:
             - $ref: '#/components/schemas/EndingStats'
@@ -2205,8 +2214,15 @@ components:
     # ── §13.6 History ───────────────────────────────────────
     HistoryResponse:
       type: object
-      required: [items, nextCursor, hasMore]
+      required: [items, nextCursor, hasMore, noticeText]
       properties:
+        noticeText:
+          type: string
+          description: |
+            AI 사전 고지 문구. **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+            이 화면의 Footer 도 문구를 상시 표시하므로 자기 응답에 싣는다 — 화면마다 `/landing` 을
+            다시 부르면 캐시 수명이 갈려 **같은 화면에서 다른 문구가 보인다** (#281).
+          x-implemented-by: '#281'
         items:
           type: array
           items:
@@ -2242,8 +2258,15 @@ components:
     # ── §13.7 My Stories ────────────────────────────────────
     MySessionsResponse:
       type: object
-      required: [items, nextCursor, hasMore]
+      required: [items, nextCursor, hasMore, noticeText]
       properties:
+        noticeText:
+          type: string
+          description: |
+            AI 사전 고지 문구. **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+            이 화면의 Footer 도 문구를 상시 표시하므로 자기 응답에 싣는다 — 화면마다 `/landing` 을
+            다시 부르면 캐시 수명이 갈려 **같은 화면에서 다른 문구가 보인다** (#281).
+          x-implemented-by: '#281'
         items:
           type: array
           items:
@@ -2281,8 +2304,15 @@ components:
 
     MyStoriesResponse:
       type: object
-      required: [items, nextCursor, hasMore]
+      required: [items, nextCursor, hasMore, noticeText]
       properties:
+        noticeText:
+          type: string
+          description: |
+            AI 사전 고지 문구. **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+            이 화면의 Footer 도 문구를 상시 표시하므로 자기 응답에 싣는다 — 화면마다 `/landing` 을
+            다시 부르면 캐시 수명이 갈려 **같은 화면에서 다른 문구가 보인다** (#281).
+          x-implemented-by: '#281'
         items:
           type: array
           items:

@@ -37,7 +37,8 @@ class LibraryServiceTests {
 
 	private final AiNoticeQuery notices = mock(AiNoticeQuery.class);
 
-	private final LibraryService service = new LibraryService(this.stories, this.sessions, this.notices);
+	private final LibraryService service = new LibraryService(this.stories, this.sessions,
+			new AiNoticeText(this.notices));
 
 	@BeforeEach
 	void emptyCatalog() {
