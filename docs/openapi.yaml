@@ -843,6 +843,11 @@ paths:
         동일인의 반복 신고는 누적으로 세지 않는다 — `UNIQUE(reporterRef, targetType, targetId)` (§13-9).
         누적이 자동 정지의 근거이므로, **중복이 세어지면 한 사람이 혼자 작품을 내릴 수 있다.**
 
+        그래서 `targetId` 는 **신고 대상 하나를 가리켜야 한다** (#297) — `story` 면 `storyId`,
+        `turn` 이면 `TurnResponse.turnId` 다. 세션을 넣으면 유니크 키가 세션 단위로 걸려
+        **한 세션에서 장면을 하나밖에 신고할 수 없다.** `sessionId` · `turnNo` 는 대상이
+        아니라 사후 검수가 읽는 맥락이다.
+
         **IP 로도 센다** (S-8). 계정 기준만으로는 계정을 여러 개 만들어 임계를 채우는 길이
         열려 있고, 신고는 **작품을 내릴 수 있는** 요청이다.
 
@@ -2093,7 +2098,7 @@ components:
         `progressPercent` 를 만들지 않는다 (R7.5) — AI 생성이라 챕터당 턴 수가 가변이므로 백분율에 근거가 없다.
 
         엔딩이면 `isEnding: true` 이고 `choices` 는 **빈 배열**이다 (R7.8).
-      required: [storyId, title, turnNo, chapterNo, chapterTitle, chapterChanged, progressHint, speakerName, paragraphs, choices, isEnding, endingId, endingIndex, totalEndings, noticeText]
+      required: [storyId, title, turnId, turnNo, chapterNo, chapterTitle, chapterChanged, progressHint, speakerName, paragraphs, choices, isEnding, endingId, endingIndex, totalEndings, noticeText]
       properties:
         storyId:
           type: string
@@ -2104,6 +2109,15 @@ components:
         title:
           type: string
           description: '작품 제목 (#259). 플레이 헤더가 쓴다. **세션이 고정한 버전 기준이다** (I-4)'
+        turnId:
+          type: string
+          format: uuid
+          description: |
+            이 턴의 식별자 (#297). 신고(`POST /api/v1/reports`)가 `targetType: turn` 일 때
+            `targetId` 로 **이 값을** 보낸다.
+
+            `turnNo` 로 대신하지 않는다 — 그것은 세션 안에서만 유일하고, 신고의 중복 판정은
+            `UNIQUE(reporterRef, targetType, targetId)` 라 세션을 모르는 자리에서 대상을 센다.
         turnNo:
           type: integer
           description: '**요청값 + 1** 이다 (§13-14e)'
@@ -2553,11 +2567,21 @@ components:
           enum: [turn, story]
         targetId:
           type: string
+          format: uuid
+          description: |
+            신고 대상 (#297). `targetType` 에 따라 무엇인지가 정해진다.
+
+            - `story` — `storyId`
+            - `turn` — `TurnResponse.turnId`. **`sessionId` 를 넣지 않는다** — 중복 판정이
+              `UNIQUE(reporterRef, targetType, targetId)` 라 세션을 넣으면 유니크 키가
+              세션 단위로 걸리고, 한 사람이 한 세션에서 장면을 하나밖에 신고하지 못한다
         sessionId:
           type: [string, 'null']
           format: uuid
+          description: '턴 신고의 맥락. **대상이 아니다** — 대상은 `targetId` 다 (#297)'
         turnNo:
           type: [integer, 'null']
+          description: '턴 신고의 맥락. 사후 검수가 읽는다. **대상이 아니다** (#297)'
         reason:
           type: string
           enum: [inappropriate, ip_violation, real_person, other]

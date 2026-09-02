@@ -230,6 +230,51 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 		assertThat(current(sessionId).path("title").asString()).isEqualTo(SEED_STORY_TITLE);
 	}
 
+	// ── 턴 식별 (#297) ─────────────────────────────────────
+
+	/**
+	 * #297 — <b>턴 응답이 자기 이름을 말한다.</b>
+	 *
+	 * <p>신고({@code POST /reports})는 {@code targetType: turn} 일 때 턴 하나를 가리켜야 하는데,
+	 * 응답이 턴의 식별자를 주지 않아 프론트가 {@code sessionId} 를 넣고 있었다. 중복 판정이
+	 * {@code UNIQUE(reporterRef, targetType, targetId)} 이므로 그러면 유니크 키가 <b>세션
+	 * 단위</b>로 걸린다 — 한 세션에서 장면을 하나밖에 신고하지 못한다.
+	 *
+	 * <p><b>같은 세션의 서로 다른 턴이 서로 다른 값을 갖는 것</b>이 이 필드의 전부다. 그것이
+	 * 아니면 문제가 그대로 남는다.
+	 */
+	@Test
+	void S297_turns_in_one_session_are_told_apart_by_turn_id() throws Exception {
+		JsonNode start = startSession();
+		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
+		JsonNode first = start.path("turn");
+
+		JsonNode second = advance(sessionId, first.path("choices").get(0).path("choiceId").asString(), 1, 200);
+
+		assertThat(first.path("turnId").asString()).isNotBlank();
+		assertThat(second.path("turnId").asString()).isNotBlank();
+		assertThat(second.path("turnId").asString())
+				.as("같은 세션의 다른 턴이 같은 값을 주면 신고가 세션당 한 건으로 잘린다 (#297)")
+				.isNotEqualTo(first.path("turnId").asString());
+	}
+
+	/**
+	 * #297 — <b>다시 그리기가 같은 턴을 가리킨다.</b>
+	 *
+	 * <p>새로고침한 뒤 신고하면 방금 본 장면과 다른 것을 신고하게 된다 — {@code GET /current} 가
+	 * 다른 값을 준다면. 두 경로는 같은 스키마를 쓰므로 같은 값이어야 한다.
+	 */
+	@Test
+	void S297_the_current_turn_carries_the_same_turn_id() throws Exception {
+		JsonNode start = startSession();
+		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
+		JsonNode advanced = advance(sessionId,
+				start.path("turn").path("choices").get(0).path("choiceId").asString(), 1, 200);
+
+		assertThat(current(sessionId).path("turnId").asString())
+				.isEqualTo(advanced.path("turnId").asString());
+	}
+
 	// ── 거절 경로 — 상태를 바꾸지 않는다 (R6.6) ─────────────
 
 	/** §13-9 — 작품당 active 세션은 1개다. */

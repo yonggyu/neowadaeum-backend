@@ -18,8 +18,18 @@ import java.util.UUID;
  * ({@code POST /stories/{storyId}/sessions?restart=true}) 가 둘 다 이것을 필요로 한다.
  * <b>매 턴 {@code resume} 를 함께 부르는 것으로 대신하지 않는다</b> — 턴 경로에 요청이 하나 는다.
  *
+ * <p><b>{@code turnId} 가 여기 있는 이유</b> (#297). 신고({@code POST /reports})는
+ * {@code targetType: turn} 일 때 {@code targetId} 로 <b>턴 하나</b>를 가리켜야 한다 —
+ * 중복 판정이 {@code UNIQUE(reporterRef, targetType, targetId)} 이므로, 세션을 가리키면
+ * 유니크 키가 세션 단위로 걸려 <b>한 사람이 한 세션에서 장면을 하나밖에 신고하지 못한다.</b>
+ * 두 번째 장면은 다른 장면인데 "이미 신고했다"로 막히고, 그 신고는 사후 검수(B-59)의
+ * 재료에서 사라진다. {@code turnNo} 로 대신하지 않는 이유는 그것이 세션 안에서만 유일하기
+ * 때문이다 — 신고 표는 세션을 모르는 자리에서도 대상을 세어야 한다.
+ *
  * @param storyId       이 세션이 진행 중인 작품. 세션이 들고 있는 값이므로 조회가 늘지 않는다
  * @param title         작품 제목. <b>세션이 고정한 버전 기준</b>이다 (I-4)
+ * @param turnId        이 턴의 식별자 (#297). 신고의 {@code targetId} 가 이 값이다.
+ *                      <b>새로 만든 값이 아니라</b> {@code turn} 표가 이미 들고 있던 기본키다
  * @param turnNo        생성된 턴 번호. <b>요청값 + 1</b> 이다 (§4.3 턴 번호 계약)
  * @param chapterNo     판정 후 챕터
  * @param chapterTitle  전환 시 클라이언트가 인터스티셜에 쓴다 (R7.3)
@@ -47,6 +57,7 @@ import java.util.UUID;
 public record TurnView(
 		UUID storyId,
 		String title,
+		UUID turnId,
 		int turnNo,
 		int chapterNo,
 		String chapterTitle,
