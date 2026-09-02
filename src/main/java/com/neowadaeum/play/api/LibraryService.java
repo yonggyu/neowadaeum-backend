@@ -71,13 +71,13 @@ public class LibraryService {
 
 		List<LibraryView.SectionView> sections = new ArrayList<>();
 		sections.add(section(new LibrarySectionKey(LibrarySectionKey.Kind.RECOMMENDED, null),
-				RECOMMENDED_TITLE, null, OVERVIEW_PAGE));
+				RECOMMENDED_TITLE, null, OVERVIEW_PAGE, noticeText));
 		for (String genreKey : this.stories.officialGenreKeys()) {
 			LibrarySectionKey key = new LibrarySectionKey(LibrarySectionKey.Kind.GENRE, genreKey);
-			sections.add(section(key, labels.getOrDefault(genreKey, genreKey), null, OVERVIEW_PAGE));
+			sections.add(section(key, labels.getOrDefault(genreKey, genreKey), null, OVERVIEW_PAGE, noticeText));
 		}
 		sections.add(section(new LibrarySectionKey(LibrarySectionKey.Kind.COMMUNITY, null),
-				COMMUNITY_TITLE, null, OVERVIEW_PAGE));
+				COMMUNITY_TITLE, null, OVERVIEW_PAGE, noticeText));
 
 		return new LibraryView(genres, sections, continueSessions(playerRef), noticeText);
 	}
@@ -85,12 +85,16 @@ public class LibraryService {
 	/**
 	 * 섹션 단위 조회 (§13.2 — 재시도와 더 보기).
 	 *
+	 * <p>이 경로는 {@link #library(UUID)} 없이 단독으로 열린다 — Footer 를 그리려면 이 응답이
+	 * 고지 문구를 직접 실어야 한다 (#289).
+	 *
 	 * @throws ApiException {@code NOT_FOUND} — 모르는 섹션 키. <b>빈 섹션으로 흡수하지 않는다</b>
+	 * @throws ApiException {@code INTERNAL_ERROR} — 고지 문구가 설정되지 않았다 (R11.1, §11)
 	 */
 	public LibraryView.SectionView section(String sectionKey, String cursor, Integer limit) {
 		LibrarySectionKey key = LibrarySectionKey.parse(sectionKey)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-		return section(key, titleOf(key), cursor, limit);
+		return section(key, titleOf(key), cursor, limit, this.notice.require("library_section"));
 	}
 
 	private String titleOf(LibrarySectionKey key) {
@@ -105,10 +109,11 @@ public class LibraryService {
 		};
 	}
 
-	private LibraryView.SectionView section(LibrarySectionKey key, String title, String cursor, Integer limit) {
+	private LibraryView.SectionView section(LibrarySectionKey key, String title, String cursor, Integer limit,
+			String noticeText) {
 		StoryPage page = this.stories.cards(key, cursor, limit);
 		return new LibraryView.SectionView(key.value(), title, page.hasMore(), page.stories(),
-				page.nextCursor());
+				page.nextCursor(), noticeText);
 	}
 
 	/**

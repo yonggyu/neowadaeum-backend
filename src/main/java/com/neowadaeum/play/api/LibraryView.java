@@ -31,9 +31,17 @@ public record LibraryView(List<GenreView> genres, List<SectionView> sections,
 	 *
 	 * <p>{@code hasMore} 와 {@code nextCursor} 는 같은 사실의 두 표현이다 — 계약이 둘 다
 	 * 요구하므로 둘 다 내되, <b>한 값에서 파생시킨다.</b>
+	 *
+	 * <p><b>{@code noticeText} 가 여기도 있는 이유</b> — 이 레코드는 {@link LibraryView#sections()}
+	 * 의 항목만이 아니라 {@code GET /library/sections/{sectionKey}} 의 응답 본문이기도 하다. 그
+	 * 경로 단독으로 열리면 상위 {@link LibraryView#noticeText()} 가 없으므로, Footer 를 그리려면
+	 * 이 레코드가 자기 몫을 실어야 한다 (#289).
+	 *
+	 * @param noticeText AI 사전 고지 문구. <b>코드에 없다</b> — {@code service_config} 에서 온다
+	 *                   (R11.1)
 	 */
 	public record SectionView(String sectionKey, String sectionTitle, boolean hasMore,
-			List<StoryCardView> stories, String nextCursor) {
+			List<StoryCardView> stories, String nextCursor, String noticeText) {
 	}
 
 	/**

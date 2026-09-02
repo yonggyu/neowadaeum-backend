@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
+import com.neowadaeum.catalog.query.GenreView;
 import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.catalog.query.StoryPage;
 import com.neowadaeum.common.error.ApiException;
@@ -24,6 +25,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>싣지 않으면 클라이언트가 화면마다 {@code /landing} 을 한 번 더 부르고, 두 응답의 캐시 수명이
  * 갈리면 <b>같은 화면에서 다른 문구</b>가 보인다.
+ *
+ * <p>#289 — 섹션 단독 조회({@code GET /library/sections/{sectionKey}})도 같은 이유로 자기
+ * 응답에 고지 문구를 싣는다. {@link LibraryView#noticeText()} 없이 단독으로 열리는 경로다.
  *
  * <p>컨테이너가 필요 없다 (ADR-0001).
  */
@@ -71,5 +75,49 @@ class LibraryServiceTests {
 				.isInstanceOf(ApiException.class)
 				.extracting(ex -> ((ApiException) ex).errorCode())
 				.isEqualTo(ErrorCode.INTERNAL_ERROR);
+	}
+
+	/**
+	 * <b>섹션 단독 조회도 자기 응답에 고지 문구를 싣는다</b> (#289).
+	 *
+	 * <p>이 경로는 {@link LibraryView#noticeText()} 없이 홀로 열린다 — 재시도와 더 보기가
+	 * {@code /library} 전체를 다시 부르지 않고 이 엔드포인트만 부르기 때문이다.
+	 */
+	@Test
+	void R289_a_section_fetched_on_its_own_carries_the_configured_notice_text() {
+		given(this.notices.current()).willReturn(Optional.of(new AiNotice("2026-07-21", NOTICE)));
+
+		assertThat(this.service.section("recommended", null, null).noticeText()).isEqualTo(NOTICE);
+	}
+
+	/**
+	 * <b>문구가 없으면 섹션 단독 조회도 내보내지 않는다</b> (§11, R11.1) — 라이브러리 전체와
+	 * 같은 판단이다.
+	 */
+	@Test
+	void R289_a_missing_notice_fails_the_standalone_section_instead_of_blanking_it() {
+		given(this.notices.current()).willReturn(Optional.empty());
+
+		assertThatThrownBy(() -> this.service.section("recommended", null, null))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.INTERNAL_ERROR);
+	}
+
+	/**
+	 * <b>모르는 섹션은 고지 문구보다 먼저 걸린다</b> (I-8 과 같은 순서 원칙 — #257 의
+	 * {@code StoryDetailServiceTests} 선례를 따른다).
+	 *
+	 * <p>순서가 뒤집히면 문구 설정 여부가 <b>섹션의 존재를 알려주는 신호</b>가 된다.
+	 */
+	@Test
+	void R289_an_unknown_section_is_not_found_regardless_of_the_notice() {
+		given(this.notices.current()).willReturn(Optional.empty());
+		given(this.stories.genres()).willReturn(List.of(new GenreView("romance", "로맨스")));
+
+		assertThatThrownBy(() -> this.service.section("genre:unknown", null, null))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.NOT_FOUND);
 	}
 }
