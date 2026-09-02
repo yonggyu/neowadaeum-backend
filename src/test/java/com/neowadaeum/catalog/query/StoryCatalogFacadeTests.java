@@ -3,12 +3,16 @@ package com.neowadaeum.catalog.query;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.ContainerTestBase;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +41,12 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	@Autowired
 	private StoryCatalogFacade facade;
 
+	@Autowired
+	private Clock clock;
+
 	private final List<UUID> created = new java.util.ArrayList<>();
+
+	private final List<UUID> createdProfiles = new java.util.ArrayList<>();
 
 	@AfterEach
 	void removeCreated() throws SQLException {
@@ -49,8 +58,16 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 					statement.executeUpdate();
 				}
 			}
+			for (UUID ref : this.createdProfiles) {
+				try (PreparedStatement statement = connection
+						.prepareStatement("DELETE FROM author_profile WHERE player_ref = ?")) {
+					statement.setObject(1, ref);
+					statement.executeUpdate();
+				}
+			}
 		}
 		this.created.clear();
+		this.createdProfiles.clear();
 	}
 
 	/** §13.2 — 장르는 화면 순서대로 온다. {@code display_order} 가 유일하므로 결정론이다. */
@@ -169,27 +186,166 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 				.extracting(LibrarySectionKey::value).isEqualTo("genre:school");
 	}
 
+	/**
+	 * <b>R13.1 · #258 — 커뮤니티 카드가 작성자를 말한다.</b>
+	 *
+	 * <p>{@code authorType} 만으로는 "사용자 작품"까지밖에 말하지 못한다. 그 표기가 공식과
+	 * 사용자를 섞지 않는 근거이므로 <b>누구인가</b>가 카드에 실려야 한다.
+	 *
+	 * <p>나가는 것은 닉네임뿐이다 — {@code playerRef} 는 카드 어디에도 없다 (I-3, §13-7).
+	 */
+	@Test
+	void R13_1_a_community_card_carries_the_author_nickname() {
+		UUID authorRef = UUID.randomUUID();
+		insertProfile(authorRef, "연우");
+		UUID story = insertStory("user", "public", "approved", authorRef);
+
+		assertThat(this.facade.cards(section("community"), null, null).stories())
+				.filteredOn(card -> card.storyId().equals(story))
+				.singleElement()
+				.satisfies(card -> {
+					assertThat(card.authorDisplayName()).isEqualTo("연우");
+					// S-11 — "있어야 할 것"만 보면 식별자가 함께 새어도 통과한다.
+					assertThat(card.toString()).doesNotContain(authorRef.toString());
+				});
+	}
+
+	/** <b>#258 — 공식 작품에는 작성자 표기가 없다.</b> {@code authorType} 이 이미 답이다. */
+	@Test
+	void R13_1_an_official_card_has_no_author_nickname() {
+		assertThat(this.facade.cards(section("recommended"), null, null).stories())
+				.filteredOn(card -> card.storyId().equals(SEED_STORY))
+				.singleElement()
+				.satisfies(card -> assertThat(card.authorDisplayName()).isNull());
+	}
+
+	/**
+	 * <b>#258 · I-3 — 프로필이 없으면 비어 있다.</b>
+	 *
+	 * <p>표시명이 없다고 {@code playerRef} 를 대신 내보내지 않는다. 비워 두는 쪽이 답이다.
+	 */
+	@Test
+	void R13_1_an_author_without_a_profile_yields_no_nickname() {
+		UUID authorRef = UUID.randomUUID();
+		UUID story = insertStory("user", "public", "approved", authorRef);
+
+		assertThat(this.facade.cards(section("community"), null, null).stories())
+				.filteredOn(card -> card.storyId().equals(story))
+				.singleElement()
+				.satisfies(card -> {
+					assertThat(card.authorDisplayName()).isNull();
+					assertThat(card.toString()).doesNotContain(authorRef.toString());
+				});
+	}
+
+	/**
+	 * <b>§15 — 카드가 늘어도 조회 수는 늘지 않는다.</b>
+	 *
+	 * <p>작성자 표시명을 카드마다 물으면 20장이 21번의 조회가 된다. 그것이 이 필드를 더하면서
+	 * 가장 쉽게 저지르는 실수이므로, <b>느려졌는지</b>가 아니라 <b>몇 번 물었는지</b>를 센다 —
+	 * 시간은 기계에 따라 흔들리지만 조회 수는 흔들리지 않는다.
+	 */
+	@Test
+	void S15_reading_more_cards_does_not_cost_more_queries() {
+		for (int i = 0; i < 6; i++) {
+			UUID authorRef = UUID.randomUUID();
+			insertProfile(authorRef, "작성자" + i);
+			insertStory("user", "public", "approved", authorRef);
+		}
+
+		AtomicInteger statements = new AtomicInteger();
+		StoryCatalogFacade counted = new StoryCatalogFacade(countingDataSource(statements), this.clock);
+
+		statements.set(0);
+		counted.cards(section("community"), null, 2);
+		int forTwo = statements.get();
+
+		statements.set(0);
+		StoryPage six = counted.cards(section("community"), null, 6);
+		int forSix = statements.get();
+
+		assertThat(six.stories()).hasSize(6);
+		assertThat(six.stories()).extracting(StoryCardView::authorDisplayName).doesNotContainNull();
+		// 0 == 0 으로 통과하면 세지 못한 것이지 N+1 이 없는 것이 아니다.
+		assertThat(forTwo).isPositive();
+		assertThat(forSix).isEqualTo(forTwo);
+	}
+
+	/** 작성자 프로필. {@code player_ref} 가 PK 다 — 이 표에 {@code user.id} 는 없다 (I-3). */
+	private void insertProfile(UUID playerRef, String displayName) {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection.prepareStatement(
+						"INSERT INTO author_profile (player_ref, display_name) VALUES (?, ?)")) {
+			statement.setObject(1, playerRef);
+			statement.setString(2, displayName);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
+		this.createdProfiles.add(playerRef);
+	}
+
+	/**
+	 * 나간 문장 수를 세는 {@link DataSource}. 실제 커넥션에 그대로 위임하고 개수만 기록한다.
+	 *
+	 * <p>N+1 은 결과가 아니라 <b>횟수</b>로 드러나므로 여기서만 잡을 수 있다.
+	 */
+	private DataSource countingDataSource(AtomicInteger statements) {
+		ClassLoader loader = getClass().getClassLoader();
+		return (DataSource) Proxy.newProxyInstance(loader, new Class<?>[] { DataSource.class },
+				(proxy, method, args) -> {
+					Object result = invoke(method, this.dataSource, args);
+					if (result instanceof Connection connection) {
+						return Proxy.newProxyInstance(loader, new Class<?>[] { Connection.class },
+								(connectionProxy, connectionMethod, connectionArgs) -> {
+									if (connectionMethod.getName().startsWith("prepare")
+											|| "createStatement".equals(connectionMethod.getName())) {
+										statements.incrementAndGet();
+									}
+									return invoke(connectionMethod, connection, connectionArgs);
+								});
+					}
+					return result;
+				});
+	}
+
+	private static Object invoke(java.lang.reflect.Method method, Object target, Object[] args)
+			throws Throwable {
+		try {
+			return method.invoke(target, args);
+		}
+		catch (InvocationTargetException ex) {
+			throw ex.getTargetException();
+		}
+	}
+
 	private static LibrarySectionKey section(String raw) {
 		return LibrarySectionKey.parse(raw).orElseThrow();
 	}
 
 	/** 파사드가 막는지 보려면 막힐 데이터를 만들 수 있어야 한다. */
 	private UUID insertStory(String authorType, String visibility, String reviewStatus) {
+		return insertStory(authorType, visibility, reviewStatus, null);
+	}
+
+	private UUID insertStory(String authorType, String visibility, String reviewStatus, UUID authorRef) {
 		UUID id = UUID.randomUUID();
 		try (Connection connection = this.dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
-						INSERT INTO story (id, slug, title, short_desc, author_type, visibility,
+						INSERT INTO story (id, slug, title, short_desc, author_type, author_ref, visibility,
 						                   review_status, current_version_id, published_at, created_at)
-						VALUES (?, ?, '테스트 작품', '한 줄 소개', ?, ?, ?, ?, ?, ?)
+						VALUES (?, ?, '테스트 작품', '한 줄 소개', ?, ?, ?, ?, ?, ?, ?)
 						""")) {
 			statement.setObject(1, id);
 			statement.setString(2, "test-" + id);
 			statement.setString(3, authorType);
-			statement.setString(4, visibility);
-			statement.setString(5, reviewStatus);
-			statement.setObject(6, UUID.fromString("11111111-1111-4111-8111-111111111111"));
-			statement.setTimestamp(7, java.sql.Timestamp.from(PUBLISHED));
+			statement.setObject(4, authorRef);
+			statement.setString(5, visibility);
+			statement.setString(6, reviewStatus);
+			statement.setObject(7, UUID.fromString("11111111-1111-4111-8111-111111111111"));
 			statement.setTimestamp(8, java.sql.Timestamp.from(PUBLISHED));
+			statement.setTimestamp(9, java.sql.Timestamp.from(PUBLISHED));
 			statement.executeUpdate();
 		}
 		catch (SQLException ex) {
