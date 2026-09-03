@@ -236,6 +236,42 @@ paths:
           $ref: '#/components/responses/NotFound'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [authoring]
+      operationId: deleteStory
+      summary: 작품 삭제 (작성자)
+      description: |
+        **작성자 본인만** 지운다 (I-8). 공식 작품(`authorType = official`)은 이 경로로 지워지지
+        않는다 — 작성자가 없으므로 어떤 요청자와도 일치하지 않는다.
+
+        **되돌릴 수 없다.** 복구 경로를 두지 않는다 — 사용자에게 '삭제'라고 말한 이상
+        되돌릴 수 있게 두는 쪽이 거짓말이다. 지운 뒤 이 작품은 목록·상세·이어하기 어디에도
+        없고, 작성자의 "내 작품"에서도 사라진다. 다시 내려면 원고를 **새로 제출**한다
+        (그 제출은 새 작품이 된다).
+
+        **진행 중 세션은 없어진 작품과 같은 답을 받는다** — 다음 턴 요청은
+        `423 STORY_SUSPENDED`(읽기 전용)이고, `resume` 은 `storySuspended` 다. 이미 읽은 턴과
+        히스토리는 그대로 열린다. 정지(`suspended`)와 구분해 알리지 않는다 — 이어갈 수 없다는
+        사실은 같고, 구분하면 작성자의 처분이 독자에게 드러난다.
+
+        **기록은 남는다** (§13-44 와 같은 근거). 세션·턴·GameState 스냅샷·엔딩 도달률과
+        신고·검수 이력은 지워지지 않는다 — 그것은 플레이한 사람들과 검수의 기록이지
+        작성자의 것이 아니다. 내부 상태는 `reviewStatus = deleted` 이며, 그 값은 어떤 응답에도
+        실리지 않는다(지운 작품이 조회되지 않으므로).
+
+        이미 지워진 작품을 다시 지우면 `404` 다. 없는 작품·남의 작품과 구분하지 않는다.
+      x-implemented-by: '#290'
+      parameters:
+        - $ref: '#/components/parameters/StoryId'
+      responses:
+        '204':
+          description: 삭제됨. 본문 없음
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   # ── §13.4 Session ───────────────────────────────────────────
   /api/v1/stories/{storyId}/sessions:
@@ -1825,7 +1861,16 @@ components:
         `draft → pending → (auto_rejected | in_review) → (approved | rejected)`,
         `approved → suspended → (approved | rejected)` (§13-9).
         `auto_rejected` 는 내부 기록이며 사용자에게는 `rejected` 로 표시한다.
-      enum: [draft, pending, auto_rejected, in_review, approved, rejected, suspended]
+
+        `deleted` 는 **흡수 상태**다 (§13-58) — 어느 상태에서든 작성자가 `DELETE
+        /api/v1/stories/{storyId}` 로 들어올 수 있고 **나가는 전이는 없다**.
+        `visibility` 가 아니라 여기 있는 이유는 가시성이 작성자가 `PATCH` 로 되돌리는
+        다이얼이기 때문이다 — 거기 두면 가시성 변경 한 번이 삭제를 되돌린다.
+
+        **`deleted` 는 어떤 응답에도 실리지 않는다.** 지운 작품은 목록·상세·이어하기와
+        "내 작품" 어디에서도 조회되지 않으므로 이 값을 담을 응답이 없다. 열거에 두는 것은
+        상태 머신의 정의가 여기이기 때문이며, 클라이언트가 분기를 만들 값이 아니다.
+      enum: [draft, pending, auto_rejected, in_review, approved, rejected, suspended, deleted]
 
     # ── §13.1 인증 ──────────────────────────────────────────
     OAuthLoginRequest:

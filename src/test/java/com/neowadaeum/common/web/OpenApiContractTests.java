@@ -138,6 +138,9 @@ class OpenApiContractTests {
 		"/api/v1/authoring/drafts/{draftId}/submit, post",
 		"/api/v1/authoring/drafts/{draftId}/review, get",
 		"/api/v1/stories/{storyId}/visibility, patch",
+		// §13-58 (#290) — 원문에는 없다. 원고는 지울 수 있는데 게시된 작품은 지울 수 없던 자리를
+		// 정정본이 열었고, 계약이 그 문을 잃으면 화면의 [작품 삭제] 가 다시 갈 곳을 잃는다.
+		"/api/v1/stories/{storyId}, delete",
 		"/api/v1/reports, post",
 		"/api/v1/landing, get" })
 	@SuppressWarnings("unchecked")

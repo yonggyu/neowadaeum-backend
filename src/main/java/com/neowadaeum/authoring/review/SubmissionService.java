@@ -90,15 +90,22 @@ public class SubmissionService {
 			return rejected(screened.findings());
 		}
 
+		// §13-58 — 원고가 기억하는 작품이 이미 없을 수 있다. 작성자가 지웠거나(#290-3), 미리보기가
+		// 만든 작품을 파기가 가져갔을 때다(B-61). 그 원고의 제출은 **재제출이 아니라 새 제출**이다 —
+		// 없는 작품에 버전을 얹으면 지운 작품이 되살아나거나(그쪽은 applyReview 가 막는다) 아무도
+		// 가리키지 않는 버전만 쌓인다. 원고는 지우지 않았으므로 작성자가 잃는 것은 없다.
+		UUID existingStoryId = (draft.getStoryId() != null
+				&& this.publisher.statusOf(draft.getStoryId()).isPresent()) ? draft.getStoryId() : null;
+
 		// R8.12 — 새 작품일 때만 개수를 본다 (B-60). 재제출은 같은 작품에 버전을 얹으므로
 		// 개수를 늘리지 않는다 (B-56) — 거기서 막으면 상한에 닿은 작성자가 **이미 낸 작품조차
 		// 고치지 못하게** 된다.
-		if (draft.getStoryId() == null) {
+		if (existingStoryId == null) {
 			requireStoryQuota(authorRef);
 		}
 
 		// R8.8 — 재제출은 같은 작품에 새 버전을 얹는다. 원고가 자기 작품을 기억한다 (B-56).
-		SubmissionOutcome outcome = approve(draft.getStoryId(), definition, visibility);
+		SubmissionOutcome outcome = approve(existingStoryId, definition, visibility);
 		this.drafts.linkStory(authorRef, draftId, outcome.storyId());
 		return outcome;
 	}
@@ -114,7 +121,9 @@ public class SubmissionService {
 	 */
 	public SubmissionOutcome reviewStatus(UUID authorRef, UUID draftId) {
 		StoryDraft draft = this.drafts.read(authorRef, draftId);
-		if (draft.getStoryId() == null) {
+		// §13-58 — 원고가 기억하는 작품이 지워졌으면 낸 적 없는 원고와 같다. 여기서 404 를 내면
+		// **원고가 사라졌다**고 읽히는데, 지운 것은 작품이지 원고가 아니다 (submit 도 같은 판단).
+		if (draft.getStoryId() == null || this.publisher.statusOf(draft.getStoryId()).isEmpty()) {
 			return new SubmissionOutcome(null, ReviewStatus.DRAFT, Visibility.PRIVATE, List.of(),
 					StoryReviewTimes.NONE);
 		}

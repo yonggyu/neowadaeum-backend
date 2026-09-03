@@ -94,6 +94,10 @@ public class StoryCatalogFacade {
 	 * B-10 이다. 자리를 비워 두는 것과 없는 것은 다르다 — 계약이 요구하는 필드이며, 채우는 쪽이
 	 * 생기면 여기만 바뀐다.
 	 *
+	 * <p><b>지운 작품은 여기서도 빠진다</b> (§13-58). 이 목록이 노출 조건을 걸지 않는 유일한
+	 * 예외 자리이므로, 걸러 주지 않으면 <b>작성자에게만 삭제가 취소된 것처럼 보인다</b> —
+	 * 사용자에게 '삭제됨'이라고 말한 화면이 지운 작품을 계속 들고 있게 된다.
+	 *
 	 * @param playerRef 작성자. {@code author_ref} 와 대조한다 (I-3 — catalog 는 이 값만 안다)
 	 */
 	public MyStoryPage mine(UUID playerRef, String cursor, Integer limit) {
@@ -113,6 +117,7 @@ public class StoryCatalogFacade {
 				       s.visibility, s.review_status, s.published_at
 				FROM story s
 				WHERE s.author_ref = :author
+				  AND s.review_status <> 'deleted'
 				""";
 		if (after.isPresent()) {
 			sql += "  AND (s.created_at, s.id) < (:cursorAt, :cursorId)\n";
@@ -190,10 +195,20 @@ public class StoryCatalogFacade {
 	 * 것이고, 정지된 작품(R8.10)이야말로 답해야 할 경우다 — 가리면 {@code story_suspended} 를
 	 * 낼 수 없고 사용자는 이유 없이 404 를 본다.
 	 *
-	 * @return 작품이 없으면 비어 있다
+	 * <p><b>지워진 작품은 그 예외가 아니다</b> (§13-58). 여기서 비워 두면 {@code play} 는 그것을
+	 * <b>사라진 작품</b>으로 읽고, 사라진 작품과 정지된 작품은 이미 같은 자리로 간다 —
+	 * {@code STORY_SUSPENDED}(423, 읽기 전용) 다. {@code PlayTurnService} 와
+	 * {@code SessionResumeService} 가 "없는 작품과 정지된 작품을 구분해 알릴 이유가 없다"고
+	 * 적어 둔 바로 그 판단이며, 그래서 <b>새 에러 코드를 만들지 않았다.</b> 읽던 사람은 이미
+	 * 읽은 것을 계속 볼 수 있고 다음 턴만 만들지 못한다.
+	 *
+	 * @return 작품이 없거나 <b>지워졌으면</b> 비어 있다
 	 */
 	public Optional<StoryStatusView> status(UUID storyId) {
-		return this.jdbc.sql("SELECT current_version_id, review_status FROM story WHERE id = :id")
+		return this.jdbc.sql("""
+						SELECT current_version_id, review_status FROM story
+						WHERE id = :id AND review_status <> 'deleted'
+						""")
 				.param("id", storyId)
 				.query((rs, rowNum) -> new StoryStatusView(rs.getObject("current_version_id", UUID.class),
 						rs.getString("review_status")))
@@ -328,8 +343,13 @@ public class StoryCatalogFacade {
 	 * 그 버전의 것을 통째로 담아 보내고, 어느 챕터인지는 <b>세션이 안다</b> — 그 값은 play 의
 	 * 것이고 catalog 는 알 필요가 없다 (§5.3).
 	 *
+	 * <p><b>지워진 작품의 버전은 들어 있지 않다</b> (§13-58). 이어하기 카드와 "내 세션" 목록이
+	 * 이 지도로 만들어지며, 둘 다 <b>지도에 없는 세션을 조용히 뺀다</b> — 그 자리가 이미 있으므로
+	 * 삭제가 목록에서 사라지는 데 새 분기가 필요하지 않다. 세션 자체는 남는다: 지운 것은
+	 * 작품이지 그 사람이 플레이한 기록이 아니며, {@code resume} 은 계속 답한다.
+	 *
 	 * @param storyVersionIds 세션이 고정한 버전들 (I-4)
-	 * @return 버전 id 로 찾는 지도. 사라진 버전은 들어 있지 않다
+	 * @return 버전 id 로 찾는 지도. 사라졌거나 <b>지워진</b> 작품의 버전은 들어 있지 않다
 	 */
 	public Map<UUID, StoryBriefView> briefs(List<UUID> storyVersionIds) {
 		if (storyVersionIds.isEmpty()) {
@@ -351,7 +371,7 @@ public class StoryCatalogFacade {
 		this.jdbc.sql("""
 						SELECT v.id AS version_id, s.id AS story_id, s.title, s.cover_url
 						FROM story_version v JOIN story s ON s.id = v.story_id
-						WHERE v.id IN (:ids)
+						WHERE v.id IN (:ids) AND s.review_status <> 'deleted'
 						""")
 				.param("ids", storyVersionIds)
 				.query((rs, rowNum) -> {
