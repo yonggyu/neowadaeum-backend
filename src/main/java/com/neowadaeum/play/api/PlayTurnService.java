@@ -293,6 +293,8 @@ public class PlayTurnService {
 				// #259 — 세션이 들고 있는 값이다. 제목은 세션이 고정한 버전에서 온다 (I-4).
 				session.getStoryId(),
 				version.storyTitle(),
+				// #297 — 신고가 턴 하나를 가리키려면 턴에 이름이 있어야 한다. 이미 있던 기본키다.
+				turn.getId(),
 				turn.getTurnNo(),
 				turn.getChapterNo(),
 				chapterTitle(version, turn.getChapterNo()),
