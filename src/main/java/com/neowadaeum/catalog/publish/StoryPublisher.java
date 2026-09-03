@@ -9,6 +9,7 @@ import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -322,6 +323,53 @@ public class StoryPublisher {
 	}
 
 	/**
+	 * 검수자가 여는 원고의 머리말 (#316, §13-61).
+	 *
+	 * <p><b>{@link #storiesAwaitingReview} 와 달리 상태를 묻지 않는다.</b> 큐는 <b>무엇을 볼
+	 * 차례인가</b>를 답하므로 기다리는 것만 고르지만, 원고 열람은 <b>이미 지목된 한 건</b>을
+	 * 여는 자리다 — 여기서 상태로 거르면 방금 판정한 작품을 다시 볼 수 없게 된다.
+	 *
+	 * <p><b>{@code author_ref} 를 담는다.</b> 검수 화면이 작성자를 <b>표시명으로</b> 보여
+	 * 주기 때문이며 (§13-7), 그 변환은 부르는 쪽이 한다 — 이 값은 응답에 나가지 않는다 (I-3).
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public Optional<StoryHeader> headerOf(UUID storyId) {
+		return this.jdbc.sql("""
+						SELECT title, short_desc, world_intro, author_ref, review_status, visibility,
+								created_at
+						FROM story WHERE id = ?
+						""")
+				.param(storyId)
+				.query((rs, rowNum) -> new StoryHeader(rs.getString("title"), rs.getString("short_desc"),
+						rs.getString("world_intro"), rs.getObject("author_ref", UUID.class),
+						rs.getString("review_status"), rs.getString("visibility"),
+						rs.getTimestamp("created_at").toInstant()))
+				.optional();
+	}
+
+	/**
+	 * 엔딩의 에필로그 원문 (#316, §13-61).
+	 *
+	 * <p><b>턴 파이프라인이 읽는 한 벌에는 없는 값이다.</b> {@code StoryVersionView.EndingView}
+	 * 는 <b>판정에 쓰는 것</b>만 담으며 (§13-1), 에필로그는 판정이 끝난 뒤 사람에게 보이는
+	 * 문장이다 — 매 턴 그것을 싣는 것은 §15 예산에 얹히는 낭비다.
+	 *
+	 * <p>그런데 <b>검수는 반대다.</b> 독자가 읽게 될 작성자의 문장이므로 판정 대상이고, 그래서
+	 * 여기서만 따로 읽는다.
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public Map<Integer, String> epiloguesOf(UUID storyVersionId) {
+		return this.jdbc
+				.sql("SELECT ending_no, epilogue_text FROM ending_def WHERE story_version_id = ?")
+				.param(storyVersionId)
+				.query((rs, rowNum) -> Map.entry(rs.getInt("ending_no"),
+						java.util.Objects.requireNonNullElse(rs.getString("epilogue_text"), "")))
+				.list().stream()
+				.collect(java.util.stream.Collectors.toUnmodifiableMap(Map.Entry::getKey,
+						Map.Entry::getValue));
+	}
+
+	/**
 	 * 신고 누적으로 내린다 (R8.9, B-57).
 	 *
 	 * <p><b>가시성을 건드리지 않는다.</b> 정지는 되돌려질 수 있는 판단이고, 여기서 가시성을
@@ -362,6 +410,15 @@ public class StoryPublisher {
 	 */
 	public record AwaitingReview(UUID storyId, String title, UUID authorRef, String visibility,
 			String reviewStatus, Instant createdAt) {
+	}
+
+	/**
+	 * 검수 화면이 여는 작품의 머리말 (#316, §13-61).
+	 *
+	 * @param authorRef 작성자의 {@code player_ref}. <b>표시명으로 바꿔 내보낸다</b> (§13-7, I-3)
+	 */
+	public record StoryHeader(String title, String shortDesc, String worldIntro, UUID authorRef,
+			String reviewStatus, String visibility, Instant createdAt) {
 	}
 
 	/** 작품의 상태 한 벌. */

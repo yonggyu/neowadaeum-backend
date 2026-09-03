@@ -1,6 +1,9 @@
 package com.neowadaeum.admin;
 
 import com.neowadaeum.authoring.report.ReportInspection;
+
+import com.neowadaeum.authoring.review.ReviewManuscript;
+import com.neowadaeum.authoring.review.ReviewManuscriptService;
 import com.neowadaeum.authoring.review.ReviewQueueService;
 import com.neowadaeum.common.web.PlayerRefResolver;
 import com.neowadaeum.identity.access.AdminAccessGuard;
@@ -36,14 +39,18 @@ public class AdminReviewController {
 
 	private final ReportInspection inspection;
 
+	private final ReviewManuscriptService manuscripts;
+
 	private final AdminAccessGuard guard;
 
 	private final PlayerRefResolver playerRefs;
 
 	public AdminReviewController(ReviewQueueService queue, ReportInspection inspection,
-			AdminAccessGuard guard, PlayerRefResolver playerRefs) {
+			ReviewManuscriptService manuscripts, AdminAccessGuard guard,
+			PlayerRefResolver playerRefs) {
 		this.queue = queue;
 		this.inspection = inspection;
+		this.manuscripts = manuscripts;
 		this.guard = guard;
 		this.playerRefs = playerRefs;
 	}
@@ -75,6 +82,26 @@ public class AdminReviewController {
 		this.guard.recordAction(adminUserId, "admin.review.reports.read", "story", storyId,
 				Map.of("reportCount", response.total()), request);
 		return response;
+	}
+
+	/**
+	 * 원고를 연다 (#316, §13-61).
+	 *
+	 * <p><b>큐가 답하지 않는 것이 여기 있다.</b> 큐는 제목과 상태만 주고 원고 본문을 담지 않으며,
+	 * 그것만 보고 누르는 승인은 검수가 아니다 — 이 문이 <b>무엇을 보고 판정하는가</b>를 답한다.
+	 *
+	 * <p><b>열람은 두 번 남는다.</b> 관리자 행위로 한 번 (R14.5), <b>원문 열람</b>으로 한 번
+	 * (R12.3, S-5) — 후자는 서비스가 남기고 <b>기록에 실패하면 원문이 나가지 않는다.</b> 여기서
+	 * 둘 다 남기면 기록을 잊은 호출자가 생긴다.
+	 */
+	@GetMapping("/{storyId}")
+	public ReviewManuscript manuscript(@PathVariable UUID storyId, HttpServletRequest request) {
+		UUID adminUserId = this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
+
+		ReviewManuscript manuscript = this.manuscripts.read(adminUserId, storyId);
+		this.guard.recordAction(adminUserId, "admin.review.manuscript", "story", storyId, Map.of(),
+				request);
+		return manuscript;
 	}
 
 	/**
