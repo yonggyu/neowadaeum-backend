@@ -1784,11 +1784,15 @@ components:
           enum: [tos, privacy, ai_notice, age]
         version:
           type: string
-          description: '지금 유효한 판본. `service_config` 에서 온다 — 코드에 없다 (R10.2)'
+          description: |
+            지금 유효한 판본. `service_config` 에서 온다 — 코드에 없다 (R10.2). `tos` · `privacy`
+            는 `v<major>.<minor>` 표기이고, `ai_notice` 는 고지 자체의 날짜 판본, `age` 는 서버가
+            조립한다 — **셋의 모양이 서로 다르다** (§13-51, §13-24)
         documentUrl:
           type: [string, 'null']
           description: |
-            약관 본문 주소. **`null` 일 수 있다** — AI 사전 고지는 문구를 랜딩이 이미 내보내고
+            약관 본문 주소. 값이 있으면 **절대 URL** 이다 — 웹과 앱이 같은 값을 그대로 링크로
+            건다 (§13-51). **`null` 일 수 있다** — AI 사전 고지는 문구를 랜딩이 이미 내보내고
             (§13.10), 연령 확인은 문서가 존재하지 않는다
         required:
           type: boolean

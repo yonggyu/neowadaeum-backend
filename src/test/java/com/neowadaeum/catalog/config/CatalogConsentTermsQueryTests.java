@@ -10,6 +10,8 @@ import com.neowadaeum.common.spi.ConsentTerm;
 import com.neowadaeum.common.spi.ServiceConfigQuery;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * #261 — 약관 설정값의 모양을 아는 유일한 곳 (R10.2).
@@ -19,8 +21,8 @@ import org.junit.jupiter.api.Test;
 class CatalogConsentTermsQueryTests {
 
 	private static final String TERMS = """
-			{"tos":     {"version":"1.2","documentUrl":"/terms/tos"},
-			 "privacy": {"version":"1.0"}}
+			{"tos":     {"version":"v1.2","documentUrl":"https://example.invalid/terms/tos"},
+			 "privacy": {"version":"v1.0"}}
 			""";
 
 	private final ServiceConfigQuery configs = mock(ServiceConfigQuery.class);
@@ -34,7 +36,8 @@ class CatalogConsentTermsQueryTests {
 	void R10_2_a_configured_term_is_parsed() {
 		givenConfig(TERMS);
 
-		assertThat(this.query.find("tos")).contains(new ConsentTerm("1.2", "/terms/tos"));
+		assertThat(this.query.find("tos"))
+				.contains(new ConsentTerm("v1.2", "https://example.invalid/terms/tos"));
 	}
 
 	/** 본문 주소는 없을 수 있다 — 빈 문자열이 아니라 {@code null} 이다. */
@@ -42,7 +45,7 @@ class CatalogConsentTermsQueryTests {
 	void R10_2_a_term_without_a_document_url_is_null_not_blank() {
 		givenConfig(TERMS);
 
-		assertThat(this.query.find("privacy")).contains(new ConsentTerm("1.0", null));
+		assertThat(this.query.find("privacy")).contains(new ConsentTerm("v1.0", null));
 	}
 
 	/** 설정이 없으면 비어 있다 — <b>기본 판본을 만들지 않는다</b> (#261). */
@@ -56,7 +59,7 @@ class CatalogConsentTermsQueryTests {
 	/** 설정은 있는데 그 종류가 없어도 같다. */
 	@Test
 	void R10_2_a_type_missing_from_the_configuration_is_empty() {
-		givenConfig("{\"tos\": {\"version\":\"1.2\"}}");
+		givenConfig("{\"tos\": {\"version\":\"v1.2\"}}");
 
 		assertThat(this.query.find("privacy")).isEmpty();
 	}
@@ -65,6 +68,32 @@ class CatalogConsentTermsQueryTests {
 	@Test
 	void R10_2_a_non_json_value_is_empty_not_an_exception() {
 		givenConfig("이건 JSON 이 아니다");
+
+		assertThat(this.query.find("tos")).isEmpty();
+	}
+
+	/**
+	 * <b>어긋난 값은 전부 같은 자리로 떨어진다</b> (§13-51, 이슈 #279).
+	 *
+	 * <p>서버는 이 설정의 형식을 검증하지 않는다 — 강제하면 약관 개정 방식이 코드에 묶인다.
+	 * 그 대신 <b>"모양이 조금 다른 값"이 통과해 이상한 판본이 동의 이력에 남는 경로가 없어야
+	 * 한다</b>: 무엇을 넣든 결과는 <b>비어 있음</b> 하나이고, 읽는 쪽이 거기서 멈춘다.
+	 */
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"이건 JSON 이 아니다",
+			"[]",
+			"12",
+			"\"판본\"",
+			"null",
+			"{}",
+			"{\"tos\": {}}",
+			"{\"tos\": {\"version\": \"\"}}",
+			"{\"tos\": {\"version\": \"   \"}}",
+			"{\"tos\": {\"documentUrl\": \"https://example.invalid/terms/tos\"}}",
+	})
+	void S13_51_a_malformed_configuration_is_empty_for_every_shape(String raw) {
+		givenConfig(raw);
 
 		assertThat(this.query.find("tos")).isEmpty();
 	}
