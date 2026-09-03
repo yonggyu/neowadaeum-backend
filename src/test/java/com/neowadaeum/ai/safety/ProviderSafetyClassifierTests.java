@@ -89,7 +89,7 @@ class ProviderSafetyClassifierTests {
 
 	/** S-3 — 실패가 판정 대상 원문을 메시지에 싣지 않는다. */
 	@Test
-	void S3_the_failure_message_does_not_carry_the_judged_text() {
+	void SEC3_the_failure_message_does_not_carry_the_judged_text() {
 		String judged = "유나의 연락처는 010-0000-0000 이다";
 
 		assertThatThrownBy(() -> new ProviderSafetyClassifier(new ClassifyOnlyStoryProvider() {

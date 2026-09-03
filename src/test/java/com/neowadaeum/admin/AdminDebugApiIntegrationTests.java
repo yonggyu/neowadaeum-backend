@@ -73,7 +73,7 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 
 	/** <b>승격 없이는 열리지 않는다.</b> 역할과 IP 가 맞아도 그렇다 (S-4). */
 	@Test
-	void S4_without_a_step_up_the_console_stays_shut() throws Exception {
+	void SEC4_without_a_step_up_the_console_stays_shut() throws Exception {
 		givenAdmin();
 
 		this.mvc.perform(get(debugPath(UUID.randomUUID())).with(asPlayer(ADMIN_PLAYER_REF)))
@@ -82,7 +82,7 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 
 	/** 일반 회원은 승격을 얻을 방법조차 없다. */
 	@Test
-	void S4_a_normal_user_is_forbidden() throws Exception {
+	void SEC4_a_normal_user_is_forbidden() throws Exception {
 		this.mvc.perform(get(debugPath(UUID.randomUUID())).with(asPlayer()))
 				.andExpect(status().isForbidden());
 	}
@@ -124,7 +124,7 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 
 	/** <b>원문을 읽은 사실이 남는다</b> (R12.3, S-5). 건마다 한 줄이다. */
 	@Test
-	void S5_reading_the_raw_text_leaves_a_record() throws Exception {
+	void SEC5_reading_the_raw_text_leaves_a_record() throws Exception {
 		givenAdmin();
 		UUID sessionId = givenSession();
 		UUID callLogId = givenAiCall(sessionId);
@@ -139,7 +139,7 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 
 	/** 막힌 요청은 원문을 읽지 않는다 — 따라서 열람 기록도 남지 않는다. */
 	@Test
-	void S5_a_blocked_request_reads_nothing() throws Exception {
+	void SEC5_a_blocked_request_reads_nothing() throws Exception {
 		givenAdmin();
 		UUID sessionId = givenSession();
 		givenAiCall(sessionId);

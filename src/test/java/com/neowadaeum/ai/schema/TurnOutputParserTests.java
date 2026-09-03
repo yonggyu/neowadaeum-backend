@@ -310,7 +310,7 @@ class TurnOutputParserTests {
 		 * <p>"있어야 할 것"만 단언하면 값이 새어도 통과한다 ({@code .claude/rules/testing.md}).
 		 */
 		@Test
-		void S3_the_exception_message_does_not_carry_the_response_body() {
+		void SEC3_the_exception_message_does_not_carry_the_response_body() {
 			String secretish = "유나의 연락처는 010-0000-0000 이다";
 
 			List<String> messages = List.of(

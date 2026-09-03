@@ -80,7 +80,7 @@ class RetentionPurgeIntegrationTests extends ContainerTestBase {
 
 	/** <b>보관 기간이 지난 감사 로그는 사라진다</b> (S-10 — 3년). */
 	@Test
-	void S10_an_audit_log_past_its_retention_is_gone() {
+	void SEC10_an_audit_log_past_its_retention_is_gone() {
 		UUID adminUserId = UUID.randomUUID();
 		givenAdminAuditLog(adminUserId, yearsAgo(this.retention.auditLogYears() + 1));
 
@@ -97,7 +97,7 @@ class RetentionPurgeIntegrationTests extends ContainerTestBase {
 	 * 통째로 지운다.</b>
 	 */
 	@Test
-	void S10_an_audit_log_within_its_retention_stays() {
+	void SEC10_an_audit_log_within_its_retention_stays() {
 		UUID adminUserId = UUID.randomUUID();
 		givenAdminAuditLog(adminUserId, yearsAgo(this.retention.auditLogYears() - 1));
 
@@ -109,7 +109,7 @@ class RetentionPurgeIntegrationTests extends ContainerTestBase {
 
 	/** 열람 감사도 같은 기간을 지킨다 (R12.3, S-5). */
 	@Test
-	void S10_an_access_audit_log_past_its_retention_is_gone() {
+	void SEC10_an_access_audit_log_past_its_retention_is_gone() {
 		UUID resourceId = UUID.randomUUID();
 		givenAccessAuditLog(resourceId, yearsAgo(this.retention.auditLogYears() + 1));
 
@@ -169,7 +169,7 @@ class RetentionPurgeIntegrationTests extends ContainerTestBase {
 
 	/** 파기는 <b>몇 건인지</b>를 돌려준다 — batch 가 그것만 로그에 남긴다 (§9.4, S-11). */
 	@Test
-	void S10_the_purge_reports_how_many_rows_it_removed() {
+	void SEC10_the_purge_reports_how_many_rows_it_removed() {
 		givenAdminAuditLog(UUID.randomUUID(), yearsAgo(this.retention.auditLogYears() + 1));
 		givenAdminAuditLog(UUID.randomUUID(), yearsAgo(this.retention.auditLogYears() + 1));
 

@@ -233,24 +233,31 @@ class StoryDetailApiIntegrationTests extends ContainerTestBase {
 				.andReturn().getResponse().getStatus();
 	}
 
-	/** 파사드가 막는지 보려면 막힐 데이터를 만들 수 있어야 한다. */
+	/**
+	 * 파사드가 막는지 보려면 막힐 데이터를 만들 수 있어야 한다.
+	 *
+	 * <p><b>#269 — {@code user} 는 {@code author_ref} 없이 존재할 수 없다.</b> 이 메서드는
+	 * 항상 {@code authorType = "user"}로만 불린다. 무작위 {@code UUID}는 개별 단언과
+	 * 무관하고, 제약(R13.1)을 만족시키는 것이 목적이다.
+	 */
 	private UUID insertStory(String authorType, String visibility, String reviewStatus) {
 		UUID id = UUID.randomUUID();
 		try (Connection connection = this.catalog.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
 						INSERT INTO story (id, slug, title, short_desc, description, world_intro,
-						                   author_type, visibility, review_status, current_version_id,
-						                   published_at, created_at)
-						VALUES (?, ?, '테스트 작품', '한 줄', '설명', '세계관', ?, ?, ?, ?, ?, ?)
+						                   author_type, author_ref, visibility, review_status,
+						                   current_version_id, published_at, created_at)
+						VALUES (?, ?, '테스트 작품', '한 줄', '설명', '세계관', ?, ?, ?, ?, ?, ?, ?)
 						""")) {
 			statement.setObject(1, id);
 			statement.setString(2, "detail-" + id);
 			statement.setString(3, authorType);
-			statement.setString(4, visibility);
-			statement.setString(5, reviewStatus);
-			statement.setObject(6, SEED_VERSION);
-			statement.setTimestamp(7, java.sql.Timestamp.from(Instant.parse("2026-08-20T00:00:00Z")));
+			statement.setObject(4, UUID.randomUUID());
+			statement.setString(5, visibility);
+			statement.setString(6, reviewStatus);
+			statement.setObject(7, SEED_VERSION);
 			statement.setTimestamp(8, java.sql.Timestamp.from(Instant.parse("2026-08-20T00:00:00Z")));
+			statement.setTimestamp(9, java.sql.Timestamp.from(Instant.parse("2026-08-20T00:00:00Z")));
 			statement.executeUpdate();
 		}
 		catch (SQLException ex) {

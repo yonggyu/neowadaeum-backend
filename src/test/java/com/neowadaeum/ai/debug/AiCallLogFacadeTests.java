@@ -60,7 +60,7 @@ class AiCallLogFacadeTests {
 	 * 막으려는 상태가 정확히 그것이다.
 	 */
 	@Test
-	void S5_a_failed_audit_blocks_the_read() {
+	void SEC5_a_failed_audit_blocks_the_read() {
 		givenCalls(1);
 		willThrow(new IllegalStateException("감사 기록 실패")).given(this.access)
 				.record(any(), any(), any());
@@ -71,7 +71,7 @@ class AiCallLogFacadeTests {
 
 	/** 행위자가 없으면 읽지 않는다 — 남길 대상이 없는 열람은 기록되지 않는 열람이다. */
 	@Test
-	void S5_an_anonymous_read_is_refused() {
+	void SEC5_an_anonymous_read_is_refused() {
 		assertThatThrownBy(() -> this.facade.recentCalls(SESSION_ID, null, 10))
 				.isInstanceOf(IllegalArgumentException.class);
 	}

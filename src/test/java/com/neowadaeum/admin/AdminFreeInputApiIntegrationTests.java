@@ -87,7 +87,7 @@ class AdminFreeInputApiIntegrationTests extends ContainerTestBase {
 
 	/** 승격 없이는 열리지 않는다 (S-4). */
 	@Test
-	void S4_without_a_step_up_free_input_is_forbidden() throws Exception {
+	void SEC4_without_a_step_up_free_input_is_forbidden() throws Exception {
 		givenAdmin();
 		UUID sessionId = givenSession(true);
 

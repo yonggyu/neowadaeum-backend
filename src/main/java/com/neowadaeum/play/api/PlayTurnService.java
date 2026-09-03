@@ -190,7 +190,7 @@ public class PlayTurnService {
 		PlaySession session = session(turn);
 
 		return toView(session, turn, version, outcome.endingIndex(),
-				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session, turn),
+				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session, version, turn),
 				this.notice.require("play"));
 	}
 
@@ -216,7 +216,7 @@ public class PlayTurnService {
 				.toList();
 
 		return toView(session, turn, version, endingIndexOf(visible, turn.getEndingId()),
-				turn.isEnding() ? visible.size() : null, reachRateOf(session, turn),
+				turn.isEnding() ? visible.size() : null, reachRateOf(session, version, turn),
 				this.notice.require("play"));
 	}
 
@@ -227,15 +227,19 @@ public class PlayTurnService {
 	 *
 	 * <p>엔딩 번호는 저장돼 있지 않다. 턴이 든 것은 엔딩 식별자이므로 그 버전의 정의에서 번호를
 	 * 찾는다 — 집계 키가 {@code (작품, 번호)} 이기 때문이다 (§2.6).
+	 *
+	 * <p>#276 — {@code version} 은 호출자가 이미 읽어 둔 값이다. 여기서 다시 조회하지 않는다
+	 * ({@code storyVersions} 재호출 금지) — 버전 조회는 catalog 쿼리 여러 개를 묶은 것이라 반복하면
+	 * 그 묶음이 통째로 두 번 나간다. {@code stories.reachRate(...)} 는 별개의 배치 집계값 조회이므로
+	 * 그대로 남는다.
 	 */
-	private Double reachRateOf(PlaySession session, Turn turn) {
+	private Double reachRateOf(PlaySession session, StoryVersionView version, Turn turn) {
 		if (!turn.isEnding() || turn.getEndingId() == null) {
 			return null;
 		}
-		return this.storyVersions.findByVersionId(session.getStoryVersionId())
-				.flatMap(version -> version.endings().stream()
-						.filter(ending -> ending.id().equals(turn.getEndingId()))
-						.findFirst())
+		return version.endings().stream()
+				.filter(ending -> ending.id().equals(turn.getEndingId()))
+				.findFirst()
 				.flatMap(ending -> this.stories.reachRate(session.getStoryId(), ending.endingNo()))
 				.orElse(null);
 	}
@@ -289,6 +293,8 @@ public class PlayTurnService {
 				// #259 — 세션이 들고 있는 값이다. 제목은 세션이 고정한 버전에서 온다 (I-4).
 				session.getStoryId(),
 				version.storyTitle(),
+				// #297 — 신고가 턴 하나를 가리키려면 턴에 이름이 있어야 한다. 이미 있던 기본키다.
+				turn.getId(),
 				turn.getTurnNo(),
 				turn.getChapterNo(),
 				chapterTitle(version, turn.getChapterNo()),
