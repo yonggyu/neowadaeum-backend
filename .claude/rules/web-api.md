@@ -15,6 +15,7 @@ paths:
 - **nullable 필드는 키를 생략하지 않고 `null`로 명시한다** (`speakerName` · `sceneImage` · `endingId` · `reachRate`). 프론트가 키 존재 여부로 분기하지 않게 한다.
 - `docs/openapi.yaml`이 런타임 진실의 원천이다. 계약을 바꾸면 함께 고친다.
 - **성공 응답은 AI 고지 문구를 싣거나, 왜 싣지 않는지 말한다** (#291, §13-52). 2xx 의 JSON 본문 스키마는 `noticeText` 를 `required` 로 갖거나 `x-notice-exempt: '<이유>'` 를 적는다. **기본이 "싣는다"** 이므로 새 응답을 만들면서 둘 다 하지 않으면 `OpenApiContractTests` 가 깨진다 — 표시를 잊어서 조용히 새던 것이 #257 · #284 · #289 였다.
+- **단위가 있는 수치는 계약이 단위를 말한다** (#275, §13-53). 이름이 `Rate` · `Percent` · `Ms` · `Micro` · `Tokens` · `Bytes` · `Cost` 로 끝나는 수치 필드는 `description` 에 단위를 적고, 비율은 `minimum` · `maximum` · `examples` 까지 갖는다. **카운터(`turnNo` · `order`)는 대상이 아니다** — 거기까지 강제하면 규칙이 소음이 된다.
 
 ## 에러 응답
 
