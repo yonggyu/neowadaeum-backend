@@ -168,7 +168,13 @@ public class OllamaStoryProvider implements StoryProvider {
 		return content;
 	}
 
-	/** B-25 와 같은 형태로 남긴다. {@code cost_micro} 는 로컬 실행이라 <b>개념 자체가 없다.</b> */
+	/**
+	 * B-25 와 같은 형태로 남긴다.
+	 *
+	 * <p><b>{@code cost_micro_krw} 는 여기서 영영 {@code null} 이다</b> (#311, §13-53). 로컬
+	 * 실행이라 벤더 단가라는 개념 자체가 없다 — 0 을 넣지 않는다. 0 은 <b>"이 호출은 공짜였다"는
+	 * 사실 진술</b>이고, 전기와 하드웨어를 세지 않기로 한 것과는 다른 문장이다.
+	 */
 	private void record(AiPurpose purpose, ObjectNode body, JsonNode response, long startedAt, String safetyFlags) {
 		this.recorder.record(new AiCallLog.Draft(
 				null, null, purpose.wireValue(), PROVIDER_ID, body.path("model").asString(""),

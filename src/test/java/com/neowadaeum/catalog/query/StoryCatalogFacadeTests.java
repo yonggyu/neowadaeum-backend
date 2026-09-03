@@ -44,6 +44,10 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	@Autowired
 	private Clock clock;
 
+	/** #290 — 검수 시각은 authoring 이 소유한 표에서 온다. 파사드는 계약만 안다 (§13-57). */
+	@Autowired
+	private com.neowadaeum.common.spi.StoryReviewTimesQuery reviewTimes;
+
 	private final List<UUID> created = new java.util.ArrayList<>();
 
 	private final List<UUID> createdProfiles = new java.util.ArrayList<>();
@@ -133,13 +137,32 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 		assertThat(community).doesNotContain(pending, rejected, privateStory);
 	}
 
-	/** {@code unlisted} 는 보인다 — {@code private} 만 가린다 (R2.3). */
+	/**
+	 * <b>{@code unlisted} 는 목록에 오르지 않는다</b> (§13-54).
+	 *
+	 * <p>{@code unlisted} 는 사람 검수를 요구하지 않는 범위다 (R8.6). 목록에 올리면 사람이
+	 * 본 적 없는 작품을 둘러보던 사람이 그냥 만나고, #306 이 그 목록을 익명에게 열었다.
+	 */
 	@Test
-	void R2_3_unlisted_is_not_private() {
+	void S13_54_unlisted_stories_are_not_listed() {
 		UUID unlisted = insertStory("user", "unlisted", "approved");
 
 		assertThat(this.facade.cards(section("community"), null, null).stories())
-				.extracting(StoryCardView::storyId).contains(unlisted);
+				.extracting(StoryCardView::storyId).doesNotContain(unlisted);
+	}
+
+	/**
+	 * <b>그러나 링크로는 닿는다</b> (§13-54).
+	 *
+	 * <p>목록에서 뺀 것이 곧 {@code private} 이 되는 것은 아니다. 두 값이 같아지면 셋 중
+	 * 하나가 뜻을 잃는다 — {@code unlisted} 는 <b>목록에 없되 주소를 아는 사람은 읽는</b>
+	 * 상태이며, 그것이 {@code public} 과 갈라지는 유일한 지점이다.
+	 */
+	@Test
+	void S13_54_unlisted_stories_stay_reachable_by_id() {
+		UUID unlisted = insertStory("user", "unlisted", "approved");
+
+		assertThat(this.facade.detail(unlisted)).isPresent();
 	}
 
 	/**
@@ -254,7 +277,8 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 		}
 
 		AtomicInteger statements = new AtomicInteger();
-		StoryCatalogFacade counted = new StoryCatalogFacade(countingDataSource(statements), this.clock);
+		StoryCatalogFacade counted = new StoryCatalogFacade(countingDataSource(statements), this.clock,
+				this.reviewTimes);
 
 		statements.set(0);
 		counted.cards(section("community"), null, 2);

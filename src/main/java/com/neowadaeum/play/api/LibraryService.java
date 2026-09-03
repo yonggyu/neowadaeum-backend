@@ -13,6 +13,7 @@ import com.neowadaeum.play.repository.PlaySessionRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,9 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>고지 문구도 여기서 싣는다</b> (#257). 이 화면의 Footer 가 그것을 상시 표시하므로, 주지
  * 않으면 클라이언트가 {@code /landing} 을 한 번 더 부른다.
+ *
+ * <p><b>주체가 없을 수 있다</b> (§13-54, 이슈 #306). 이 화면은 인증 밖으로 열렸고, 익명이면
+ * <b>로그인해야 의미가 있는 것만</b> 빈다 — 작품 목록과 장르는 그대로 나간다.
  */
 @Service
 public class LibraryService {
@@ -59,10 +63,11 @@ public class LibraryService {
 	/**
 	 * 화면 2.1 한 벌.
 	 *
+	 * @param playerRef 요청 주체. <b>익명이면 비어 있다</b> (§13-54) — 예외가 아니라 정상이다
 	 * @throws ApiException {@code INTERNAL_ERROR} — 고지 문구가 설정되지 않았다. 랜딩과 <b>같은
 	 *     판단</b>이다 (R11.1, §11) — 빈 문자열로 흡수하면 고지가 없는 상태가 정상으로 보인다
 	 */
-	public LibraryView library(UUID playerRef) {
+	public LibraryView library(Optional<UUID> playerRef) {
 		String noticeText = this.notice.require("library");
 
 		List<GenreView> genres = this.stories.genres();
@@ -85,7 +90,7 @@ public class LibraryService {
 	/**
 	 * 섹션 단위 조회 (§13.2 — 재시도와 더 보기).
 	 *
-	 * <p>이 경로는 {@link #library(UUID)} 없이 단독으로 열린다 — Footer 를 그리려면 이 응답이
+	 * <p>이 경로는 {@link #library(Optional)} 없이 단독으로 열린다 — Footer 를 그리려면 이 응답이
 	 * 고지 문구를 직접 실어야 한다 (#289).
 	 *
 	 * @throws ApiException {@code NOT_FOUND} — 모르는 섹션 키. <b>빈 섹션으로 흡수하지 않는다</b>
@@ -122,12 +127,18 @@ public class LibraryService {
 	 * <p><b>자기 것만이다</b> — 조회가 {@code playerRef} 로만 이루어지므로 남의 세션이 섞일
 	 * 경로가 없다 (I-3).
 	 *
+	 * <p><b>익명이면 빈 배열이다</b> (§13-54, 이슈 #306). {@code null} 을 넣어 조회하지 않는다 —
+	 * 주인이 없는 요청에 "진행 중인 세션"이라는 질문 자체가 성립하지 않는다.
+	 *
 	 * <p>세션이 고정한 버전으로 작품 정보를 읽는다 (I-4). 새 버전이 발행돼도 이어하기 카드는
 	 * <b>그 세션이 보던 챕터</b>를 가리킨다.
 	 */
-	private List<LibraryView.ContinueSessionView> continueSessions(UUID playerRef) {
+	private List<LibraryView.ContinueSessionView> continueSessions(Optional<UUID> playerRef) {
+		if (playerRef.isEmpty()) {
+			return List.of();
+		}
 		List<PlaySession> active = this.sessions
-				.findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(playerRef,
+				.findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(playerRef.get(),
 						SessionStatus.ACTIVE, CONTINUE_LIMIT);
 		if (active.isEmpty()) {
 			return List.of();

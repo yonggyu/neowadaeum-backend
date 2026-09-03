@@ -94,7 +94,12 @@ paths:
               $ref: '#/components/schemas/OAuthLoginRequest'
       responses:
         '200':
-          description: 발급된 토큰
+          description: |
+            발급된 액세스 토큰. **리프레시 토큰은 본문에 없다** — `Set-Cookie` 로만 나간다
+            (ADR-0008, 이슈 #278).
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
           content:
             application/json:
               schema:
@@ -111,23 +116,46 @@ paths:
       tags: [auth]
       operationId: refreshToken
       summary: 액세스 토큰 재발급
+      description: |
+        **요청에 본문이 없다** (ADR-0008, 이슈 #278). 자격 증명은 로그인·재발급이 구운
+        `HttpOnly` 쿠키 하나이며, 브라우저가 이 경로에만 자동으로 붙인다.
+
+        **이 경로 하나만 CSRF 토큰을 요구한다.** `/api/v1/**` 의 나머지는 면제 그대로다 —
+        거기에는 브라우저가 자동으로 붙이는 자격 증명이 없기 때문이다.
+
+        - 쿠키가 없거나 유효하지 않다 → `401 UNAUTHENTICATED`
+        - CSRF 토큰이 없거나 쿠키와 다르다 → `403 FORBIDDEN`
+
+        호출하는 쪽은 **자격 증명을 실어야 한다** (`credentials: 'include'`). 실지 않으면
+        브라우저가 쿠키를 붙이지 않고, 응답의 `Set-Cookie` 도 버린다.
       security: []
       x-implemented-by: B-12
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          schema:
+            type: string
+          description: |
+            `XSRF-TOKEN` 쿠키에서 읽은 값을 그대로 돌려보낸다 (double-submit). 서버는 모든
+            `/api/v1/**` 응답에 그 쿠키를 갱신하므로 별도로 발급받는 경로가 없다.
       responses:
         '200':
-          description: 재발급된 토큰
+          description: |
+            재발급된 액세스 토큰. **리프레시 토큰은 본문에 없다** — 새 쿠키가 함께 나간다.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── §13.2 Library ───────────────────────────────────────────
   /api/v1/library:
@@ -140,6 +168,21 @@ paths:
 
         진행률은 `progressPercent` 가 아니라 `chapterNo` / `totalChapters` 로 준다 (R13.2) —
         AI 생성이라 챕터당 턴 수가 가변이므로 백분율에 근거가 없다.
+
+        **인증 없이 열린다** (§13-54, #306). 탐색은 로그인 이전의 화면이며, 플레이하려 할 때
+        로그인한다. 토큰을 함께 보내면 같은 응답에 **자기 것**이 채워진다.
+
+        **익명 요청에서는 `continueSessions` 가 빈 배열이다** — 진행 중인 세션은 주인이 있어야
+        성립하는 값이다. 그 밖의 필드(`genres` · `sections` · `noticeText`)는 같다.
+
+        **보이는 작품은 인증 여부로 달라지지 않는다** (I-8, R2.3). 승인·공개 조건은 서버가 목록
+        질의 한 곳에서 걸며, 인증이 그 조건을 대신한 적이 없다.
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8). `GET /api/v1/stories/{storyId}` ·
+        `GET /api/v1/library/sections/{sectionKey}` 와 **같은 창을 쓰고**, `GET /api/v1/landing` ·
+        `GET /api/v1/consents` 와는 **다른 창을 쓴다** — 탐색이 가입 경로의 창을 소진하면
+        둘러보던 사람이 약관을 읽지 못한다 (§13-54).
+      security: []
       x-implemented-by: B-15
       responses:
         '200':
@@ -148,14 +191,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LibraryResponse'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/library/sections/{sectionKey}:
     get:
       tags: [library]
       operationId: getLibrarySection
       summary: 섹션 단위 재시도
+      description: |
+        **인증 없이 열린다** (§13-54, #306). `GET /api/v1/library` 와 같은 이유이며 응답에
+        개인 필드가 없다 — **익명이든 아니든 같은 값**이다.
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8). 탐색 셋이 **같은 창을 쓴다**.
+      security: []
       x-implemented-by: B-15
       parameters:
         - $ref: '#/components/parameters/SectionKey'
@@ -172,10 +221,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LibrarySection'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── §13.3 Story Detail ──────────────────────────────────────
   /api/v1/stories/{storyId}:
@@ -188,6 +237,19 @@ paths:
 
         `totalEndings` 는 `isSecret = false` 인 엔딩만 센다 (R7.11).
         UGC 는 `authorDisplayName`(닉네임)을 표시한다. `playerRef` 는 노출하지 않는다 (§13-7).
+
+        **인증 없이 열린다** (§13-54, #306). 목록에서 들어온 사람이 로그인 없이 작품을 볼 수 있고,
+        플레이하려 할 때 로그인한다.
+
+        **익명 요청에서는 `mySession` 이 `null` 이다** — 세션이 없는 회원과 같은 모양이라
+        클라이언트가 분기를 하나 더 갖지 않는다. `story` 와 `characters` 는 같다.
+
+        **볼 수 없는 작품은 `404` 다 — 익명이든 아니든 같다** (I-8). 승인되지 않았거나 `private`
+        인 작품은 **없는 것과 구분되지 않는다**. `403` 을 쓰지 않는 이유는 그것이 작품의 존재를
+        알리기 때문이다.
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8). 탐색 셋이 **같은 창을 쓴다**.
+      security: []
       x-implemented-by: B-16
       parameters:
         - $ref: '#/components/parameters/StoryId'
@@ -198,8 +260,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StoryDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [authoring]
+      operationId: deleteStory
+      summary: 작품 삭제 (작성자)
+      description: |
+        **작성자 본인만** 지운다 (I-8). 공식 작품(`authorType = official`)은 이 경로로 지워지지
+        않는다 — 작성자가 없으므로 어떤 요청자와도 일치하지 않는다.
+
+        **되돌릴 수 없다.** 복구 경로를 두지 않는다 — 사용자에게 '삭제'라고 말한 이상
+        되돌릴 수 있게 두는 쪽이 거짓말이다. 지운 뒤 이 작품은 목록·상세·이어하기 어디에도
+        없고, 작성자의 "내 작품"에서도 사라진다. 다시 내려면 원고를 **새로 제출**한다
+        (그 제출은 새 작품이 된다).
+
+        **진행 중 세션은 없어진 작품과 같은 답을 받는다** — 다음 턴 요청은
+        `423 STORY_SUSPENDED`(읽기 전용)이고, `resume` 은 `storySuspended` 다. 이미 읽은 턴과
+        히스토리는 그대로 열린다. 정지(`suspended`)와 구분해 알리지 않는다 — 이어갈 수 없다는
+        사실은 같고, 구분하면 작성자의 처분이 독자에게 드러난다.
+
+        **기록은 남는다** (§13-44 와 같은 근거). 세션·턴·GameState 스냅샷·엔딩 도달률과
+        신고·검수 이력은 지워지지 않는다 — 그것은 플레이한 사람들과 검수의 기록이지
+        작성자의 것이 아니다. 내부 상태는 `reviewStatus = deleted` 이며, 그 값은 어떤 응답에도
+        실리지 않는다(지운 작품이 조회되지 않으므로).
+
+        이미 지워진 작품을 다시 지우면 `404` 다. 없는 작품·남의 작품과 구분하지 않는다.
+      x-implemented-by: '#290'
+      parameters:
+        - $ref: '#/components/parameters/StoryId'
+      responses:
+        '204':
+          description: 삭제됨. 본문 없음
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -443,6 +541,48 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+    patch:
+      tags: [me]
+      operationId: updateMe
+      summary: 표시명 설정·변경
+      description: |
+        **표시명을 만드는 유일한 경로다** (#271). 읽는 곳은 셋인데(작품 상세 · 커뮤니티 카드 ·
+        `GET /api/v1/me`) 쓰는 곳이 없어서, 실사용에서 `displayName` 이 항상 `null` 이었다.
+
+        **설정과 변경이 같은 요청이다.** 프로필이 없으면 만들고 있으면 바꾼다 — 화면이 어느
+        쪽인지 먼저 물어볼 필요가 없다.
+
+        **저장된 값이 보낸 값과 다를 수 있다.** 서버가 정규화한다 — NFC · 양끝 공백 제거 ·
+        내부 연속 공백 하나로. 그래서 응답이 `MeResponse` 이며, 화면은 **돌려받은 값을**
+        저장된 이름으로 쓴다.
+
+        **중복을 막지 않는다.** `author_profile` 에 표시명 유일 제약이 없고 (`catalog/V7` ·
+        `catalog/V11`), 이 작업은 제약을 새로 만들지 않는다 — 같은 이름을 가진 회원이 둘 이상
+        있을 수 있으며 화면은 표시명을 **식별자로 쓰지 않는다.** 그래서 `409` 가 없다.
+
+        **정지·탈퇴 회원은 `403` 이다.** 액세스 토큰은 탈퇴 후에도 만료 전까지 살아 있으므로
+        (R12.5), 막지 않으면 파기 배치가 익명으로 바꿔 둔 이름을 되돌릴 수 있다.
+      x-implemented-by: '#271'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: 바뀐 내 계정
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
     delete:
       tags: [me]
       operationId: withdraw
@@ -521,6 +661,35 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
 
   # ── §13.8 작품 만들기 ───────────────────────────────────────
+  /api/v1/authoring/metadata:
+    get:
+      tags: [authoring]
+      operationId: getAuthoringMetadata
+      summary: 작품 만들기 메타데이터 — 장르 · 조건 템플릿
+      description: |
+        작성자가 **고를 수 있는 값**을 한 번에 준다 (§13-56, 이슈 #282 · #315).
+
+        **클라이언트가 이 목록을 소스에 적지 않는다.** 결정은 있었지만(장르 §13-25 · 조건 템플릿
+        §13-35) 전달 경로가 없어 프론트가 키와 한국어 라벨을 상수로 들고 있었다 — 목록이 바뀌는
+        날부터 옛 목록을 보여 주고, 서버가 거부할 때까지 아무도 모른다. `noticeText`(#257) ·
+        `ConsentItem.version`(#261) 과 같은 종류의 문제다.
+
+        **둘을 한 경로로 묶은 이유**는 같은 화면(작품 만들기)이 같은 시점에 둘 다 필요로 하기
+        때문이다. 나누면 화면 하나가 왕복을 둘 하고, 새 항목이 생길 때마다 경로가 는다.
+
+        **작성자 경로이므로 토큰이 필요하다.** `/api/v1/consents` 가 열려 있는 것은 **가입 전에**
+        불리기 때문이고, 이 경로는 그렇지 않다.
+      x-implemented-by: '#282'
+      responses:
+        '200':
+          description: 고를 수 있는 장르와 조건 템플릿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthoringMetadataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/v1/authoring/drafts:
     get:
       tags: [authoring]
@@ -637,6 +806,92 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/authoring/drafts/{draftId}/images:
+    post:
+      tags: [authoring]
+      operationId: issueDraftImageUpload
+      summary: 커버·초상 이미지 업로드 URL 발급
+      description: |
+        **파일이 서버를 거치지 않는다** (§13-65). 서버가 업로드 URL 을 서명하고 브라우저가
+        저장소로 직접 PUT 한다. 그래서 이 계약에 `multipart` 가 없다.
+
+        **키(경로)는 서버가 정한다.** 요청은 자리(`slot`)와 형식만 고른다 — 클라이언트가 경로를
+        정하면 남의 원고 자리에 덮어쓸 수 있다.
+
+        **형식은 `image/jpeg` · `image/png` · `image/webp` 뿐이고, 크기 상한은 5 MiB 다.**
+        형식은 서명이 건다 — `Content-Type` 이 서명된 헤더에 들어가므로 다른 형식으로 올리면
+        저장소가 거절한다. 업로드 요청에 `contentType` 과 **같은 값**을 실어야 한다.
+        크기는 서명으로 묶이지 않으므로 확정(`/commit`)이 확인한다.
+
+        **커버·초상 이미지는 사람 검수 대상이다** (I-8). 그리고 **버킷은 비공개다** —
+        영구 공개 URL 이 존재하지 않으므로, 승인 전 이미지가 타인에게 닿는 경로가 없다.
+        여기서 나가는 URL 은 업로드용이며 짧게 만료된다.
+
+        원고 소유자만 발급받는다. 남의 원고는 `404` 다.
+      x-implemented-by: B-51
+      parameters:
+        - $ref: '#/components/parameters/DraftId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageUploadRequest'
+      responses:
+        '200':
+          description: 발급된 업로드 자리
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageUploadResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/authoring/drafts/{draftId}/images/commit:
+    post:
+      tags: [authoring]
+      operationId: commitDraftImageUpload
+      summary: 업로드 확정
+      description: |
+        **서버가 올라온 바이트를 확인한다** (§13-65). 브라우저가 직접 올리므로 서버는 본문을
+        보지 못한다 — 확인하지 않으면 5 MiB 상한과 형식 제한은 **클라이언트가 지키기로 한
+        약속**일 뿐이다.
+
+        확인은 저장소에 물어본다. 형식이 목록 밖이거나 상한을 넘었으면 **그 객체를 지우고**
+        `400` 이다. 확정되지 않은 키는 확인된 적이 없는 키이며, 원고에 적을 값이 아니다.
+
+        **이 원고의 키만 받는다.** 발급을 받았다는 사실이 아무 키나 확정할 수 있다는 뜻은 아니다.
+
+        **응답에 이미지 URL 이 없다** (I-8). 원고에 적는 값은 `objectKey` 이며, 키를 아는 것과
+        이미지를 보는 것은 다르다 — 버킷이 비공개이므로 서버가 서명해 주지 않으면 아무도 열지
+        못한다. 열람 경로는 소유자·검수자에 한해 뒤에 연다.
+      x-implemented-by: B-51
+      parameters:
+        - $ref: '#/components/parameters/DraftId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageCommitRequest'
+      responses:
+        '200':
+          description: 확인된 이미지
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageCommitResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -831,6 +1086,68 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/v1/stories/{storyId}/appeal:
+    post:
+      tags: [authoring]
+      operationId: appealStorySuspension
+      summary: 정지된 작품의 재검토 요청
+      description: |
+        **자동으로 내려간 것을 사람이 다시 보는 길이다** (#290, §13-59). 신고 누적으로
+        `suspended` 가 된 작품은 사람이 판정한 결과가 아니라 **셈**의 결과이며 (R8.9, §13-41),
+        그것에 대고 작성자가 말할 자리가 없으면 정지 화면의 "이의가 있으면 문의해 주세요"는
+        안내가 아니라 방치다.
+
+        **이 요청은 작품의 상태를 바꾸지 않는다.** 정지된 작품은 **이미** 인간 검수 큐에 있다
+        (§13-41 — 큐가 `in_review` 와 `suspended` 를 함께 본다). 여기서 `reviewStatus` 를
+        움직이면 작성자가 검수 결과를 되돌리는 길이 된다 (I-8). 바뀌는 것은 둘이다.
+
+        - **기록** — 작성자가 다투었다는 사실과 그 사유
+        - **신호** — 검수 큐의 `ReviewQueueItem.appealed` 가 `true` 가 된다
+
+        **순서는 바꾸지 않는다.** 요청은 공짜이므로 앞세우면 줄을 사는 길이 되고, 아직
+        아무도 보지 못한 작품들이 그만큼 밀린다.
+
+        **정지 건마다 한 번이다.** 사람이 판정하면(통과든 반려든) 그 요청은 답을 받은 것이
+        되고, 다시 정지되면 다시 요청할 수 있다. 답을 받기 전 두 번째 요청은 `409` 다.
+
+        **사람이 반려한 작품(`rejected`)은 대상이 아니다.** 이미 사람이 본 결과이며, 고쳐서
+        다시 내는 길이 그쪽에 있다 (§13-40).
+
+        **본문을 되돌려주지 않는다.** 되돌려줄 것이 없다 — 상태는 그대로 `suspended` 이고
+        그 값은 `GET /api/v1/me/stories` 가 이미 준다.
+      x-implemented-by: B-57
+      parameters:
+        - $ref: '#/components/parameters/StoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppealRequest'
+      responses:
+        '202':
+          description: 접수됨. 복구를 약속하지 않는다 — 판정은 사람이 한다
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            재검토를 요청할 수 있는 자리가 아니다.
+
+            - `STORY_NOT_SUSPENDED` — 내려가지 않은 작품이다
+            - `ALREADY_EXISTS` — 이번 정지에 대해 이미 요청했고 아직 답을 받지 않았다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: STORY_NOT_SUSPENDED
+                message: 지금은 재검토를 요청할 수 없어요.
+                details: {}
 
   # ── §13.9 신고 ──────────────────────────────────────────────
   /api/v1/reports:
@@ -1259,6 +1576,52 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /api/v1/admin/reviews/{storyId}:
+    get:
+      tags: [admin]
+      operationId: readReviewManuscript
+      summary: 검수 원고 열람
+      description: |
+        **검수자가 무엇을 보고 판정하는가** (#316, §13-61). 큐(`listReviewQueue`)는 제목과
+        상태만 주고 원고 본문을 담지 않는다 — 그것만 보고 누르는 승인은 검수가 아니다.
+
+        **세 조건은 이 문에도 서 있다** (S-4). 여기 열리는 것은 **아직 아무도 보지 못한
+        작품의 원문**이며, 그것이 새면 검수 전 UGC 가 새는 것과 같다 (I-8).
+
+        **열람 자체가 기록 대상이다** (R12.3, S-5). 관리자 행위(R14.5)와 별개로 **원문 열람**이
+        남으며, 기록에 실패하면 원문은 나가지 않는다.
+
+        **작성자는 표시명으로만 온다** (§13-7, I-3). `player_ref` 는 이 응답에 나가지 않는다.
+
+        **미리보기 3턴은 담기지 않는다.** 미리보기는 임시 `draft` · `private` 작품과 그 세션을
+        따로 만들고 (§13-5), 제출은 그것과 **별개의 작품**을 발행한다 — 검수 대상 작품에서 그
+        턴으로 가는 길이 없다. 있는 척하는 필드를 두는 대신 비워 두고 §13-61 에 적었다.
+
+        **가장 마지막 버전을 본다** (R8.8). 승인이 현재로 만드는 것이 그 버전이므로, 판정과
+        열람이 다른 버전을 보면 승인된 적 없는 원고가 열린다.
+      x-implemented-by: B-55
+      parameters:
+        - name: storyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/AdminStepUp'
+      responses:
+        '200':
+          description: 판정에 필요한 원고 한 벌
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewManuscript'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/admin/reviews/{storyId}/verdict:
     post:
       tags: [admin]
@@ -1283,6 +1646,21 @@ paths:
         **기다리는 중인 작품만 판정할 수 있다.** 이미 처리된 것에 다시 판정이 오면
         `409 REVIEW_NOT_PENDING` 이다 — 두 검수자가 같은 작품을 각자 열어 두면 나중에
         누른 쪽이 이기고, 진 쪽은 자기 판정이 사라진 줄도 모른다.
+
+        **`suspend` 는 사람이 손으로 내리는 정지다** (§13-64, R8.9). 자동 정지는 신고
+        임계가 하지만, 임계에 닿지 않은 것을 사람이 보고 내려야 할 때가 있다.
+
+        - **`approved` 인 작품에만 쓴다.** 다른 셋과 조건이 반대다 — 정지의 대상은 이미
+          게시돼 돌아다니는 작품이고, 그런 작품은 정의상 큐에 없다. 아니면
+          `409 REVIEW_NOT_PENDING` 이며, **이미 `suspended` 인 작품도 여기 해당한다**
+          (멱등하지 않다 — 두 번 내리면 이력에 두 사건으로 남는다).
+        - **가시성을 건드리지 않는다** (§13-41). 그래야 나중에 `pass` 로 통과시킬 때
+          **내려가기 전 그 자리**로 돌려놓을 수 있다.
+        - 정지된 작품은 검수 큐에 남으며, 이어지는 판정은 `pass` 또는 `reject` 다.
+
+        **'작성자 경고'는 이 계약에 없다** (§13-64). 알림 채널이 없어 지금 만들면 갈 곳이
+        없기 때문이다. 작성자는 `getDraftReview` · `getMyStories` 의 `reviewStatus` 로
+        정지 사실을 본다.
       x-implemented-by: B-55
       parameters:
         - name: storyId
@@ -1323,6 +1701,86 @@ paths:
                 error: REVIEW_NOT_PENDING
                 message: 이미 처리된 검수예요.
                 details: {}
+
+  /api/v1/admin/reviews/{storyId}/reports:
+    get:
+      tags: [admin]
+      operationId: listStoryReports
+      summary: 이 작품에 무엇이 신고됐는가
+      description: |
+        **별도의 큐가 아니다.** 임계에 닿은 작품은 이미 같은 인간 검수 큐에 `suspended` 로
+        올라와 있고 (§13-41), 없던 것은 **그 안에서 무엇이 신고됐는가**였다. 이 경로가
+        없으면 검수자는 제목과 상태만 보고 판정하게 된다.
+
+        **둘을 함께 준다.** 사유별 집계는 *무엇이 몇 건인지*를, 개별 목록은 *언제 어떤 턴이
+        걸렸는지*를 답한다 — 나누면 검수자가 두 번 요청해야 하고 그 사이에 집계와 목록이
+        다른 시점을 가리킨다.
+
+        **작품 신고만 온다** (§13-41). 턴 신고에서 작품을 알아내려면 `authoring` 이 `play` 의
+        세션 표를 읽어야 하고, 스토어가 다르며(§5.3) 그 참조는 애플리케이션 레벨에서도 열려
+        있지 않다. 정지 임계가 세는 것과 검수자가 보는 것이 같아야 **왜 내려갔는지**가
+        화면에서 설명된다.
+
+        **신고자를 담지 않는다** (I-3, §13-62). 누가 신고했는지는 판정에 쓰이지 않으며,
+        신고자가 쓴 자유 문장(`detail`)도 나가지 않는다 — 그 안에는 신고자를 특정하는 말과
+        걸린 표현이 그대로 들어 있다 (S-11).
+
+        **읽는 것도 감사에 남는다** (R14.5).
+      x-implemented-by: B-57
+
+  /api/v1/admin/reviews/{storyId}/history:
+    get:
+      tags: [admin]
+      operationId: getReviewHistory
+      summary: 지난 검수 판정
+      description: |
+        **검수 이력은 append-only 다** (I-5). 같은 작품에 판정이 여러 번 쌓이고 — 재제출 ·
+        `unlisted → public` 승격 · 재스캔 · 샘플링 · 사람 판정 — 마지막 하나만 보면 **왜
+        그렇게 됐는지**를 잃는다. 검수자가 지금 보는 작품이 **전에 무엇으로 걸렸던 작품인지**는
+        판정에 직접 쓰인다.
+
+        최근 판정부터 온다. **작품 하나의 이력이다** — 화면 전체의 처리 이력(최근 판정을
+        작품과 무관하게 시간순으로)은 이 경로가 답하지 않는다 (§13-63).
+
+        **검수자를 담지 않는다** (I-3). `reviewer_ref` 는 `player_ref` 이고, **누가
+        판정했는지**를 답하는 자리는 관리자 감사 기록이다.
+
+        **`note` 는 담는다.** 이 경로는 관리자 전용이며 (S-4) 검수자가 문장을 적는 유일한
+        자리다 — 작성자가 보는 검수 상태 응답에는 카테고리만 간다 (R8.7, S-11).
+
+        **쪽을 나누지 않는다.** 한 작품의 기록은 제출 회차 수를 따라가므로 몇 건 수준이고,
+        커서를 두면 화면이 쓰지 않는 상태가 계약에 들어간다.
+      x-implemented-by: '#316'
+      parameters:
+        - name: storyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/AdminStepUp'
+      responses:
+        '200':
+          description: 사유별 집계와 개별 신고
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryReportsResponse'
+
+          description: 최근 판정부터. **판정이 없으면 빈 목록이다** — 없는 작품과 다른 사실이다
+          content:
+            application/json:
+              schema:
+                type: array
+                x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
+                items:
+                  $ref: '#/components/schemas/ReviewHistoryEntryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/admin/2fa/enroll:
     post:
@@ -1424,6 +1882,25 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: '`Authorization: Bearer <accessToken>`'
+
+  headers:
+    RefreshTokenCookie:
+      description: |
+        리프레시 토큰 (ADR-0008, 이슈 #278). **이 헤더가 리프레시 토큰이 나가는 유일한 자리다.**
+
+        속성 넷 중 셋을 서버가 고정한다.
+
+        - `HttpOnly` — JS 가 읽지 못한다. 이 결정의 이유 자체다
+        - `Path=/api/v1/auth/refresh` — 브라우저가 **다른 어떤 경로에도 붙이지 않는다**
+        - `SameSite=Strict` — 교차 사이트 요청에 붙지 않는다
+
+        `Secure` 만 배포 설정이며 배포된 모든 환경에서 켜진다. 수명은 리프레시 토큰의 수명과
+        같다.
+
+        **프론트가 이 값을 읽을 수 없고, 읽을 필요도 없다.** 재발급을 부를 때 브라우저가 붙인다.
+      schema:
+        type: string
+        examples: ['nwd_rt=<token>; Path=/api/v1/auth/refresh; Max-Age=2592000; HttpOnly; SameSite=Strict']
 
   parameters:
     AdminStepUp:
@@ -1676,6 +2153,7 @@ components:
         - SESSION_ALREADY_ACTIVE
         - ALREADY_EXISTS
         - REVIEW_NOT_PENDING
+        - STORY_NOT_SUSPENDED
         - SAFETY_BLOCKED
         - STORY_SUSPENDED
         - RETRY_COOLDOWN
@@ -1720,7 +2198,16 @@ components:
         `draft → pending → (auto_rejected | in_review) → (approved | rejected)`,
         `approved → suspended → (approved | rejected)` (§13-9).
         `auto_rejected` 는 내부 기록이며 사용자에게는 `rejected` 로 표시한다.
-      enum: [draft, pending, auto_rejected, in_review, approved, rejected, suspended]
+
+        `deleted` 는 **흡수 상태**다 (§13-58) — 어느 상태에서든 작성자가 `DELETE
+        /api/v1/stories/{storyId}` 로 들어올 수 있고 **나가는 전이는 없다**.
+        `visibility` 가 아니라 여기 있는 이유는 가시성이 작성자가 `PATCH` 로 되돌리는
+        다이얼이기 때문이다 — 거기 두면 가시성 변경 한 번이 삭제를 되돌린다.
+
+        **`deleted` 는 어떤 응답에도 실리지 않는다.** 지운 작품은 목록·상세·이어하기와
+        "내 작품" 어디에서도 조회되지 않으므로 이 값을 담을 응답이 없다. 열거에 두는 것은
+        상태 머신의 정의가 여기이기 때문이며, 클라이언트가 분기를 만들 값이 아니다.
+      enum: [draft, pending, auto_rejected, in_review, approved, rejected, suspended, deleted]
 
     # ── §13.1 인증 ──────────────────────────────────────────
     OAuthLoginRequest:
@@ -1784,11 +2271,15 @@ components:
           enum: [tos, privacy, ai_notice, age]
         version:
           type: string
-          description: '지금 유효한 판본. `service_config` 에서 온다 — 코드에 없다 (R10.2)'
+          description: |
+            지금 유효한 판본. `service_config` 에서 온다 — 코드에 없다 (R10.2). `tos` · `privacy`
+            는 `v<major>.<minor>` 표기이고, `ai_notice` 는 고지 자체의 날짜 판본, `age` 는 서버가
+            조립한다 — **셋의 모양이 서로 다르다** (§13-51, §13-24)
         documentUrl:
           type: [string, 'null']
           description: |
-            약관 본문 주소. **`null` 일 수 있다** — AI 사전 고지는 문구를 랜딩이 이미 내보내고
+            약관 본문 주소. 값이 있으면 **절대 URL** 이다 — 웹과 앱이 같은 값을 그대로 링크로
+            건다 (§13-51). **`null` 일 수 있다** — AI 사전 고지는 문구를 랜딩이 이미 내보내고
             (§13.10), 연령 확인은 문서가 존재하지 않는다
         required:
           type: boolean
@@ -1796,22 +2287,18 @@ components:
             가입에 **사용자의 동의**가 필요한가. `age` 만 `false` 이며 그것은 서버가 판정해
             스스로 기록하는 사실이다 (R10.2, §13-24)
 
-    RefreshRequest:
-      type: object
-      required: [refreshToken]
-      properties:
-        refreshToken:
-          type: string
-
     TokenResponse:
       x-notice-exempt: '인증·계정 화면이다. AI 생성물을 그리지 않으므로 사전 고지의 대상이 아니다'
       type: object
-      description: '`playerRef` 를 반환하지 않는다. 클라이언트가 알 필요가 없다'
-      required: [accessToken, refreshToken, tokenType, expiresIn]
+      description: |
+        `playerRef` 를 반환하지 않는다. 클라이언트가 알 필요가 없다.
+
+        **`refreshToken` 도 반환하지 않는다** (ADR-0008, 이슈 #278). 본문으로 한 번 주면 JS 가
+        읽었다는 뜻이고, 그러면 `HttpOnly` 가 주는 보장이 문장으로만 남는다. `RefreshRequest`
+        가 계약에서 사라진 것도 같은 이유다 — 본문으로도 보낼 수 있는 우회로를 남기지 않는다.
+      required: [accessToken, tokenType, expiresIn]
       properties:
         accessToken:
-          type: string
-        refreshToken:
           type: string
         tokenType:
           type: string
@@ -2384,7 +2871,8 @@ components:
 
     MyStoryItem:
       type: object
-      required: [storyId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount, updatedAt]
+      required: [storyId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount, updatedAt,
+                 submittedAt, reviewedAt]
       properties:
         storyId:
           type: string
@@ -2407,6 +2895,23 @@ components:
         updatedAt:
           type: string
           format: date-time
+        submittedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            **검수를 요청한 시각** (#290, §13-57). 제출 · 재제출 · `unlisted → public` 승격이
+            모두 이 시각을 새로 잡는다 — 기다린 시간을 세는 기준이 이것이다.
+
+            **`null`** — 검수를 요청한 적이 없다. 미리보기로만 만들어진 `draft` 작품이 그렇다.
+        reviewedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            그 회차에서 **사람이 마지막으로 판정한 시각** (#290, §13-57).
+
+            **`null`** — 아직 아무도 보지 않았거나, 사람을 거치지 않고 열린 작품이다
+            (`unlisted` 는 자동 검수만으로 승인된다). 재제출 · 승격 직후에도 `null` 로
+            돌아간다 — 지난 회차의 판정은 이번 신청에 대한 답이 아니다.
 
     # ── §13.8 작품 만들기 ───────────────────────────────────
     SafetyState:
@@ -2454,6 +2959,71 @@ components:
           type: object
           additionalProperties: true
 
+    ImageUploadRequest:
+      type: object
+      required: [slot, contentType]
+      properties:
+        slot:
+          type: string
+          enum: [cover, portrait]
+          description: 커버(1단계) 또는 캐릭터 초상(3단계)
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+          description: 업로드 요청에 **같은 값**을 실어야 한다 — 서명된 헤더다 (§13-65)
+
+    ImageUploadResponse:
+      x-notice-exempt: '업로드 자리를 발급할 뿐 AI 생성물을 보여 주지 않는다 — 사전 고지 Footer 를 그리는 화면이 아니다 (§13-52)'
+      type: object
+      required: [objectKey, uploadUrl, uploadMethod, contentType, maxBytes, expiresAt]
+      properties:
+        objectKey:
+          type: string
+          description: |
+            **서버가 정한 경로**다. 원고에 적는 값은 URL 이 아니라 이 키다 (§13-65).
+        uploadUrl:
+          type: string
+          format: uri
+          description: 브라우저가 직접 PUT 한다. 짧게 만료된다
+        uploadMethod:
+          type: string
+          enum: [PUT]
+        contentType:
+          type: string
+          description: 업로드 요청에 그대로 실어야 하는 값
+        maxBytes:
+          type: integer
+          format: int64
+          description: 이 자리에 올릴 수 있는 최대 **바이트** 수 (5 MiB). 확정에서 실제로 걸린다
+        expiresAt:
+          type: string
+          format: date-time
+          description: 업로드 URL 만료 시각 (UTC)
+
+    ImageCommitRequest:
+      type: object
+      required: [objectKey]
+      properties:
+        objectKey:
+          type: string
+          description: 발급이 돌려준 키. 서버가 **이 원고의 것인지** 다시 본다
+
+    ImageCommitResponse:
+      x-notice-exempt: '업로드 확인 결과이며 AI 생성물을 보여 주지 않는다 — 사전 고지 Footer 를 그리는 화면이 아니다 (§13-52)'
+      type: object
+      required: [objectKey, contentType, sizeBytes]
+      properties:
+        objectKey:
+          type: string
+          description: 원고에 적는 값. **URL 이 아니다** — 버킷은 비공개다 (I-8)
+        contentType:
+          type: string
+          description: 저장소가 말한 형식. 요청이 말한 값이 아니다
+        sizeBytes:
+          type: integer
+          format: int64
+          description: 저장된 **바이트** 수. 5 MiB 를 넘으면 이 응답이 나오지 않는다
+
     PrecheckRequest:
       type: object
       required: [fields]
@@ -2500,6 +3070,93 @@ components:
         message:
           type: string
 
+    AuthoringMetadataResponse:
+      x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
+      type: object
+      required: [genres, conditionTemplates]
+      properties:
+        genres:
+          type: array
+          description: |
+            작성자가 고를 수 있는 장르 (§13-25).
+
+            **정본은 `catalog` 의 `genre` 표다** — 코드에 다섯을 적으면 라이브러리가 보여 주는
+            목록과 작성자가 고를 수 있는 목록이 서로 다른 정본을 갖게 되고, 갈라지는 날
+            **작성자가 고른 장르로는 열리지 않는 섹션**이 생긴다 (#315). 순서는 `display_order` 다.
+          items:
+            $ref: '#/components/schemas/AuthoringGenre'
+        conditionTemplates:
+          type: array
+          description: |
+            작성자가 고를 수 있는 조건 템플릿 (R7.16, §13-35).
+
+            **키만으로는 조건이 완성되지 않는다** (#282, §13-56) — 필요한 입력은 각 항목의
+            `parameters` 가 선언한다. 정본은 **코드의 열거형**이다: 넷은 조건 평가기가 지원하는
+            형태이지 운영 데이터가 아니며, 표에 한 줄을 더해도 그것을 평가할 코드가 없다.
+          items:
+            $ref: '#/components/schemas/ConditionTemplateSpec'
+
+    AuthoringGenre:
+      type: object
+      required: [key, label]
+      properties:
+        key:
+          type: string
+          description: |
+            API 표기. 라이브러리 섹션 키 `genre:<key>` 및 `Genre.genreId` 와 **같은 값**이다.
+          examples: [romance]
+        label:
+          type: string
+          description: 화면 문구. **정본은 서버**이며 배포 없이 바뀔 수 있다
+          examples: [로맨스]
+
+    ConditionTemplateSpec:
+      type: object
+      required: [key, label, description, parameters]
+      properties:
+        key:
+          type: string
+          enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
+        label:
+          type: string
+          description: 사람이 읽는 문구. **정본은 서버**다 — 프론트가 옮기면 표시 문구의 정본이 하나 더 생긴다
+          examples: [호감도 이상]
+        description:
+          type: string
+          description: 이 조건이 언제 참인지를 작성자에게 설명하는 한 줄
+        parameters:
+          type: array
+          description: |
+            이 템플릿을 쓰려면 채워야 하는 값. **비어 있는 템플릿은 지금 없다.**
+
+            `affinity_at_least` 는 **대상 인물과 임계값** 둘을 요구하고, `has_flag` · `lacks_flag`
+            는 플래그 하나를, `turn_at_least` 는 턴 수를 요구한다 (#282).
+          items:
+            $ref: '#/components/schemas/ConditionTemplateParameter'
+
+    ConditionTemplateParameter:
+      type: object
+      required: [name, type, label]
+      properties:
+        name:
+          type: string
+          description: 값을 담을 자리의 이름. 템플릿 안에서 유일하다
+          examples: [character]
+        type:
+          type: string
+          enum: [character, flag, integer]
+          description: |
+            화면이 무엇을 그려야 하는가. **자유 텍스트 입력이 아니다** — 셋 다 고르는 것이다.
+
+            - `character` — **선택지는 이 응답이 주지 않는다. 작성 중인 원고의 캐릭터 목록에서
+              온다** (§13.8 의 3단계에서 작성자가 만든 인물들). 조건은 그 인물의 호감도를 본다
+            - `flag` — 선택지는 그 원고가 선언한 플래그 목록에서 온다
+            - `integer` — 정수 임계값
+        label:
+          type: string
+          description: 화면 문구. **정본은 서버**다
+          examples: [인물]
+
     OutlineResponse:
       x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
@@ -2521,8 +3178,9 @@ components:
             **클라이언트가 이 목록을 소스에 적지 않는다** — 목록이 바뀌는 날부터 옛 목록을 보여 주고,
             서버가 거부할 때까지 아무도 모른다 (`noticeText` · `ConsentItem.version` 과 같은 종류다).
 
-            **표시 라벨은 아직 여기 없다.** 키를 사람이 읽는 문구로 옮기는 자리와, `affinity_at_least`
-            처럼 대상·임계가 더 필요한 템플릿을 어떻게 표현할지는 정해지지 않았다 (#282).
+            **표시 라벨과 필요한 입력은 여기 없다.** 키를 사람이 읽는 문구로 옮기는 자리와,
+            `affinity_at_least` 처럼 대상·임계가 더 필요한 템플릿의 입력 선언은 `getAuthoringMetadata`
+            가 갖는다 (#282, §13-56) — 초안 응답은 **이 원고에서 고를 수 있는 키**만 말한다.
           items:
             type: string
             enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
@@ -2539,7 +3197,12 @@ components:
           type: string
         conditionTemplateKey:
           type: [string, 'null']
-          description: 조건은 **템플릿 선택만** 한다 (R7.16). 사용자가 DSL 을 직접 쓰지 않는다
+          description: |
+            조건은 **템플릿 선택만** 한다 (R7.16). 사용자가 DSL 을 직접 쓰지 않는다.
+
+            **키만으로는 조건이 완성되지 않는다 — 필요한 입력은 `getAuthoringMetadata` 가
+            선언한다** (#282, §13-56). 예를 들어 `affinity_at_least` 는 대상 인물과 임계값
+            둘을 더 요구하며, 그 둘은 이 키 안에 접혀 있지 않다.
 
     OutlineEnding:
       type: object
@@ -2557,6 +3220,12 @@ components:
             기본 엔딩은 조건을 갖지 않고, 일반 엔딩은 조건을 반드시 갖는다 (R2.11, §13-16).
         conditionTemplateKey:
           type: [string, 'null']
+          description: |
+            조건은 **템플릿 선택만** 한다 (R7.16).
+
+            **키만으로는 조건이 완성되지 않는다 — 필요한 입력은 `getAuthoringMetadata` 가
+            선언한다** (#282, §13-56). 기본 엔딩(`isDefault: true`)은 조건을 갖지 않으므로
+            이 값이 `null` 이다 (§13-16).
 
     SubmitRequest:
       type: object
@@ -2572,12 +3241,27 @@ components:
         visibility:
           $ref: '#/components/schemas/Visibility'
 
+    AppealRequest:
+      type: object
+      description: |
+        **사유는 필수다.** 정지된 작품은 이미 검수 큐에 있으므로 (§13-41), 사유 없는 요청은
+        검수자에게 아무것도 주지 않는다 — 그러면 이 경로는 큐를 다시 채우는 버튼일 뿐이다.
+
+        **이 문자열은 검수자만 읽는다** (S-11). 응답에도 검수 큐의 한 줄에도 실리지 않으며,
+        AI 페이로드로도 가지 않는다.
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
     ReviewStatusResponse:
       x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
       description: |
         검수 **비율·임계값을 노출하지 않는다.** 값을 알면 그 아래로 관리할 수 있다 (§13-12, S-11).
-      required: [storyId, reviewStatus, visibility, rejectReasons, updatedAt]
+      required: [storyId, reviewStatus, visibility, rejectReasons, updatedAt, submittedAt, reviewedAt]
       properties:
         storyId:
           type: [string, 'null']
@@ -2594,6 +3278,25 @@ components:
         updatedAt:
           type: string
           format: date-time
+          description: '**이 응답을 만든 시각이다.** 신청 시각도 승인 시각도 아니다 (#290)'
+        submittedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            **검수를 요청한 시각** (#290, §13-57). 제출 · 재제출 · `unlisted → public` 승격이
+            모두 이 시각을 새로 잡는다 — 기다린 시간을 세는 기준이 이것이다.
+
+            **`null`** — 검수를 요청한 적이 없다. 아직 제출하지 않은 원고(`draft`)와
+            자동 검수에서 반려되어 작품이 만들어지지 않은 경우가 그렇다.
+        reviewedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            그 회차에서 **사람이 마지막으로 판정한 시각** (#290, §13-57).
+
+            **`null`** — 아직 아무도 보지 않았거나, 사람을 거치지 않고 열린 작품이다
+            (`unlisted` 는 자동 검수만으로 승인된다). 재제출 · 승격 직후에도 `null` 로
+            돌아간다 — 지난 회차의 판정은 이번 신청에 대한 답이 아니다.
 
     # ── §13.9 신고 ──────────────────────────────────────────
     ReportRequest:
@@ -2765,15 +3468,18 @@ components:
           description: |
             Provider 호출에 걸린 시간, **밀리초**. 서버 몫이 아니라 **호출 하나**의 시간이다 —
             턴 전체의 지연은 `play.turn.duration` 이 따로 잰다.
-        costMicro:
+        costMicroKrw:
           type: [integer, 'null']
           description: |
-            호출 비용, **백만분의 1 단위**. 부동소수로 돈을 세지 않기 위한 정수 표현이다.
+            호출 비용, **원(KRW)의 백만분의 1 단위**. 부동소수로 돈을 세지 않기 위한 정수
+            표현이며, 통화는 KRW 다 (#311).
 
-            **통화가 정해지지 않았다** (#311). 지금은 어느 Provider 도 이 값을 채우지 않아
-            항상 `null` 이며 — Anthropic 은 단가가 벤더·모델별로 바뀌어서, Ollama 는 로컬
-            실행이라 개념이 없어서 — **값을 채우기 전에 통화를 정해야 한다.** 정하지 않은 채
-            어댑터마다 채우면 한쪽은 USD, 한쪽은 KRW 가 되고 합계는 뜻을 잃는다.
+            **이름이 통화를 든다.** 벤더 단가는 USD 로 고시되므로 통화를 정하지 않으면
+            어댑터마다 각자 가정하고, 그렇게 섞인 합계는 뜻을 잃는다.
+
+            **모르면 `null` 이다.** 서버는 환율을 갖지 않는다 — 모델별 KRW 단가가 설정에
+            있을 때만 채워진다. 단가가 없거나 Provider 가 usage 를 주지 않으면 `null` 이며,
+            지어낸 `0` 을 넣지 않는다. Ollama 는 로컬 실행이라 개념 자체가 없어 항상 `null` 이다.
         safetyFlags:
           type: string
           description: 세이프티 판정 결과 배열의 JSON 원문. 통과면 `[]`
@@ -2940,7 +3646,7 @@ components:
 
         **원고 본문도 담지 않는다.** 큐는 무엇을 볼 차례인지를 답하는 자리이며, 원문 열람은
         감사가 걸린 다른 문이다 (S-5).
-      required: [storyId, title, reviewStatus, queuedAt]
+      required: [storyId, title, reviewStatus, queuedAt, appealed]
       properties:
         storyId: { type: string, format: uuid }
         title: { type: string }
@@ -2959,6 +3665,118 @@ components:
           type: string
           format: date-time
           description: 언제부터 기다렸는가. 마지막 판정 시각이다
+        appealed:
+          type: boolean
+          description: |
+            **작성자가 이번 정지에 이의를 제기했고 아직 답을 받지 않았다** (#290, §13-59).
+
+            **사유는 담지 않는다** — 큐는 무엇을 볼 차례인지를 답하는 자리이고, 작성자가 쓴
+            글은 원고와 같은 문으로 본다 (S-5).
+
+            **판정의 근거가 아니다.** 이의는 다시 보라는 요청이지 통과시킬 이유가 아니며,
+            제기하지 않은 작품도 똑같이 사람이 본다. 큐의 순서도 바뀌지 않는다.
+
+    ReviewManuscript:
+      type: object
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
+      description: |
+        검수자가 보고 판정하는 것 (#316, §13-61).
+
+        **`playerRef` 가 없다.** 작성자는 표시명으로만 온다 (§13-7, I-3).
+
+        **미리보기 3턴이 없다.** 미리보기는 다른 작품을 만들고 (§13-5) 검수 대상 작품에서
+        그 턴으로 가는 길이 없다.
+      required: [storyId, title, shortDesc, worldIntro, reviewStatus, visibility, submittedAt,
+                 authorDisplayName, worldPrompt, characters, chapters, endings, autoCheck]
+      properties:
+        storyId: { type: string, format: uuid }
+        title: { type: string }
+        shortDesc: { type: [string, 'null'] }
+        worldIntro: { type: [string, 'null'] }
+        reviewStatus:
+          type: string
+          enum: [draft, in_review, suspended, approved, rejected, auto_rejected]
+        visibility:
+          type: string
+          enum: [private, unlisted, public]
+        submittedAt:
+          type: string
+          format: date-time
+          description: 작품이 만들어진 시각. 제출 회차별 시각은 검수 이력이 답한다 (§13-57)
+        authorDisplayName:
+          type: [string, 'null']
+          description: 표시명. 설정하지 않은 작성자는 `null` 이다 — 서버가 이름을 지어내지 않는다
+        worldPrompt:
+          type: string
+          description: 세계관 프롬프트 원문. **UGC 원고의 본체다**
+        characters:
+          type: array
+          items: { $ref: '#/components/schemas/ManuscriptCharacter' }
+        chapters:
+          type: array
+          items: { $ref: '#/components/schemas/ManuscriptChapter' }
+        endings:
+          type: array
+          items: { $ref: '#/components/schemas/ManuscriptEnding' }
+        autoCheck:
+          oneOf:
+            - $ref: '#/components/schemas/AutoCheckSummary'
+            - type: 'null'
+          description: 자동 검수 기록이 없으면 `null`
+
+    ManuscriptCharacter:
+      type: object
+      description: |
+        **`persona` 를 담는다.** 작품 상세 화면(`CharacterCard`)은 그것을 감추지만 검수는
+        반대다 — 매 턴 모델에게 들어가는 문장을 보지 않은 승인은 작품의 절반만 본 승인이다.
+      required: [name, persona]
+      properties:
+        name: { type: string }
+        persona: { type: string }
+
+    ManuscriptChapter:
+      type: object
+      description: '**진입 조건식은 담지 않는다** — 판정 로직이지 사람이 읽는 문장이 아니다.'
+      required: [chapterNo, title, minTurns, maxTurns]
+      properties:
+        chapterNo: { type: integer }
+        title: { type: string }
+        minTurns: { type: integer }
+        maxTurns: { type: integer }
+
+    ManuscriptEnding:
+      type: object
+      description: '**에필로그 원문을 담는다** — 독자가 마지막에 읽는 작성자의 문장이므로 판정 대상이다.'
+      required: [endingNo, label, epilogueText, secret, defaultEnding]
+      properties:
+        endingNo: { type: integer }
+        label: { type: string }
+        epilogueText: { type: string }
+        secret:
+          type: boolean
+          description: 숨은 엔딩인가 (R7.11)
+        defaultEnding:
+          type: boolean
+          description: 어떤 조건에도 걸리지 않았을 때의 폴백인가 (R2.2)
+
+    AutoCheckSummary:
+      type: object
+      description: |
+        자동 검수 요약 (R8.5, R8.7). **카테고리만이다** — 어떤 항목에 걸렸는지를 담으면
+        이 응답이 우회 사전이 된다 (S-11).
+      required: [verdict, reasons, checkedAt]
+      properties:
+        verdict:
+          type: string
+          enum: [pass, reject, hold]
+          description: '`hold` 는 **사람이 봐야 한다**는 표식이다 (§13-42)'
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [MINOR_SEXUAL, REAL_PERSON_HARM, NON_CONSENSUAL, IP_REPLICATION,
+                   RATING_EXCEEDED, HATE_SPEECH, THIRD_PARTY_PERSONAL_DATA]
+        checkedAt: { type: string, format: date-time }
 
     ReviewVerdictRequest:
       type: object
@@ -2966,7 +3784,11 @@ components:
       properties:
         verdict:
           type: string
-          enum: [PASS, REJECT, HOLD]
+          description: |
+            `suspend` 는 **사람이 손으로 내리는 정지**다 (§13-64, R8.9). `reject` 와 다르다 —
+            반려는 **아직 열린 적 없는** 작품을 열지 않는 판정이고, 정지는 **이미 열려 있는**
+            작품을 내리는 판정이다.
+          enum: [PASS, REJECT, HOLD, SUSPEND]
         reasons:
           type: array
           maxItems: 8
@@ -2997,6 +3819,107 @@ components:
           description: |
             `hold` 는 **온 자리 그대로** 돌아온다 — `in_review` 는 `in_review` 로,
             `suspended` 는 `suspended` 로.
+
+    StoryReportsResponse:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
+      type: object
+      description: |
+        **신고자가 없다** (I-3, §13-62). `reporter_ref` 는 판정에 쓰이지 않으며, 쓰이지 않는
+        식별자는 담을 이유가 없다 — 검수자가 누가 신고했는지를 알면 그것이 판정에 섞인다.
+        검수 큐가 작성자를 담지 않는 것과 같은 이유다.
+
+        **신고자가 쓴 자유 문장(`detail`)도 없다.** 판정에 먼저 필요한 것은 무엇이 몇
+        건인지이고, 문장은 표에 남아 사후 조사가 쓴다.
+      required: [storyId, reasonCounts, reports]
+      properties:
+        storyId: { type: string, format: uuid }
+        reasonCounts:
+          type: array
+          description: |
+            사유별 **전건** 집계. 검수자가 먼저 보는 숫자이며, 이것이 페이지에 잘리면 같은
+            작품이 볼 때마다 다르게 보인다.
+          items:
+            $ref: '#/components/schemas/ReasonCount'
+        reports:
+          type: array
+          description: |
+            최근 신고. **상한이 있다** — 전건은 `reasonCounts` 가 답한다.
+          items:
+            $ref: '#/components/schemas/ReportItem'
+
+    ReasonCount:
+      type: object
+      description: 사유 하나에 몇 건. 표기는 신고 접수와 같은 소문자다 (§13.9)
+      required: [reason, count]
+      properties:
+        reason:
+          type: string
+          enum: [inappropriate, ip_violation, real_person, other]
+        count:
+          type: integer
+          minimum: 1
+          description: 이 사유로 신고한 **사람 수**. 같은 사람의 반복 신고는 한 건이다 (R8.9)
+
+    ReportItem:
+      type: object
+      description: |
+        개별 신고 한 건. **신고자를 담지 않는다** (I-3).
+      required: [reportId, reason, turnNo, createdAt, status]
+      properties:
+        reportId: { type: string, format: uuid }
+        reason:
+          type: string
+          enum: [inappropriate, ip_violation, real_person, other]
+        turnNo:
+          type: [integer, 'null']
+          description: |
+            신고된 턴. **작품 신고에는 없으므로 `null` 이 정상이다** — 키를 생략하지 않는다.
+        createdAt:
+          type: string
+          format: date-time
+          description: 접수 시각
+        status:
+          type: string
+          enum: [open, reviewing, actioned, dismissed]
+
+    ReviewHistoryEntryResponse:
+      type: object
+      description: |
+        지난 판정 한 건 (§13-63).
+
+        **검수자를 담지 않는다** (I-3) — `reviewer_ref` 는 `player_ref` 다. 표시명으로 바꿔
+        싣지도 않는다: catalog 가 가진 표시명은 **작성자**의 것이고, 검수자의 것을 실으려면
+        Identity 를 이 경로에 끌어와야 한다.
+      required: [stage, verdict, reasons, reviewedAt, note]
+      properties:
+        stage:
+          type: string
+          enum: [auto, human]
+          description: |
+            **자동과 사람을 섞지 않는다.** 자동 통과는 사람이 본 것이 아니며, 그 구분이 없으면
+            화면은 아무도 보지 않은 작품을 승인된 작품으로 적는다 (R8.6).
+        verdict:
+          type: string
+          enum: [pass, reject, hold]
+          description: '`hold` 는 아무것도 바꾸지 않았다 — 봤고 판단을 미뤘다는 기록이다'
+        reasons:
+          type: array
+          description: |
+            사유 **카테고리만**이다 (R8.7, S-11). 어떤 항목에 걸렸는지를 담으면 이 응답이
+            우회 사전이 된다. 사유 없이 내려진 판정은 빈 배열이다.
+          items:
+            type: string
+            enum: [minor_sexual, real_person_harm, non_consensual, ip_replication,
+                   rating_exceeded, hate_speech, third_party_personal_data]
+        reviewedAt:
+          type: string
+          format: date-time
+          description: 판정 시각
+        note:
+          type: [string, 'null']
+          description: |
+            검수자의 내부 기록. **작성자에게 가지 않는다** (R8.7, S-11). 자동 판정에는 사람이
+            없어 `null` 이다.
 
     PreviewResponse:
       x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
@@ -3049,3 +3972,29 @@ components:
           description: |
             `withdrawn` 은 **탈퇴 신청이 접수된 상태**다 (R12.5). 파기 배치 전까지 이미 발급된
             액세스 토큰은 만료 전까지 살아 있으므로, 그 사이에 이 값이 사실을 알린다.
+
+    UpdateMeRequest:
+      type: object
+      description: |
+        **필드가 하나뿐이다** (#271). 역할과 상태는 사용자가 정하는 값이 아니며, 여기에 두면
+        **스스로 관리자가 되는 경로**가 된다 (S-4).
+
+        **`null` 을 "지우기"로 읽지 않는다.** 표시명을 없애는 것은 다른 행위이고, 그것을 이
+        요청에 겸하면 실수로 보낸 `null` 하나가 이름을 지운다.
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 12
+          examples: ['연우']
+          description: |
+            공개 표시명. 길이는 **코드포인트** 기준이며 허용 문자는 한글 · 영문 · 숫자 ·
+            `_` · `-` · 공백이다 (#287).
+
+            **`@` 로 시작하면 거절한다.** 그것은 화면이 붙이는 표기이고, 값에 두면
+            `yeonwoo` 와 `@yeonwoo` 가 서로 다른 값이면서 같게 보인다.
+
+            **`탈퇴한 사용자` 는 쓸 수 없다** — 파기 배치가 쓰는 이름이므로 사칭이 된다.
+
+            규칙의 정본은 서버 도메인이다. 화면 검증은 편의이지 계약이 아니다.

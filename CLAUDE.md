@@ -255,7 +255,7 @@ wiki publish neowadaeum "<커밋 메시지>"      # commit + push → 약 40초 
 | `docs/git-workflow.md` | Git 규칙 전문(§8) |
 | `docs/deployment.md` | 이미지 · 마이그레이션 순서(expand-contract) · 무중단 배포 · 롤백 (B-63) |
 | `docs/runbook/` | 장애 대응. Provider 장애 · 세이프티 오탐 · 비용 폭주 · 유출 (B-64) |
-| `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 / **0006 턴 생성 포트 소유(0005 일부 대체)** / **0007 fallback 과 세션 provider 고정** |
+| `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 / **0006 턴 생성 포트 소유(0005 일부 대체)** / **0007 fallback 과 세션 provider 고정** / **0008 리프레시 토큰 전송 방식(B-12 의 CSRF 면제 전제를 좁힌다)** |
 | `docs/openapi.yaml` | API 계약 — 런타임 진실의 원천(B-06). 계약을 바꾸면 이 파일을 함께 고친다. `OpenApiContractTests` 가 구현과의 표류를 잡는다 |
 | `README.md` | 로컬 실행 · 스키마 4개 · 마이그레이션 명명 규칙 |
 | **프로젝트 위키** (레포 밖) | 모듈 경계 · 턴 파이프라인 · 도메인 규칙 · ADR 색인 · 스토어별 스키마 · 현재 상태. `wiki search neowadaeum "<주제>"`. **작업 PR 마다 갱신한다 — 위 절 참조** |

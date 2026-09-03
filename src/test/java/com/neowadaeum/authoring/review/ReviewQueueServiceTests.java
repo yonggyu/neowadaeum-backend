@@ -49,6 +49,10 @@ class ReviewQueueServiceTests extends ContainerTestBase {
 	@Autowired
 	private StoryReviewRepository reviews;
 
+	/** 타인이 보는 조회 경로다 — 정지가 실제로 문을 닫는지는 여기서만 확인된다 (I-8). */
+	@Autowired
+	private com.neowadaeum.catalog.query.StoryCatalogFacade catalogQueries;
+
 	@Autowired
 	@Qualifier("catalogDataSource")
 	private DataSource catalog;
@@ -300,6 +304,135 @@ class ReviewQueueServiceTests extends ContainerTestBase {
 				.isEqualTo(ErrorCode.REVIEW_NOT_PENDING);
 	}
 
+	/**
+	 * <b>수동 정지는 {@code review_status} 만 바꾼다</b> (§13-64, §13-41).
+	 *
+	 * <p>가시성을 지우면 사람이 나중에 통과시킬 때 <b>어디로 돌려놓아야 하는지</b>를 알 수
+	 * 없다. 자동 정지가 이미 그렇게 하고 있고, 수동 정지도 <b>같은 자리</b>를 쓴다 — 두 경로가
+	 * 같은 일을 다르게 하면 되돌리는 규칙도 둘이 된다.
+	 */
+	@Test
+	void S13_64_a_manual_suspension_changes_only_the_review_status() {
+		UUID storyId = submit(Visibility.PUBLIC);
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.PASS, List.of(), null);
+
+		var decision = this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND,
+				List.of(SafetyCategory.RATING_EXCEEDED), "사후 확인에서 걸렸다");
+
+		assertThat(decision.reviewStatus()).isEqualTo(ReviewStatus.SUSPENDED);
+		assertThat(column(storyId, "review_status")).isEqualTo("suspended");
+		assertThat(column(storyId, "visibility")).isEqualTo("public");
+	}
+
+	/**
+	 * <b>내려간 작품은 타인에게 보이지 않는다</b> (I-8, R2.3).
+	 *
+	 * <p>가시성을 남겨 두는 것이 <b>노출을 남겨 두는 것</b>을 뜻하지 않는다 — 조회 조건이
+	 * {@code approved} <b>AND</b> {@code visibility <> private} 이므로 {@code suspended}
+	 * 하나로 이미 닫힌다.
+	 */
+	@Test
+	void I8_a_manually_suspended_story_is_no_longer_visible_to_others() {
+		UUID storyId = submit(Visibility.PUBLIC);
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.PASS, List.of(), null);
+		assertThat(this.stories(storyId)).isPresent();
+
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND, List.of(), null);
+
+		assertThat(this.stories(storyId)).isEmpty();
+	}
+
+	/**
+	 * <b>통과가 있던 자리로 되돌린다</b> (§13-41, §13-64).
+	 *
+	 * <p>{@code unlisted} 였던 작품이 복귀하면서 {@code public} 이 되면 그것은 복귀가 아니다 —
+	 * 정지 하나로 작품이 <b>더 넓게</b> 열리는 길이 생긴다.
+	 */
+	@Test
+	void S13_41_passing_a_manually_suspended_story_returns_it_to_where_it_was() {
+		UUID storyId = submit(Visibility.UNLISTED);
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND, List.of(), null);
+
+		var decision = this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.PASS, List.of(), null);
+
+		assertThat(decision.reviewStatus()).isEqualTo(ReviewStatus.APPROVED);
+		assertThat(column(storyId, "review_status")).isEqualTo("approved");
+		assertThat(column(storyId, "visibility")).isEqualTo("unlisted");
+	}
+
+	/**
+	 * <b>이미 내려간 것을 또 내리지 않는다</b> (§13-64) — 멱등이 아니라 409 다.
+	 *
+	 * <p>이력은 append-only 이므로 (I-5) 멱등하게 받으면 정지 기록이 두 줄 남고, 그것은
+	 * <b>두 번의 사건</b>으로 읽힌다. 이미 큐에 있는 작품에 남은 일은 {@code pass} 또는
+	 * {@code reject} 다.
+	 */
+	@Test
+	void S13_64_suspending_an_already_suspended_story_is_a_conflict() {
+		UUID storyId = submit(Visibility.UNLISTED);
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND, List.of(), null);
+
+		assertThatThrownBy(
+				() -> this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND, List.of(), null))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.REVIEW_NOT_PENDING);
+		assertThat(this.reviews.findByStoryIdOrderByReviewedAtDesc(storyId))
+				.filteredOn(review -> review.getVerdict() == ReviewVerdict.SUSPEND).hasSize(1);
+	}
+
+	/**
+	 * <b>큐에서 기다리는 작품은 정지 대상이 아니다</b> (§13-64).
+	 *
+	 * <p>아직 아무에게도 보인 적이 없어 내릴 것이 없고, 정지시키면 <b>"어디서 왔는가"라는
+	 * 표식을 잃는다</b> (§13-48) — 통과가 {@code public} 을 열어야 할 작품이 있던 자리로
+	 * 돌아가게 된다. 열지 않기로 하는 판정은 {@code reject} 다.
+	 */
+	@Test
+	void S13_64_a_story_still_waiting_in_the_queue_cannot_be_suspended() {
+		UUID storyId = submit(Visibility.PUBLIC);
+
+		assertThatThrownBy(
+				() -> this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND, List.of(), null))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.REVIEW_NOT_PENDING);
+		assertThat(column(storyId, "review_status")).isEqualTo("in_review");
+	}
+
+	/**
+	 * <b>왜 내려갔는지가 남는다</b> (R8.9, R8.7).
+	 *
+	 * <p>사유는 <b>카테고리만</b>이다 — 검수자가 적은 {@code note} 는 작성자에게 가지 않는다.
+	 * 그리고 <b>누가 내렸는지 모르는 정지는 감사에 쓸모가 없다.</b>
+	 */
+	@Test
+	void R8_9_a_manual_suspension_is_recorded_with_its_reviewer_and_category() {
+		UUID storyId = submit(Visibility.UNLISTED);
+
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND,
+				List.of(SafetyCategory.RATING_EXCEEDED), "이나린 이라는 이름이 걸렸다");
+
+		assertThat(this.reviews.findFirstByStoryIdOrderByReviewedAtDesc(storyId)).get()
+				.satisfies(review -> {
+					assertThat(review.getVerdict()).isEqualTo(ReviewVerdict.SUSPEND);
+					assertThat(review.getStage()).isEqualTo(ReviewStage.HUMAN);
+					assertThat(review.getReviewerRef()).isEqualTo(REVIEWER_REF);
+					assertThat(review.getReasons()).contains("rating_exceeded").doesNotContain("이나린");
+				});
+	}
+
+	/** <b>내려간 작품은 큐에 남는다</b> (§13-41) — 이어지는 판정을 그대로 받는다. */
+	@Test
+	void S13_64_a_manually_suspended_story_stays_in_the_queue() {
+		UUID storyId = submit(Visibility.UNLISTED);
+
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.SUSPEND, List.of(), null);
+
+		assertThat(this.queue.pending()).extracting(ReviewQueueService.QueueItem::storyId)
+				.contains(storyId);
+	}
+
 	/** 없는 작품은 404 다. */
 	@Test
 	void R8_6_an_unknown_story_is_not_found() {
@@ -308,6 +441,11 @@ class ReviewQueueServiceTests extends ContainerTestBase {
 				.isInstanceOf(ApiException.class)
 				.extracting(ex -> ((ApiException) ex).errorCode())
 				.isEqualTo(ErrorCode.NOT_FOUND);
+	}
+
+	/** 타인이 보는 문. 여기서 비면 <b>아무도 그 작품에 닿지 못한다</b> (I-8, R2.3). */
+	private java.util.Optional<com.neowadaeum.catalog.query.StoryDetailView> stories(UUID storyId) {
+		return this.catalogQueries.detail(storyId);
 	}
 
 	private UUID submit(Visibility visibility) {

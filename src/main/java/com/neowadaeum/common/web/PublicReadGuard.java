@@ -29,12 +29,28 @@ import org.springframework.stereotype.Component;
  * 프록시에서 온 것만 신뢰한다는 원칙은 §13-45 이고, 그것을 실제 값으로 세우는 것은 배포 환경이
  * 정해지는 시점이다 ({@code docs/deployment.md} §5, 이슈 #224) — {@code AuthController} 의
  * IP 기준 한도와 같은 조건이다.
+ *
+ * <p><b>탐색은 창이 다르다</b> (§13-54, 이슈 #306). 라이브러리와 작품 상세도 인증 밖으로
+ * 열렸지만 <b>같은 창에 넣지 않았다.</b> 위의 "합치는" 논리는 두 경로가 <b>같은 것을 지키고
+ * 같은 빈도로 불릴 때</b> 성립한다 — 여기서는 둘 다 아니다. 탐색은 한 화면이 섹션 더 보기와
+ * 작품 상세로 이어져 <b>몇 분에 수십 번</b> 불리고, 설정 조회는 화면당 한 번이다. 한 창에 넣으면
+ * <b>둘러보던 사람이 창을 다 쓴 뒤 가입하지 못한다</b> — {@code /consents} 가 막히면 약관 판본을
+ * 읽을 수 없고 가입 요청이 성립하지 않는다. 우회로가 되지 않는 이유는 <b>지키는 대상이 다르기
+ * 때문</b>이다: 탐색 창을 다 써도 설정 조회의 DB 읽기는 여전히 60/분으로 묶여 있다.
  */
 @Component
 public class PublicReadGuard {
 
 	/** 한도의 종류. <b>두 경로가 이 하나를 공유한다</b>(위 설명). 계정 기준 창과도 섞이지 않는다. */
 	static final String SCOPE = "public-read-ip";
+
+	/**
+	 * 탐색의 창 (§13-54, 이슈 #306). <b>설정 조회와 나뉜다</b> — 이유는 위 설명에 있다.
+	 *
+	 * <p>라이브러리 · 섹션 · 작품 상세 <b>셋이 이 하나를 공유한다.</b> 셋은 같은 화면 흐름이고
+	 * 같은 catalog 읽기라서, 따로 세면 한 축을 다 쓴 뒤 다른 축으로 옮겨 가면 된다.
+	 */
+	static final String BROWSE_SCOPE = "public-browse-ip";
 
 	private final RateLimiter rateLimiter;
 
@@ -56,12 +72,27 @@ public class PublicReadGuard {
 	 *     언제 다시 올지 알려주지 않으면 클라이언트가 즉시 재시도한다
 	 */
 	public void requireWithinIpLimit(HttpServletRequest request) {
+		count(SCOPE, this.limits.publicReadPerMinutePerIp(), request);
+	}
+
+	/**
+	 * 인증 밖으로 열린 <b>탐색</b>을 한 번 센다 (§13-54, 이슈 #306).
+	 *
+	 * <p>세는 방식은 설정 조회와 같다 — IP 해시 · 분 창 · {@code RATE_LIMITED}. <b>창과 한도만</b>
+	 * 다르며 그 이유는 이 클래스의 설명에 있다.
+	 *
+	 * @throws ApiException {@code RATE_LIMITED} — {@code details.retryAfterSeconds} 를 함께 준다
+	 */
+	public void requireWithinBrowseIpLimit(HttpServletRequest request) {
+		count(BROWSE_SCOPE, this.limits.publicBrowsePerMinutePerIp(), request);
+	}
+
+	private void count(String scope, int limit, HttpServletRequest request) {
 		String ipHash = Sha256.hex(request.getRemoteAddr());
 		if (ipHash == null) {
 			return;
 		}
-		if (!this.rateLimiter.tryAcquire(SCOPE, ipHash, this.limits.publicReadPerMinutePerIp(),
-				RateLimitProperties.MINUTE)) {
+		if (!this.rateLimiter.tryAcquire(scope, ipHash, limit, RateLimitProperties.MINUTE)) {
 			throw new ApiException(ErrorCode.RATE_LIMITED, Map.of("retryAfterSeconds",
 					this.rateLimiter.retryAfterSeconds(RateLimitProperties.MINUTE)));
 		}

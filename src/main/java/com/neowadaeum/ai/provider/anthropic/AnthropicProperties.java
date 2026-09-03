@@ -1,6 +1,9 @@
 package com.neowadaeum.ai.provider.anthropic;
 
 import com.neowadaeum.ai.provider.AiPurpose;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -21,9 +24,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param models  용도별 모델 (R3.6). 네 용도가 서로 다른 값을 가질 수 있다
  * @param baseUrl API 기점. 운영에서는 바꿀 이유가 없다
  * @param maxTokens 응답 상한. 턴 하나는 문단 3~5개라 크게 잡을 이유가 없다 (R5.3)
+ * @param pricing <b>모델 ID 별 KRW 단가</b> (#311, §13-53). 비어 있으면 그 모델의 비용을 모르는
+ *                것이고, 그때 {@code cost_micro_krw} 는 {@code null} 이다
  */
 @ConfigurationProperties("ai.providers.anthropic")
-public record AnthropicProperties(String apiKey, Models models, String baseUrl, Integer maxTokens) {
+public record AnthropicProperties(String apiKey, Models models, String baseUrl, Integer maxTokens,
+		Map<String, ModelPrice> pricing) {
 
 	/** §5.2 의 출력은 문단 3~5개와 선택지 1~4개다. 그보다 크게 잡으면 사고가 비싸진다. */
 	private static final int DEFAULT_MAX_TOKENS = 4096;
@@ -34,6 +40,7 @@ public record AnthropicProperties(String apiKey, Models models, String baseUrl, 
 		baseUrl = (baseUrl == null || baseUrl.isBlank()) ? DEFAULT_BASE_URL : baseUrl;
 		maxTokens = (maxTokens == null) ? DEFAULT_MAX_TOKENS : maxTokens;
 		models = (models == null) ? new Models(null, null, null, null) : models;
+		pricing = (pricing == null) ? Map.of() : Map.copyOf(pricing);
 	}
 
 	/**
@@ -91,5 +98,59 @@ public record AnthropicProperties(String apiKey, Models models, String baseUrl, 
 	public String modelFor(AiPurpose purpose) {
 		String model = this.models.forPurpose(purpose);
 		return (model == null || model.isBlank()) ? null : model;
+	}
+
+	/**
+	 * 호출 한 건의 비용 — <b>원(KRW)의 백만분의 1</b> (#311, §13-53).
+	 *
+	 * <p><b>모르면 {@code null} 이다.</b> 단가가 설정에 없거나 Provider 가 usage 를 주지 않으면
+	 * 비용을 계산할 근거가 없다. 그 자리에 0 을 넣지 않는다 — 0 은 <b>"공짜로 돌았다"는 사실
+	 * 진술</b>이고, 그것으로 만든 합계는 조용히 낮다. {@code null} 은 세지 않으므로 대시보드가
+	 * "모른다"를 "0원"으로 읽지 않는다.
+	 *
+	 * <p><b>입력과 출력이 둘 다 있어야 센다.</b> 한쪽만으로 만든 수는 비용이 아니라 비용의 일부이며,
+	 * 그것을 비용 칸에 넣으면 <b>틀린 줄 모르는 채 작은 값</b>이 쌓인다.
+	 *
+	 * <p><b>환율이 여기 없다.</b> 설정에 들어오는 단가가 이미 KRW 다 — 서버가 환율을 들면 그 값이
+	 * 낡는 순간부터 조용히 틀린 수가 쌓이고, 쌓인 뒤에는 어느 시점 환율이었는지 알 수 없다.
+	 */
+	public Long costMicroKrw(String modelId, Integer inputTokens, Integer outputTokens) {
+		if (modelId == null || inputTokens == null || outputTokens == null) {
+			return null;
+		}
+		ModelPrice price = this.pricing.get(modelId);
+		return (price != null) ? price.costMicroKrw(inputTokens, outputTokens) : null;
+	}
+
+	/**
+	 * 모델 하나의 KRW 단가 (#311).
+	 *
+	 * <p><b>입력과 출력을 따로 받는다.</b> 벤더가 그렇게 고시하며, 하나로 합치면 그 합치는 비율을
+	 * 누군가 가정해야 한다.
+	 *
+	 * <p><b>기본값이 없다</b> (§7.3). 둘 중 하나라도 없으면 이 모델의 단가를 <b>모르는 것</b>이며,
+	 * 아는 척한 절반짜리 값보다 {@code null} 이 낫다.
+	 *
+	 * <p>단위가 <b>100만 토큰당 원</b>인 것은 벤더 고시 형태를 그대로 옮기기 위해서다. 이 단위를
+	 * 고르면 마이크로 환산이 정확히 <b>토큰 수 × 단가</b> 가 된다 —
+	 * {@code (tokens / 1e6) × KRW × 1e6}.
+	 *
+	 * @param inputKrwPerMillionTokens  입력 100만 토큰당 원
+	 * @param outputKrwPerMillionTokens 출력 100만 토큰당 원
+	 */
+	public record ModelPrice(BigDecimal inputKrwPerMillionTokens, BigDecimal outputKrwPerMillionTokens) {
+
+		/**
+		 * <b>정수로 떨어뜨린다.</b> 부동소수로 돈을 세지 않는다는 것이 마이크로 단위를 쓰는
+		 * 이유이며, 그 규칙은 계산 중간에도 유효하다.
+		 */
+		private Long costMicroKrw(int inputTokens, int outputTokens) {
+			if (this.inputKrwPerMillionTokens == null || this.outputKrwPerMillionTokens == null) {
+				return null;
+			}
+			BigDecimal micro = this.inputKrwPerMillionTokens.multiply(BigDecimal.valueOf(inputTokens))
+					.add(this.outputKrwPerMillionTokens.multiply(BigDecimal.valueOf(outputTokens)));
+			return micro.setScale(0, RoundingMode.HALF_UP).longValueExact();
+		}
 	}
 }

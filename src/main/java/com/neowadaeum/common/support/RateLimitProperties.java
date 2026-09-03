@@ -20,11 +20,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     계정 기준만으로는 계정을 여러 개 만들어 임계를 채우는 길이 열려 있다
  * @param publicReadPerMinutePerIp S-8 — 인증 없이 열리는 설정 조회 (§13.10, #261, 이슈 #277).
  *     <b>값 하나가 두 경로를 함께 덮는다</b> — 따로 두면 한쪽이 다른 쪽의 우회로가 된다
+ * @param publicBrowsePerMinutePerIp S-8 — 인증 없이 열리는 <b>탐색</b> (§13-54, 이슈 #306).
+ *     설정 조회와 <b>값도 창도 나눈다</b> — 이유는 {@code PublicReadGuard} 에 적혀 있다
  */
 @ConfigurationProperties("app.rate-limit")
 public record RateLimitProperties(Integer turnPerMinute, Integer precheckPerMinute,
 		Integer authPerMinutePerIp, Integer turnPerDay, Integer reportPerMinutePerIp,
-		Integer publicReadPerMinutePerIp) {
+		Integer publicReadPerMinutePerIp, Integer publicBrowsePerMinutePerIp) {
 
 	/** 창 길이는 값이 아니라 규칙이다 — §15 가 "분당"이라고 적었다. */
 	public static final Duration MINUTE = Duration.ofMinutes(1);
@@ -42,10 +44,13 @@ public record RateLimitProperties(Integer turnPerMinute, Integer precheckPerMinu
 		// 것이 정상이기 때문이고, 그래도 상한을 두는 것은 이 조회가 캐시 없이 매번 service_config 를
 		// 읽기 때문이다 (CatalogServiceConfigQuery 가 캐시를 두지 않는 이유).
 		publicReadPerMinutePerIp = (publicReadPerMinutePerIp != null) ? publicReadPerMinutePerIp : 60;
+		// 탐색은 설정 조회보다 훨씬 잦다 — 라이브러리 한 화면이 섹션 더 보기와 작품 상세로
+		// 이어지므로 한 사람이 몇 분 안에 수십 번 부르는 것이 정상이다 (§13-54, #306).
+		publicBrowsePerMinutePerIp = (publicBrowsePerMinutePerIp != null) ? publicBrowsePerMinutePerIp : 120;
 	}
 
 	/** 설정을 띄우지 않는 테스트가 쓴다. */
 	public static RateLimitProperties defaults() {
-		return new RateLimitProperties(null, null, null, null, null, null);
+		return new RateLimitProperties(null, null, null, null, null, null, null);
 	}
 }

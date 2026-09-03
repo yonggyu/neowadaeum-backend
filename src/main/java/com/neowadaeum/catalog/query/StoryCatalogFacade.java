@@ -1,5 +1,7 @@
 package com.neowadaeum.catalog.query;
 
+import com.neowadaeum.common.spi.StoryReviewTimes;
+import com.neowadaeum.common.spi.StoryReviewTimesQuery;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -59,9 +61,20 @@ public class StoryCatalogFacade {
 
 	private final Clock clock;
 
-	public StoryCatalogFacade(@Qualifier("catalogDataSource") DataSource catalogDataSource, Clock clock) {
+	/**
+	 * 검수 시각 (§13-57, #290).
+	 *
+	 * <p><b>{@code story_review} 를 직접 읽지 않는다.</b> 같은 스키마에 있지만 그 표를 쓰는
+	 * 모듈은 authoring 하나이고, 읽는 길을 여기서 새로 파면 <b>같은 표를 두 모듈이 각자
+	 * 해석하게</b> 된다 — 회차를 가르는 규칙이 둘이 되는 순간 목록과 상세가 다른 날짜를 말한다.
+	 */
+	private final StoryReviewTimesQuery reviewTimes;
+
+	public StoryCatalogFacade(@Qualifier("catalogDataSource") DataSource catalogDataSource, Clock clock,
+			StoryReviewTimesQuery reviewTimes) {
 		this.jdbc = JdbcClient.create(catalogDataSource);
 		this.clock = clock;
+		this.reviewTimes = reviewTimes;
 	}
 
 	/** 화면이 보여 줄 장르 목록. {@code display_order} 가 유일하므로 순서가 결정론이다. */
@@ -80,6 +93,10 @@ public class StoryCatalogFacade {
 	 * <p><b>{@code rejectReasons} 는 아직 비어 있다.</b> 출처가 {@code story_review} 이고 그 표는
 	 * B-10 이다. 자리를 비워 두는 것과 없는 것은 다르다 — 계약이 요구하는 필드이며, 채우는 쪽이
 	 * 생기면 여기만 바뀐다.
+	 *
+	 * <p><b>지운 작품은 여기서도 빠진다</b> (§13-58). 이 목록이 노출 조건을 걸지 않는 유일한
+	 * 예외 자리이므로, 걸러 주지 않으면 <b>작성자에게만 삭제가 취소된 것처럼 보인다</b> —
+	 * 사용자에게 '삭제됨'이라고 말한 화면이 지운 작품을 계속 들고 있게 된다.
 	 *
 	 * @param playerRef 작성자. {@code author_ref} 와 대조한다 (I-3 — catalog 는 이 값만 안다)
 	 */
@@ -100,6 +117,7 @@ public class StoryCatalogFacade {
 				       s.visibility, s.review_status, s.published_at
 				FROM story s
 				WHERE s.author_ref = :author
+				  AND s.review_status <> 'deleted'
 				""";
 		if (after.isPresent()) {
 			sql += "  AND (s.created_at, s.id) < (:cursorAt, :cursorId)\n";
@@ -114,10 +132,17 @@ public class StoryCatalogFacade {
 
 		boolean more = rows.size() > size;
 		List<MyStoryRow> page = more ? rows.subList(0, size) : rows;
-		List<MyStoryView> stories = page.stream()
-				.map(row -> new MyStoryView(row.id(), row.title(), row.coverUrl(), row.visibility(),
-						reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt()))
-				.toList();
+
+		// §15 — 줄마다 물으면 20줄이 21번의 조회가 된다. 쪽 전체를 한 번에 묻는다 (#290).
+		Map<UUID, StoryReviewTimes> times = this.reviewTimes
+				.findByStoryIds(page.stream().map(MyStoryRow::id).toList());
+
+		List<MyStoryView> stories = page.stream().map(row -> {
+			var when = times.getOrDefault(row.id(), StoryReviewTimes.NONE);
+			return new MyStoryView(row.id(), row.title(), row.coverUrl(), row.visibility(),
+					reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt(),
+					when.submittedAt(), when.reviewedAt());
+		}).toList();
 
 		return new MyStoryPage(stories, more
 				? new Cursor(page.getLast().createdAt(), page.getLast().id()).encode() : null);
@@ -170,10 +195,20 @@ public class StoryCatalogFacade {
 	 * 것이고, 정지된 작품(R8.10)이야말로 답해야 할 경우다 — 가리면 {@code story_suspended} 를
 	 * 낼 수 없고 사용자는 이유 없이 404 를 본다.
 	 *
-	 * @return 작품이 없으면 비어 있다
+	 * <p><b>지워진 작품은 그 예외가 아니다</b> (§13-58). 여기서 비워 두면 {@code play} 는 그것을
+	 * <b>사라진 작품</b>으로 읽고, 사라진 작품과 정지된 작품은 이미 같은 자리로 간다 —
+	 * {@code STORY_SUSPENDED}(423, 읽기 전용) 다. {@code PlayTurnService} 와
+	 * {@code SessionResumeService} 가 "없는 작품과 정지된 작품을 구분해 알릴 이유가 없다"고
+	 * 적어 둔 바로 그 판단이며, 그래서 <b>새 에러 코드를 만들지 않았다.</b> 읽던 사람은 이미
+	 * 읽은 것을 계속 볼 수 있고 다음 턴만 만들지 못한다.
+	 *
+	 * @return 작품이 없거나 <b>지워졌으면</b> 비어 있다
 	 */
 	public Optional<StoryStatusView> status(UUID storyId) {
-		return this.jdbc.sql("SELECT current_version_id, review_status FROM story WHERE id = :id")
+		return this.jdbc.sql("""
+						SELECT current_version_id, review_status FROM story
+						WHERE id = :id AND review_status <> 'deleted'
+						""")
 				.param("id", storyId)
 				.query((rs, rowNum) -> new StoryStatusView(rs.getObject("current_version_id", UUID.class),
 						rs.getString("review_status")))
@@ -183,9 +218,14 @@ public class StoryCatalogFacade {
 	/**
 	 * 작품 상세 (§13.3, B-16).
 	 *
-	 * <p><b>노출 조건은 목록과 같다</b> (R2.3, I-8). 상세만 느슨하면 목록에서 가린 작품을
-	 * <b>id 를 아는 사람이 그대로 읽는다</b> — 가린 의미가 사라진다. 그래서 조건이 이 클래스의
-	 * 같은 규칙을 쓴다.
+	 * <p><b>검수 조건은 목록과 같다</b> (R2.3, I-8) — {@code approved} 이고 발행됐고 버전이
+	 * 고정된 것만이다. 이 셋이 느슨해지면 목록에서 가린 작품을 <b>id 를 아는 사람이 그대로
+	 * 읽는다</b> — 가린 의미가 사라진다.
+	 *
+	 * <p><b>가시성만 목록보다 한 칸 넓다</b> ({@code <> 'private'}, §13-54). {@code unlisted}
+	 * 는 <b>목록에 오르지 않되 링크로는 닿는</b> 상태이고, 그것이 {@code public} 과 구분되는
+	 * 유일한 이유다. 여기까지 {@code public} 으로 좁히면 {@code unlisted} 가 {@code private}
+	 * 과 같아지고, 세 값 중 하나가 뜻을 잃는다.
 	 *
 	 * <p>{@code current_version_id} 를 기준으로 읽는다. 상세는 <b>지금 시작하면 무엇을
 	 * 플레이하게 되는가</b>를 보여 주는 화면이므로 세션이 고정한 버전이 아니라 최신이다 (R2.1).
@@ -286,7 +326,7 @@ public class StoryCatalogFacade {
 						JOIN genre g ON g.id = sg.genre_id
 						JOIN story s ON s.id = sg.story_id
 						WHERE s.review_status = 'approved'
-						  AND s.visibility <> 'private'
+						  AND s.visibility = 'public'
 						  AND s.published_at IS NOT NULL
 						  AND s.current_version_id IS NOT NULL
 						  AND s.author_type = 'official'
@@ -303,8 +343,13 @@ public class StoryCatalogFacade {
 	 * 그 버전의 것을 통째로 담아 보내고, 어느 챕터인지는 <b>세션이 안다</b> — 그 값은 play 의
 	 * 것이고 catalog 는 알 필요가 없다 (§5.3).
 	 *
+	 * <p><b>지워진 작품의 버전은 들어 있지 않다</b> (§13-58). 이어하기 카드와 "내 세션" 목록이
+	 * 이 지도로 만들어지며, 둘 다 <b>지도에 없는 세션을 조용히 뺀다</b> — 그 자리가 이미 있으므로
+	 * 삭제가 목록에서 사라지는 데 새 분기가 필요하지 않다. 세션 자체는 남는다: 지운 것은
+	 * 작품이지 그 사람이 플레이한 기록이 아니며, {@code resume} 은 계속 답한다.
+	 *
 	 * @param storyVersionIds 세션이 고정한 버전들 (I-4)
-	 * @return 버전 id 로 찾는 지도. 사라진 버전은 들어 있지 않다
+	 * @return 버전 id 로 찾는 지도. 사라졌거나 <b>지워진</b> 작품의 버전은 들어 있지 않다
 	 */
 	public Map<UUID, StoryBriefView> briefs(List<UUID> storyVersionIds) {
 		if (storyVersionIds.isEmpty()) {
@@ -326,7 +371,7 @@ public class StoryCatalogFacade {
 		this.jdbc.sql("""
 						SELECT v.id AS version_id, s.id AS story_id, s.title, s.cover_url
 						FROM story_version v JOIN story s ON s.id = v.story_id
-						WHERE v.id IN (:ids)
+						WHERE v.id IN (:ids) AND s.review_status <> 'deleted'
 						""")
 				.param("ids", storyVersionIds)
 				.query((rs, rowNum) -> {
@@ -406,10 +451,15 @@ public class StoryCatalogFacade {
 	}
 
 	/**
-	 * <b>노출 조건이 여기 한 곳에 있다</b> (R2.3, I-8).
+	 * <b>목록의 노출 조건이 여기 한 곳에 있다</b> (R2.3, I-8, §13-54).
 	 *
 	 * <p>공식 작품도 {@code approved} 를 요구한다 — 지금은 전부 승인 상태지만, 조건을 종류별로
 	 * 다르게 두면 <b>공식이라는 이유로 검수를 건너뛰는 경로</b>가 생긴다.
+	 *
+	 * <p><b>목록은 {@code public} 만이다</b> (§13-54). {@code unlisted} 는 사람 검수를
+	 * 요구하지 않는 범위이므로(R8.6), 목록에 올리면 <b>사람이 본 적 없는 작품을 둘러보던
+	 * 사람이 그냥 만난다.</b> 목록이 인증 밖으로 나가면서(#306) 그 사람이 익명이 됐다.
+	 * 상세는 {@code unlisted} 를 계속 연다 — 링크로 닿는 것이 그 상태의 정의다.
 	 */
 	private static String sql(LibrarySectionKey section, boolean afterCursor) {
 		// 작성자 표시명은 JOIN 으로 함께 읽는다 (#258) — 카드마다 물으면 20장이 21번의 조회가
@@ -425,7 +475,7 @@ public class StoryCatalogFacade {
 				LEFT JOIN author_profile ap
 				       ON ap.player_ref = s.author_ref AND s.author_type = 'user'
 				WHERE s.review_status = 'approved'
-				  AND s.visibility <> 'private'
+				  AND s.visibility = 'public'
 				  AND s.published_at IS NOT NULL
 				  AND s.current_version_id IS NOT NULL
 				""";

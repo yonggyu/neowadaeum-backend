@@ -7,8 +7,10 @@ import com.neowadaeum.common.support.RateLimiter;
 import com.neowadaeum.common.support.Sha256;
 import com.neowadaeum.identity.auth.AuthTokens;
 import com.neowadaeum.identity.auth.OAuthLoginService;
+import com.neowadaeum.identity.auth.RefreshTokenCookie;
 import com.neowadaeum.identity.domain.OauthProvider;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.util.Locale;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,6 +27,10 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p><b>이 두 경로는 인증을 요구하지 않는다</b> — 계약의 {@code security: []} 가 그렇게 적었다.
  * 그 예외를 실제로 여는 것은 보안 체인이며 B-12(3/3) 다.
+ *
+ * <p><b>이 컨트롤러만 {@code Set-Cookie} 를 쓴다</b> (ADR-0008, #278). 리프레시 토큰은 응답
+ * 본문에 실리지 않고 {@link RefreshTokenCookie} 가 굽는 쿠키로만 오간다 — 그래서 두 응답이
+ * {@code HttpServletResponse} 를 받는다.
  */
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -36,10 +42,14 @@ public class AuthController {
 
 	private final RateLimitProperties limits;
 
-	public AuthController(OAuthLoginService login, RateLimiter rateLimiter, RateLimitProperties limits) {
+	private final RefreshTokenCookie refreshCookie;
+
+	public AuthController(OAuthLoginService login, RateLimiter rateLimiter, RateLimitProperties limits,
+			RefreshTokenCookie refreshCookie) {
 		this.login = login;
 		this.rateLimiter = rateLimiter;
 		this.limits = limits;
+		this.refreshCookie = refreshCookie;
 	}
 
 	/**
@@ -78,18 +88,38 @@ public class AuthController {
 	 */
 	@PostMapping("/oauth/{provider}")
 	public TokenResponse loginWithOAuth(@PathVariable String provider,
-			@Valid @RequestBody OAuthLoginRequest request, HttpServletRequest httpRequest) {
+			@Valid @RequestBody OAuthLoginRequest request, HttpServletRequest httpRequest,
+			HttpServletResponse httpResponse) {
 		requireWithinIpLimit(httpRequest);
-		return TokenResponse.of(this.login.login(providerOf(provider), request.idToken(),
-				request.toSignupInfo(), Sha256.hex(httpRequest.getRemoteAddr())));
+		return issue(this.login.login(providerOf(provider), request.idToken(), request.toSignupInfo(),
+				Sha256.hex(httpRequest.getRemoteAddr())), httpResponse);
 	}
 
-	/** 액세스 토큰 재발급 (§13.1). 액세스 토큰으로는 통하지 않는다. */
+	/**
+	 * 액세스 토큰 재발급 (§13.1, ADR-0008). 액세스 토큰으로는 통하지 않는다.
+	 *
+	 * <p><b>요청에 본문이 없다.</b> 자격 증명은 재발급 경로 전용 쿠키 하나이며, 본문으로도 받으면
+	 * {@code HttpOnly} 가 주는 보장이 문장으로만 남는다 (#278).
+	 *
+	 * <p>쿠키가 없으면 {@code 401} 이다 — <b>토큰이 틀린 것과 같은 응답</b>이다 (S-6).
+	 */
 	@PostMapping("/refresh")
-	public TokenResponse refresh(@Valid @RequestBody RefreshRequest request,
-			HttpServletRequest httpRequest) {
+	public TokenResponse refresh(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
 		requireWithinIpLimit(httpRequest);
-		return TokenResponse.of(this.login.refresh(request.refreshToken()));
+		String refreshToken = this.refreshCookie.readFrom(httpRequest)
+				.orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+		return issue(this.login.refresh(refreshToken), httpResponse);
+	}
+
+	/**
+	 * 발급된 한 벌을 <b>본문과 쿠키로 나눈다</b> (ADR-0008).
+	 *
+	 * <p>액세스 토큰은 본문으로, 리프레시 토큰은 쿠키로 간다. 로그인과 재발급이 같은 자리를 쓰는
+	 * 이유는 <b>두 경로가 갈리면 한쪽만 고치는 일이 생기기 때문</b>이다.
+	 */
+	private TokenResponse issue(AuthTokens tokens, HttpServletResponse response) {
+		this.refreshCookie.writeTo(response, tokens.refreshToken());
+		return TokenResponse.of(tokens);
 	}
 
 	private static OauthProvider providerOf(String provider) {

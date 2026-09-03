@@ -3,6 +3,7 @@ package com.neowadaeum.identity.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.catalog.domain.AuthorProfile;
@@ -19,7 +20,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -135,6 +138,137 @@ class MyAccountApiIntegrationTests extends ContainerTestBase {
 		UUID playerRef = givenMember();
 
 		assertThat(getMeAs(playerRef)).containsEntry("role", "user");
+	}
+
+	// ── 표시명을 쓰는 경로 (#271) ────────────────────────────────
+
+	/**
+	 * <b>설정과 변경이 한 경로다</b> (#271, §13-7).
+	 *
+	 * <p>읽는 곳은 셋인데 쓰는 곳이 없어서 실사용에서 {@code displayName} 이 항상 {@code null}
+	 * 이었다. 여기서 못박는 것은 <b>없던 이름이 생기고, 생긴 이름이 바뀐다</b>는 것 — 그 둘이
+	 * 같은 요청이며 <b>다시 {@code GET} 해도 같은 값</b>이라는 것이다.
+	 */
+	@Test
+	void Issue271_a_display_name_is_created_and_then_changed_by_the_same_request() throws Exception {
+		UUID playerRef = givenMember();
+		this.createdProfiles.add(playerRef);
+
+		assertThat(getMeAs(playerRef).get("displayName")).isNull();
+
+		assertThat(patchMeAs(playerRef, "달빛서점")).containsEntry("displayName", "달빛서점");
+		assertThat(patchMeAs(playerRef, "새벽서점")).containsEntry("displayName", "새벽서점");
+
+		assertThat(getMeAs(playerRef)).containsEntry("displayName", "새벽서점");
+	}
+
+	/**
+	 * <b>응답은 저장된 값이다</b> (#287).
+	 *
+	 * <p>서버가 정규화하므로 보낸 값과 다를 수 있다. 돌려주지 않으면 화면은 <b>자기가 보낸
+	 * 값</b>을 저장된 이름이라고 믿는다.
+	 */
+	@Test
+	void S13_7_the_response_carries_the_normalized_name_not_the_one_that_was_sent() throws Exception {
+		UUID playerRef = givenMember();
+		this.createdProfiles.add(playerRef);
+
+		assertThat(patchMeAs(playerRef, "  달빛  서점 ")).containsEntry("displayName", "달빛 서점");
+	}
+
+	/** 규칙에 맞지 않는 이름은 400 이다 (§13-7, #287) — 길이 · 문자 · 정규화가 도메인의 규칙이다. */
+	@Test
+	void S13_7_a_name_that_breaks_the_rules_is_rejected() throws Exception {
+		UUID playerRef = givenMember();
+
+		assertThat(patchMe(playerRef, "가").getResponse().getStatus()).isEqualTo(400);
+		assertThat(patchMe(playerRef, "열두글자를넘기는아주긴이름").getResponse().getStatus()).isEqualTo(400);
+		assertThat(patchMe(playerRef, "@달빛서점").getResponse().getStatus()).isEqualTo(400);
+		assertThat(this.profiles.findById(playerRef)).isEmpty();
+	}
+
+	/**
+	 * <b>예약된 이름은 거절한다</b> (§13-7).
+	 *
+	 * <p>{@code "탈퇴한 사용자"} 는 파기 배치가 쓰는 값이다. 사용자가 그것을 고르면 <b>탈퇴한
+	 * 계정을 사칭한다.</b> DB 제약이 아니라 <b>사용자 입력이 들어오는 이 자리</b>가 막는다 —
+	 * 제약을 걸면 배치가 막히기 때문이다.
+	 */
+	@Test
+	void S13_7_the_name_the_purge_batch_uses_is_reserved() throws Exception {
+		UUID playerRef = givenMember();
+
+		assertThat(patchMe(playerRef, "탈퇴한 사용자").getResponse().getStatus()).isEqualTo(400);
+		assertThat(this.profiles.findById(playerRef)).isEmpty();
+	}
+
+	/**
+	 * <b>거절 응답이 입력값을 되돌려 주지 않는다</b> (S-3).
+	 *
+	 * <p>"있어야 할 것"만 단언하면 값이 새어도 통과하므로 <b>없어야 할 것</b>을 함께 단언한다.
+	 */
+	@Test
+	void SEC3_the_rejection_does_not_echo_the_name_that_was_sent() throws Exception {
+		UUID playerRef = givenMember();
+
+		String body = patchMe(playerRef, "@달빛서점").getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+		assertThat(body).contains("VALIDATION_ERROR").doesNotContain("달빛서점");
+	}
+
+	/** 토큰이 없으면 401 이다 — 읽기와 같은 규칙이며, 이름을 바꾸는 쪽이 더 느슨할 이유가 없다. */
+	@Test
+	void Issue271_changing_a_name_without_a_token_is_unauthenticated() throws Exception {
+		this.mockMvc.perform(patch("/api/v1/me")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"displayName\":\"달빛서점\"}"))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(401));
+	}
+
+	/**
+	 * <b>탈퇴한 계정은 이름을 바꾸지 못한다</b> (R12.5).
+	 *
+	 * <p>액세스 토큰은 탈퇴 후에도 만료 전까지 살아 있다. 막지 않으면 파기 배치가 익명으로
+	 * 바꿔 둔 이름을 <b>탈퇴한 계정이 도로 되돌린다.</b>
+	 */
+	@Test
+	void R12_5_a_withdrawn_account_cannot_rename_itself() throws Exception {
+		UUID playerRef = givenMember();
+		this.mockMvc.perform(delete("/api/v1/me").with(asPlayer(playerRef)));
+
+		assertThat(patchMe(playerRef, "달빛서점").getResponse().getStatus()).isEqualTo(403);
+		assertThat(this.profiles.findById(playerRef)).isEmpty();
+	}
+
+	/**
+	 * <b>중복을 막지 않는다</b> (§13-55).
+	 *
+	 * <p>{@code author_profile} 에 표시명 유일 제약이 없다 — {@code catalog/V7} 도
+	 * {@code catalog/V11} 도 두지 않았다. 이 테스트는 <b>제약이 조용히 생기면 깨지도록</b>
+	 * 계약을 못박는다: 유일성을 도입하려면 마이그레이션과 함께 이 자리를 고쳐야 한다.
+	 */
+	@Test
+	void S13_55_two_members_may_hold_the_same_display_name() throws Exception {
+		UUID first = givenMember();
+		UUID second = givenMember();
+		this.createdProfiles.add(first);
+		this.createdProfiles.add(second);
+
+		assertThat(patchMeAs(first, "달빛서점")).containsEntry("displayName", "달빛서점");
+		assertThat(patchMeAs(second, "달빛서점")).containsEntry("displayName", "달빛서점");
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> patchMeAs(UUID playerRef, String displayName) throws Exception {
+		String json = patchMe(playerRef, displayName).getResponse().getContentAsString(StandardCharsets.UTF_8);
+		return JSON.readValue(json, Map.class);
+	}
+
+	private MvcResult patchMe(UUID playerRef, String displayName) throws Exception {
+		return this.mockMvc.perform(patch("/api/v1/me").with(asPlayer(playerRef))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(JSON.writeValueAsString(Map.of("displayName", displayName))))
+				.andReturn();
 	}
 
 	@SuppressWarnings("unchecked")

@@ -164,7 +164,7 @@ class AnthropicCancellationTests {
 	/** 운영과 같은 방식으로 만든 클라이언트를 쓴다 — 요청 팩토리와 타임아웃이 갈라지면 의미가 없다. */
 	private AnthropicStoryProvider adapter() {
 		AnthropicProperties properties = new AnthropicProperties("test-key", turnModel("claude-opus-5"),
-				"http://localhost:" + this.server.port(), 4096);
+				"http://localhost:" + this.server.port(), 4096, null);
 
 		return new AnthropicStoryProvider(
 				AnthropicProviderConfiguration.restClient(properties,

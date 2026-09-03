@@ -33,6 +33,9 @@ class ErrorCodeTests {
 		// 이유를 모른 채 다시 시도한다.
 		catalog.put("ALREADY_EXISTS", HttpStatus.CONFLICT);
 		catalog.put("REVIEW_NOT_PENDING", HttpStatus.CONFLICT);
+		// #290 · §13-59 — 요청의 형태가 아니라 **작품이 놓인 자리**가 맞지 않는다. 400 으로
+		// 답하면 클라이언트는 자기가 보낸 값을 고치려 든다.
+		catalog.put("STORY_NOT_SUSPENDED", HttpStatus.CONFLICT);
 		catalog.put("SAFETY_BLOCKED", HttpStatus.UNPROCESSABLE_CONTENT);
 		catalog.put("STORY_SUSPENDED", HttpStatus.LOCKED);
 		catalog.put("RETRY_COOLDOWN", HttpStatus.TOO_MANY_REQUESTS);

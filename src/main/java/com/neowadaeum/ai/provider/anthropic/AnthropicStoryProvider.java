@@ -222,27 +222,34 @@ public class AnthropicStoryProvider implements StoryProvider {
 	/**
 	 * 호출 한 건을 기록한다 (S-3 — 원문 보관처는 {@code ai_call_log} 하나다).
 	 *
-	 * <p><b>{@code cost_micro} 를 채우지 않는다.</b> 단가는 벤더·모델별로 다르고 시간에 따라
-	 * 바뀐다 — 코드에 박으면 <b>틀린 순간부터 조용히 틀린 값이 쌓이고</b>, 그 값으로 예산을
-	 * 판단하게 된다. 단가표가 생기는 시점에 채운다.
+	 * <p><b>{@code cost_micro_krw} 는 설정된 단가로만 채운다</b> (#311, §13-53). 단가는 벤더·모델별로
+	 * 다르고 시간에 따라 바뀌므로 코드에 박지 않는다 — 박으면 <b>틀린 순간부터 조용히 틀린 값이
+	 * 쌓이고</b>, 그 값으로 예산을 판단하게 된다. 설정에 그 모델의 단가가 없으면 {@code null} 이며,
+	 * <b>지어낸 0 을 넣지 않는다.</b>
 	 *
 	 * <p><b>{@code playerRef} 를 담을 자리가 없다</b> (I-3). {@link AiCallLog.Draft} 에 그
 	 * 컴포넌트가 없으므로 실을 방법 자체가 없다.
 	 */
 	private void record(AiPurpose purpose, ObjectNode body, JsonNode response, long startedAt, String safetyFlags) {
+		String modelId = body.path("model").asString("");
+		Integer inputTokens =
+				(response != null) ? intOrNull(response.path("usage").path("input_tokens")) : null;
+		Integer outputTokens =
+				(response != null) ? intOrNull(response.path("usage").path("output_tokens")) : null;
+
 		this.recorder.record(new AiCallLog.Draft(
 				null,
 				null,
 				purpose.wireValue(),
 				PROVIDER_ID,
-				body.path("model").asString(""),
+				modelId,
 				AiCallFallback.intendedProviderId(),
 				body.toString(),
 				(response != null) ? response.toString() : null,
-				(response != null) ? intOrNull(response.path("usage").path("input_tokens")) : null,
-				(response != null) ? intOrNull(response.path("usage").path("output_tokens")) : null,
+				inputTokens,
+				outputTokens,
 				(int) java.time.Duration.ofNanos(System.nanoTime() - startedAt).toMillis(),
-				null,
+				this.properties.costMicroKrw(modelId, inputTokens, outputTokens),
 				safetyFlags,
 				AiCallAttempt.current()));
 	}
