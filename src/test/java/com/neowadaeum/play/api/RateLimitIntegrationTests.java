@@ -112,7 +112,7 @@ class RateLimitIntegrationTests extends ContainerTestBase {
 	 * 요청이 무제한이 된다.
 	 */
 	@Test
-	void S8_the_auth_path_is_limited_by_ip() throws Exception {
+	void SEC8_the_auth_path_is_limited_by_ip() throws Exception {
 		for (int attempt = 0; attempt < this.limits.authPerMinutePerIp(); attempt++) {
 			this.mockMvc.perform(post("/api/v1/auth/refresh")
 					.contentType(MediaType.APPLICATION_JSON)

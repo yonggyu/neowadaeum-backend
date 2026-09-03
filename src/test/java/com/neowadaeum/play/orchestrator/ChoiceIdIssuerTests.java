@@ -100,7 +100,7 @@ class ChoiceIdIssuerTests {
 	 * <b>본문 일부가 그 두 곳으로 함께 나간다.</b>
 	 */
 	@Test
-	void S3_the_identifier_does_not_carry_the_choice_text() {
+	void SEC3_the_identifier_does_not_carry_the_choice_text() {
 		assertThat(ChoiceIdIssuer.issue(SESSION, 7, 1, "유나에게 연락처를 묻는다"))
 				.doesNotContain("유나", "연락처");
 	}

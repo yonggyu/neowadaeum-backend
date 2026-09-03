@@ -26,7 +26,7 @@ class RateLimitPropertiesTests {
 
 	/** S-8 — 인증 전 경로는 IP 로 센다. 계정 기준으로 셀 수 없기 때문이다. */
 	@Test
-	void S8_the_ip_limit_exists_and_is_positive() {
+	void SEC8_the_ip_limit_exists_and_is_positive() {
 		assertThat(RateLimitProperties.defaults().authPerMinutePerIp()).isPositive();
 	}
 

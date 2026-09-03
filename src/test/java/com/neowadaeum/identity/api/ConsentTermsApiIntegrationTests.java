@@ -118,7 +118,7 @@ class ConsentTermsApiIntegrationTests extends ContainerTestBase {
 	 * <p>"있어야 할 것"만 단언하면 값이 새어도 통과한다 — {@code doesNotContain} 을 함께 건다.
 	 */
 	@Test
-	void S9_the_response_carries_nothing_about_any_member() throws Exception {
+	void SEC9_the_response_carries_nothing_about_any_member() throws Exception {
 		String body = this.mockMvc.perform(get("/api/v1/consents")).andReturn().getResponse()
 				.getContentAsString();
 

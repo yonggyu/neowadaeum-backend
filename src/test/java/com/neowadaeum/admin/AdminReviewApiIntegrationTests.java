@@ -95,7 +95,7 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	 * 것과 같다.
 	 */
 	@Test
-	void S4_without_a_step_up_the_queue_is_not_visible() throws Exception {
+	void SEC4_without_a_step_up_the_queue_is_not_visible() throws Exception {
 		givenAdmin();
 
 		this.mvc.perform(get("/api/v1/admin/reviews").with(asPlayer(ADMIN_PLAYER_REF)))

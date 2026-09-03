@@ -144,7 +144,7 @@ class FixedStoryProviderTests {
 
 	/** S-3 보안 요건 — 실패 메시지에 작품 본문이 실리지 않는다. 예외 메시지는 로그로 흐른다. */
 	@Test
-	void S3_failure_message_carries_coordinates_not_narrative_text() {
+	void SEC3_failure_message_carries_coordinates_not_narrative_text() {
 		FixedStoryProvider provider = provider();
 
 		assertThatThrownBy(() -> provider.generateTurn(TurnRequest.of(FIXTURE_STORY, 9, 1, GenerationContexts.sample())))
