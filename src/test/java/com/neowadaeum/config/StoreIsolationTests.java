@@ -70,9 +70,12 @@ class StoreIsolationTests extends ContainerTestBase {
 		// B-49 로 authoring 의 첫 엔티티가 들어왔다. **catalog 스토어에 살지만 소유는
 		// authoring 이다** (ADR-0002) — 목록이 느는 것은 의식적인 결정이어야 하므로
 		// containsExactlyInAnyOrder 를 유지한다.
+		// #290 · §13-59 — StoryAppeal 도 같은 자리다. 재검토 요청은 작품·검수 이력과 한
+		// 트랜잭션에서 읽히고(열려 있는 요청인지는 인간 판정과 견주어 파생된다), 그 둘은
+		// catalog 스토어에 있다.
 		assertThat(catalogEntities).containsExactlyInAnyOrder("Genre", "StoryGenre", "AuthorProfile",
 				"EndingStat", "ServiceConfig", "BlocklistEntryRow", "StoryDraft", "StoryReview",
-				"ContentReport");
+				"ContentReport", "StoryAppeal");
 
 		assertThat(promptLogEntities).doesNotContainAnyElementsOf(identityEntities);
 		assertThat(catalogEntities)

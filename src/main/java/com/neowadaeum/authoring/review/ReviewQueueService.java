@@ -69,14 +69,18 @@ public class ReviewQueueService {
 
 	private final StoryReviewRepository reviews;
 
+	private final StoryAppealRepository appeals;
+
 	private final Clock clock;
 
 	private final TransactionTemplate transactions;
 
-	public ReviewQueueService(StoryPublisher publisher, StoryReviewRepository reviews, Clock clock,
+	public ReviewQueueService(StoryPublisher publisher, StoryReviewRepository reviews,
+			StoryAppealRepository appeals, Clock clock,
 			PlatformTransactionManager catalogTransactionManager) {
 		this.publisher = publisher;
 		this.reviews = reviews;
+		this.appeals = appeals;
 		this.clock = clock;
 		this.transactions = new TransactionTemplate(catalogTransactionManager);
 	}
@@ -86,6 +90,9 @@ public class ReviewQueueService {
 	 *
 	 * <p><b>기다린 시각은 마지막 판정에서 온다</b> — 자동 검수가 통과시킨 순간이 곧 큐에 들어온
 	 * 순간이다. 작품 생성 시각을 쓰면 <b>재검수가 몇 달을 기다린 것처럼 보인다.</b>
+	 *
+	 * <p><b>이의는 순서를 바꾸지 않는다</b> (#290, §13-59). 요청은 공짜이므로 앞세우면 줄을 사는
+	 * 길이 되고, <b>아직 아무도 보지 못한</b> 작품들이 그만큼 밀린다. 바뀌는 것은 표시 하나다.
 	 */
 	public List<QueueItem> pending() {
 		List<StoryPublisher.AwaitingReview> awaiting =
@@ -94,14 +101,17 @@ public class ReviewQueueService {
 		if (awaiting.isEmpty()) {
 			return List.of();
 		}
-		Map<UUID, Instant> queuedAt = latestReviewTimes(
-				awaiting.stream().map(StoryPublisher.AwaitingReview::storyId).toList());
+		List<UUID> storyIds = awaiting.stream().map(StoryPublisher.AwaitingReview::storyId).toList();
+		Map<UUID, Instant> queuedAt = latestReviewTimes(storyIds);
+		java.util.Set<UUID> appealed =
+				java.util.Set.copyOf(this.appeals.storyIdsWithOpenAppeal(storyIds));
 
 		List<QueueItem> items = new ArrayList<>(awaiting.size());
 		for (StoryPublisher.AwaitingReview story : awaiting) {
 			items.add(new QueueItem(story.storyId(), story.title(),
 					ReviewStatus.valueOf(story.reviewStatus().toUpperCase(java.util.Locale.ROOT)),
-					queuedAt.getOrDefault(story.storyId(), story.createdAt())));
+					queuedAt.getOrDefault(story.storyId(), story.createdAt()),
+					appealed.contains(story.storyId())));
 		}
 		return List.copyOf(items);
 	}
@@ -258,9 +268,14 @@ public class ReviewQueueService {
 	 * <p><b>왜 큐에 있는지는 담는다</b> (B-57). 제출을 기다리는 것과 신고로 내려간 것은
 	 * 검수자가 <b>다르게 봐야 하는 일</b>이다 — 하나는 아직 아무도 못 본 작품이고, 다른
 	 * 하나는 이미 사람들이 본 작품이다.
+	 *
+	 * @param appealed <b>작성자가 이 정지에 이의를 제기했다</b> (#290, §13-59). 사유는 담지
+	 * 않는다 — 큐는 무엇을 볼 차례인지를 답하는 자리이고, 작성자가 쓴 글은 원고와 같은 문으로
+	 * 본다 (S-5). <b>판정의 근거가 아니다</b>: 이의는 다시 보라는 요청이지 통과시킬 이유가
+	 * 아니며, 제기하지 않은 작품도 똑같이 사람이 본다
 	 */
-	public record QueueItem(UUID storyId, String title, ReviewStatus reviewStatus,
-			Instant queuedAt) {
+	public record QueueItem(UUID storyId, String title, ReviewStatus reviewStatus, Instant queuedAt,
+			boolean appealed) {
 	}
 
 	/** 판정 결과. */
