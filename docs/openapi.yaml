@@ -1641,6 +1641,30 @@ paths:
 
         **읽는 것도 감사에 남는다** (R14.5).
       x-implemented-by: B-57
+
+  /api/v1/admin/reviews/{storyId}/history:
+    get:
+      tags: [admin]
+      operationId: getReviewHistory
+      summary: 지난 검수 판정
+      description: |
+        **검수 이력은 append-only 다** (I-5). 같은 작품에 판정이 여러 번 쌓이고 — 재제출 ·
+        `unlisted → public` 승격 · 재스캔 · 샘플링 · 사람 판정 — 마지막 하나만 보면 **왜
+        그렇게 됐는지**를 잃는다. 검수자가 지금 보는 작품이 **전에 무엇으로 걸렸던 작품인지**는
+        판정에 직접 쓰인다.
+
+        최근 판정부터 온다. **작품 하나의 이력이다** — 화면 전체의 처리 이력(최근 판정을
+        작품과 무관하게 시간순으로)은 이 경로가 답하지 않는다 (§13-63).
+
+        **검수자를 담지 않는다** (I-3). `reviewer_ref` 는 `player_ref` 이고, **누가
+        판정했는지**를 답하는 자리는 관리자 감사 기록이다.
+
+        **`note` 는 담는다.** 이 경로는 관리자 전용이며 (S-4) 검수자가 문장을 적는 유일한
+        자리다 — 작성자가 보는 검수 상태 응답에는 카테고리만 간다 (R8.7, S-11).
+
+        **쪽을 나누지 않는다.** 한 작품의 기록은 제출 회차 수를 따라가므로 몇 건 수준이고,
+        커서를 두면 화면이 쓰지 않는 상태가 계약에 들어간다.
+      x-implemented-by: '#316'
       parameters:
         - name: storyId
           in: path
@@ -1656,6 +1680,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StoryReportsResponse'
+
+          description: 최근 판정부터. **판정이 없으면 빈 목록이다** — 없는 작품과 다른 사실이다
+          content:
+            application/json:
+              schema:
+                type: array
+                x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
+                items:
+                  $ref: '#/components/schemas/ReviewHistoryEntryResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -3697,6 +3730,45 @@ components:
         status:
           type: string
           enum: [open, reviewing, actioned, dismissed]
+
+    ReviewHistoryEntryResponse:
+      type: object
+      description: |
+        지난 판정 한 건 (§13-63).
+
+        **검수자를 담지 않는다** (I-3) — `reviewer_ref` 는 `player_ref` 다. 표시명으로 바꿔
+        싣지도 않는다: catalog 가 가진 표시명은 **작성자**의 것이고, 검수자의 것을 실으려면
+        Identity 를 이 경로에 끌어와야 한다.
+      required: [stage, verdict, reasons, reviewedAt, note]
+      properties:
+        stage:
+          type: string
+          enum: [auto, human]
+          description: |
+            **자동과 사람을 섞지 않는다.** 자동 통과는 사람이 본 것이 아니며, 그 구분이 없으면
+            화면은 아무도 보지 않은 작품을 승인된 작품으로 적는다 (R8.6).
+        verdict:
+          type: string
+          enum: [pass, reject, hold]
+          description: '`hold` 는 아무것도 바꾸지 않았다 — 봤고 판단을 미뤘다는 기록이다'
+        reasons:
+          type: array
+          description: |
+            사유 **카테고리만**이다 (R8.7, S-11). 어떤 항목에 걸렸는지를 담으면 이 응답이
+            우회 사전이 된다. 사유 없이 내려진 판정은 빈 배열이다.
+          items:
+            type: string
+            enum: [minor_sexual, real_person_harm, non_consensual, ip_replication,
+                   rating_exceeded, hate_speech, third_party_personal_data]
+        reviewedAt:
+          type: string
+          format: date-time
+          description: 판정 시각
+        note:
+          type: [string, 'null']
+          description: |
+            검수자의 내부 기록. **작성자에게 가지 않는다** (R8.7, S-11). 자동 판정에는 사람이
+            없어 `null` 이다.
 
     PreviewResponse:
       x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'

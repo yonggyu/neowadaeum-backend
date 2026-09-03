@@ -96,6 +96,16 @@ public class StoryReview {
 		return this.reviewerRef;
 	}
 
+	/**
+	 * 검수자가 적은 내부 기록. 자동 판정에는 사람이 없어 {@code null} 이다.
+	 *
+	 * <p><b>작성자에게 가지 않는다</b> (R8.7, S-11) — 사람이 쓴 설명에는 걸린 표현이 그대로
+	 * 들어가며, 그것이 곧 우회 사전이 된다. 읽는 자리는 관리자 경로뿐이다 (§13-63).
+	 */
+	public String getNote() {
+		return this.note;
+	}
+
 	public Instant getReviewedAt() {
 		return this.reviewedAt;
 	}
