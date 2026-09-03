@@ -899,6 +899,9 @@ paths:
         `isLoggedIn` 을 반환하지 않는다. 클라이언트가 토큰 보유로 판단한다.
 
         `noticeText` 는 AI 사전 고지 문구이며 **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8, #277). `GET /api/v1/consents` 와
+        **같은 창을 쓴다** — 따로 세면 한쪽이 다른 쪽의 우회로가 된다.
       security: []
       x-implemented-by: B-37, B-14
       responses:
@@ -908,6 +911,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LandingResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── 약관 메타 — 가입 화면이 판본을 읽어 간다 (#261) ──────────
   /api/v1/consents:
@@ -928,6 +933,9 @@ paths:
 
         판본은 **하드코딩하지 않는다** — `service_config` 에서 온다. `ai_notice` 만은 사용자가
         실제로 본 고지의 판본을 그대로 쓴다 (R11.3).
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8, #277). `GET /api/v1/landing` 과
+        **같은 창을 쓴다** — 따로 세면 한쪽이 다른 쪽의 우회로가 된다.
       security: []
       x-implemented-by: '#261'
       responses:
@@ -937,6 +945,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConsentTermsResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── §14 Admin — 역할·IP·2FA 를 모두 통과해야 한다 (S-4) ──────
   /api/v1/admin/sessions/{sessionId}/debug:

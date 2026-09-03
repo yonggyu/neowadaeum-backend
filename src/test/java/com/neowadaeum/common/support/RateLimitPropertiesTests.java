@@ -30,6 +30,17 @@ class RateLimitPropertiesTests {
 		assertThat(RateLimitProperties.defaults().authPerMinutePerIp()).isPositive();
 	}
 
+	/**
+	 * S-8 — 인증 없이 열리는 설정 조회에도 한도가 있다 (이슈 #277).
+	 *
+	 * <p>{@code /landing} 과 {@code /consents} 가 <b>이 값 하나</b>를 함께 쓴다. 값이 사라지거나
+	 * 0 이 되면 <b>토큰 없이 부를 수 있는 DB 읽기가 다시 무제한</b>이 된다.
+	 */
+	@Test
+	void S13_10_the_public_read_limit_exists_and_is_positive() {
+		assertThat(RateLimitProperties.defaults().publicReadPerMinutePerIp()).isPositive();
+	}
+
 	/** §13-28 — 일일 한도는 턴 수로 대리한다. 값이 있고 분당 한도보다 크다. */
 	@Test
 	void S13_28_the_daily_limit_is_larger_than_the_per_minute_one() {
@@ -41,7 +52,7 @@ class RateLimitPropertiesTests {
 	/** 설정이 값을 덮는다 — B-46 실측 후 조정할 수 있어야 한다. */
 	@Test
 	void S15_configuration_overrides_the_defaults() {
-		assertThat(new RateLimitProperties(3, 4, 5, 6, 7).turnPerMinute()).isEqualTo(3);
+		assertThat(new RateLimitProperties(3, 4, 5, 6, 7, 8).turnPerMinute()).isEqualTo(3);
 	}
 
 	/** 창 길이는 값이 아니라 규칙이다 — §15 가 "분당"이라고 적었다. */
