@@ -86,7 +86,7 @@ class AdminTotpStoreIntegrationTests extends ContainerTestBase {
 
 	/** <b>저장된 것은 암호문이다</b> (S-4). 컬럼을 그대로 읽어 비밀이 나오면 안 된다. */
 	@Test
-	void S4_the_stored_secret_is_not_readable() {
+	void SEC4_the_stored_secret_is_not_readable() {
 		UUID userId = UUID.randomUUID();
 		byte[] secret = secret();
 

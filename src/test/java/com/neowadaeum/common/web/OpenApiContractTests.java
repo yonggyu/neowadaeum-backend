@@ -3,12 +3,7 @@ package com.neowadaeum.common.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.neowadaeum.common.error.ErrorCode;
-import com.neowadaeum.identity.api.ConsentTermsView;
-import com.neowadaeum.play.api.PlayController;
 import com.neowadaeum.play.api.TurnRequestBody;
-import com.neowadaeum.catalog.query.CharacterCardView;
-import com.neowadaeum.catalog.query.GenreView;
-import com.neowadaeum.catalog.query.StoryCardView;
 import com.neowadaeum.play.api.HistoryView;
 import com.neowadaeum.play.api.LandingView;
 import com.neowadaeum.play.api.LibraryView;
@@ -53,6 +48,10 @@ import org.yaml.snakeyaml.Yaml;
  * <li>에러 코드 목록이 {@link ErrorCode} 와 <b>정확히 같다</b> — 스펙에 없는 코드를 만들지 않는다</li>
  * <li>이미 구현된 응답의 <b>모든 필드</b>가 스펙에 선언되어 있다 (구현 ⊆ 계약)</li>
  * </ol>
+ *
+ * <p><b>세 번째는 목록이 아니라 열거다</b> (#309). 검사할 스키마를 손으로 적던 동안
+ * {@code authoring} 과 {@code admin} 은 한 번도 검사되지 않았고 실제로 하나가 샜다. 지금은
+ * {@code @RestController} 의 반환 타입에서 응답을 <b>스스로 찾는다</b>.
  *
  * <p><b>계약이 구현보다 넓은 것은 정상이다.</b> B-06 은 계약 우선이므로 아직 구현되지 않은
  * 엔드포인트·필드가 스펙에 먼저 존재한다. 반대 방향 — 구현에는 있는데 계약에 없는 필드 — 만
@@ -231,32 +230,9 @@ class OpenApiContractTests {
 				.isEqualTo(List.of());
 	}
 
-	/** 약관 메타 응답의 모든 필드가 계약에 선언되어 있다 (#261). */
-	@Test
-	void R10_2_implemented_consent_terms_fields_are_all_declared() {
-		assertThat(propertiesOf("ConsentTermsResponse"))
-				.containsAll(recordComponentsOf(ConsentTermsView.class));
-		assertThat(propertiesOf("ConsentTerm"))
-				.containsAll(recordComponentsOf(ConsentTermsView.Term.class));
-	}
-
 	// ── 3. 구현 ⊆ 계약 ───────────────────────────────────────
 
-	/**
-	 * 이미 구현된 턴 응답의 모든 필드가 계약에 선언되어 있다.
-	 *
-	 * <p>반대 방향은 검사하지 않는다 — 계약이 구현보다 넓은 것은 계약 우선의 정상 상태다.
-	 */
-	@Test
-	void B06_implemented_turn_response_fields_are_all_declared() {
-		assertThat(propertiesOf("TurnResponse")).containsAll(recordComponentsOf(TurnView.class));
-	}
 
-	@Test
-	void B06_implemented_paragraph_and_choice_fields_are_all_declared() {
-		assertThat(propertiesOf("Paragraph")).containsAll(recordComponentsOf(TurnView.Paragraph.class));
-		assertThat(propertiesOf("Choice")).containsAll(recordComponentsOf(TurnView.Choice.class));
-	}
 
 	/**
 	 * 턴 요청의 입력면은 {@code choiceId} 와 {@code turnNo} 둘뿐이다 (I-1, I-18).
@@ -271,51 +247,9 @@ class OpenApiContractTests {
 				"idempotencyKey");
 	}
 
-	@Test
-	void B06_implemented_start_session_response_fields_are_all_declared() {
-		assertThat(propertiesOf("StartSessionResponse"))
-				.containsAll(recordComponentsOf(PlayController.StartSessionResponse.class));
-	}
 
-	/**
-	 * 라이브러리 응답의 모든 필드가 계약에 선언되어 있다 (B-15).
-	 *
-	 * <p>여기서 어긋나면 <b>프론트가 모르는 필드</b>가 나가고, 그 지점이 계약이 거짓말을
-	 * 시작하는 자리다.
-	 */
-	@Test
-	void B15_implemented_library_response_fields_are_all_declared() {
-		assertThat(propertiesOf("LibraryResponse")).containsAll(recordComponentsOf(LibraryView.class));
-		assertThat(propertiesOf("LibrarySection"))
-				.containsAll(recordComponentsOf(LibraryView.SectionView.class));
-		assertThat(propertiesOf("ContinueSession"))
-				.containsAll(recordComponentsOf(LibraryView.ContinueSessionView.class));
-		assertThat(propertiesOf("StoryCard")).containsAll(recordComponentsOf(StoryCardView.class));
-		assertThat(propertiesOf("Genre")).containsAll(recordComponentsOf(GenreView.class));
-	}
 
-	/**
-	 * 작품 상세 응답의 모든 필드가 계약에 선언되어 있다 (B-16).
-	 *
-	 * <p><b>{@code ageRating} 이 계약에서 {@code const} 다.</b> 구현이 상수를 돌려주는지는
-	 * {@code StoryDetailApiIntegrationTests} 가 값으로 확인한다 (I-19).
-	 */
-	@Test
-	void B16_implemented_story_detail_fields_are_all_declared() {
-		assertThat(propertiesOf("StoryDetailResponse"))
-				.containsAll(recordComponentsOf(StoryDetailResponse.class));
-		assertThat(propertiesOf("StoryDetail"))
-				.containsAll(recordComponentsOf(StoryDetailResponse.Story.class));
-		assertThat(propertiesOf("MySessionBrief"))
-				.containsAll(recordComponentsOf(StoryDetailResponse.MySession.class));
-		assertThat(propertiesOf("CharacterCard")).containsAll(recordComponentsOf(CharacterCardView.class));
-	}
 
-	/** Resume 응답의 모든 필드가 계약에 선언되어 있다 (B-17). */
-	@Test
-	void B17_implemented_resume_fields_are_all_declared() {
-		assertThat(propertiesOf("ResumeResponse")).containsAll(recordComponentsOf(ResumeView.class));
-	}
 
 	/**
 	 * {@code sessionState} 의 다섯 값이 계약과 정확히 같다 (§4.7).
@@ -338,24 +272,10 @@ class OpenApiContractTests {
 	 */
 	@Test
 	void B35_history_carries_no_choice_id_on_either_side() {
-		assertThat(propertiesOf("HistoryResponse")).containsAll(recordComponentsOf(HistoryView.class));
-		assertThat(propertiesOf("HistoryItem")).containsAll(recordComponentsOf(HistoryView.Item.class));
 		assertThat(propertiesOf("HistoryItem")).doesNotContain("choiceId");
 		assertThat(recordComponentsOf(HistoryView.Item.class)).doesNotContain("choiceId");
 	}
 
-	/** 내 것들 응답의 모든 필드가 계약에 선언되어 있다 (B-36). */
-	@Test
-	void B36_implemented_my_stories_fields_are_all_declared() {
-		assertThat(propertiesOf("MySessionsResponse"))
-				.containsAll(recordComponentsOf(MyStoriesView.Sessions.class));
-		assertThat(propertiesOf("MySessionItem"))
-				.containsAll(recordComponentsOf(MyStoriesView.SessionItem.class));
-		assertThat(propertiesOf("MyStoriesResponse"))
-				.containsAll(recordComponentsOf(MyStoriesView.Stories.class));
-		assertThat(propertiesOf("MyStoryItem"))
-				.containsAll(recordComponentsOf(MyStoriesView.StoryItem.class));
-	}
 
 	/**
 	 * {@code status} 쿼리 값이 계약과 같다 (§13-6).
@@ -375,9 +295,6 @@ class OpenApiContractTests {
 	 */
 	@Test
 	void B37_landing_carries_no_is_logged_in_on_either_side() {
-		assertThat(propertiesOf("LandingResponse")).containsAll(recordComponentsOf(LandingView.class));
-		assertThat(propertiesOf("FeaturedStory"))
-				.containsAll(recordComponentsOf(LandingView.FeaturedStory.class));
 		assertThat(propertiesOf("LandingResponse")).doesNotContain("isLoggedIn");
 		assertThat(recordComponentsOf(LandingView.class)).doesNotContain("isLoggedIn");
 	}
@@ -391,7 +308,7 @@ class OpenApiContractTests {
 	 * 아니다.
 	 */
 	@Test
-	void S11_the_contract_names_no_host() {
+	void SEC11_the_contract_names_no_host() {
 		assertThat(SPEC).doesNotContainKey("servers");
 	}
 
@@ -407,6 +324,168 @@ class OpenApiContractTests {
 		assertThat(new ClassPathResource("static/openapi/openapi.yaml").exists()).isFalse();
 		assertThat(new ClassPathResource("static/openapi.yaml").exists()).isFalse();
 		assertThat(new ClassPathResource("public/openapi.yaml").exists()).isFalse();
+	}
+
+	// ── 3-1. 커버리지 — 손 목록에 기대지 않는다 (#309) ────────
+
+	/**
+	 * <b>위의 목록이 규칙이 아니다.</b> 여기가 규칙이다 (#309).
+	 *
+	 * <p>바로 위 절은 스키마 이름을 <b>손으로 적어</b> 대조한다. 27줄이 있고, 그 목록에 없는
+	 * 응답은 검사되지 않으며 <b>줄을 더하는 것을 잊어도 아무 일도 일어나지 않는다.</b> 그래서
+	 * {@code authoring} 과 {@code admin} 의 응답은 한 번도 검사된 적이 없었고, 실제로 하나가
+	 * 샜다 — {@code OutlineResponse.conditionTemplates} 는 구현이 싣는데 계약에 없었고, 그것이
+	 * 이슈 #282(<i>"조건 템플릿 목록을 주는 경로가 없다"</i>)의 원인이었다. <b>경로는 처음부터
+	 * 있었고 계약이 그것을 숨기고 있었다.</b>
+	 *
+	 * <p>#291 이 닫은 것과 같은 모양이다 — <b>목록으로 관리하는 규칙은 목록에 줄을 더하는 것을
+	 * 잊는 순간 규칙이 아니게 된다.</b> 그래서 목록을 지우고 핸들러에서 열어 본다.
+	 *
+	 * <p><b>대응하는 스키마를 못 찾으면 건너뛰지 않고 실패한다.</b> 건너뛰면 지금 문제가 형태만
+	 * 바꿔 돌아온다 — 검사한다고 믿는데 검사하지 않는 상태가 그것이다.
+	 */
+	@Test
+	void Issue309_every_response_type_reachable_from_a_handler_is_declared() {
+		List<String> undeclared = new ArrayList<>();
+		List<String> unmapped = new ArrayList<>();
+
+		for (Class<?> type : responseRecords()) {
+			String schemaName = schemaNameOf(type);
+			if (schemaName == null) {
+				unmapped.add(canonicalNameOf(type));
+				continue;
+			}
+			Set<String> declared = propertiesOf(schemaName);
+			for (String field : recordComponentsOf(type)) {
+				if (!declared.contains(field)) {
+					undeclared.add("%s.%s → 스키마 %s".formatted(canonicalNameOf(type), field, schemaName));
+				}
+			}
+		}
+
+		assertThat(unmapped)
+				.as("이 응답 타입에 대응하는 스키마를 찾지 못했다 (#309). 규칙으로 유도되지 않으면 "
+						+ "SCHEMA_ALIASES 에 이유와 함께 더한다 — 건너뛰면 검사하지 않는 것이 된다")
+				.isEmpty();
+		assertThat(undeclared)
+				.as("구현이 내보내는데 계약에 없는 필드다 (#309). **계약을 넓혀 고친다** — "
+						+ "구현을 지우지 않는다. 프론트가 모르는 필드이고 계약이 거짓말을 시작하는 지점이다")
+				.isEmpty();
+	}
+
+	/**
+	 * 구현 클래스와 스키마 이름이 다른 자리.
+	 *
+	 * <p><b>규칙으로 유도되지 않는 것만 여기 온다</b> — {@code XxxView → XxxResponse} 와 이름이
+	 * 그대로인 경우는 아래 {@link #schemaNameOf} 가 처리한다. 목록이 길어지면 그것은 계약과
+	 * 구현의 이름 규칙이 갈라지고 있다는 신호다.
+	 */
+	private static final Map<String, String> SCHEMA_ALIASES = Map.ofEntries(
+			// 계약은 접미 없이 부른다 — 목록의 원소이지 응답 자체가 아니기 때문이다.
+			Map.entry("BlocklistEntryResponse", "BlocklistEntry"),
+			Map.entry("ReviewQueueItemResponse", "ReviewQueueItem"),
+			// 계약은 관리자 판정 결과를 Result 로 부른다 (같은 경로의 다른 셋과 같은 표기).
+			Map.entry("AdminReviewController.ReviewVerdictResponse", "ReviewVerdictResult"),
+			// 계약이 관리자 응답에 Admin 접두를 붙인다 — 사용자 응답과 같은 표에 있기 때문이다.
+			Map.entry("SessionDebugView", "AdminSessionDebugSession"),
+			Map.entry("AiCallView", "AdminAiCall"),
+			// **이름이 겹친다.** SessionDebugView 안의 TurnView 는 플레이의 TurnView 와 다른
+			// 것인데 단순 이름이 같아, 별칭이 없으면 TurnResponse 스키마에 대조되어 통과한다 —
+			// 엉뚱한 계약을 지키고 있다고 믿는 상태다. 별칭의 키가 바깥 클래스를 포함하는 이유다.
+			Map.entry("SessionDebugView.TurnView", "AdminDebugTurn"),
+			// 한 View 가 두 응답으로 갈린다. 중첩 이름은 바깥 클래스까지 적어야 구분된다 —
+			// Sessions · Stories · Item 은 혼자서는 무엇인지 모른다.
+			Map.entry("MyStoriesView.Sessions", "MySessionsResponse"),
+			Map.entry("MyStoriesView.Stories", "MyStoriesResponse"),
+			Map.entry("MyStoriesView.SessionItem", "MySessionItem"),
+			Map.entry("MyStoriesView.StoryItem", "MyStoryItem"),
+			Map.entry("LibraryView.SectionView", "LibrarySection"),
+			Map.entry("HistoryView.Item", "HistoryItem"),
+			Map.entry("ConsentTermsView.Term", "ConsentTerm"),
+			Map.entry("OutlineResponse.Chapter", "OutlineChapter"),
+			Map.entry("OutlineResponse.Ending", "OutlineEnding"),
+			Map.entry("StoryDetailResponse.Story", "StoryDetail"),
+			Map.entry("StoryDetailResponse.MySession", "MySessionBrief"),
+			// 계약은 세이프티 판정 하나를 Finding 으로 부른다 — precheck 만의 것이 아니다.
+			Map.entry("PrecheckFinding", "Finding"));
+
+	/**
+	 * 이 클래스가 계약의 어느 스키마인가. 못 찾으면 {@code null} 이고, 그것은 실패다.
+	 *
+	 * <p>순서가 규칙이다 — 별칭이 먼저이고, 그다음이 이름 그대로, 마지막이 {@code View → Response}.
+	 */
+	private static String schemaNameOf(Class<?> type) {
+		String canonical = canonicalNameOf(type);
+		String alias = SCHEMA_ALIASES.get(canonical);
+		if (alias != null) {
+			return alias;
+		}
+		String simple = type.getSimpleName();
+		if (hasSchema(simple)) {
+			return simple;
+		}
+		if (simple.endsWith("View")) {
+			String stem = simple.substring(0, simple.length() - 4);
+			if (hasSchema(stem + "Response")) {
+				return stem + "Response";
+			}
+			if (hasSchema(stem)) {
+				return stem;
+			}
+		}
+		return null;
+	}
+
+	/** 중첩 타입은 바깥 클래스까지 적는다 — {@code Sessions} 같은 이름은 혼자서는 무엇인지 모른다. */
+	private static String canonicalNameOf(Class<?> type) {
+		Class<?> outer = type.getEnclosingClass();
+		return (outer == null) ? type.getSimpleName() : outer.getSimpleName() + "." + type.getSimpleName();
+	}
+
+	@SuppressWarnings("unchecked")
+	private static boolean hasSchema(String name) {
+		Map<String, Object> components = (Map<String, Object>) SPEC.get("components");
+		return ((Map<String, Object>) components.get("schemas")).containsKey(name);
+	}
+
+	/**
+	 * 핸들러가 내보내는 record 전부 — 중첩된 것까지 따라간다.
+	 *
+	 * <p>{@code ResponseEntity} · {@code List} · {@code Optional} 같은 껍데기는 벗긴다.
+	 * record 가 아닌 것(문자열 · UUID · {@code Resource})은 스키마를 갖지 않으므로 대상이 아니다.
+	 */
+	private static Set<Class<?>> responseRecords() {
+		Set<Class<?>> found = new LinkedHashSet<>();
+		ClassPathScanningCandidateComponentProvider scanner =
+				new ClassPathScanningCandidateComponentProvider(false);
+		scanner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
+
+		for (BeanDefinition candidate : scanner.findCandidateComponents("com.neowadaeum")) {
+			Class<?> controller = ClassUtils.resolveClassName(candidate.getBeanClassName(), null);
+			for (Method method : controller.getDeclaredMethods()) {
+				if (AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class) == null) {
+					continue;
+				}
+				collectRecords(method.getGenericReturnType(), found);
+			}
+		}
+		return found;
+	}
+
+	/** 타입 하나에서 record 를 캐낸다. 이미 본 것은 다시 파고들지 않는다 — 순환에서 멈추지 않는다. */
+	private static void collectRecords(java.lang.reflect.Type type, Set<Class<?>> found) {
+		if (type instanceof java.lang.reflect.ParameterizedType parameterized) {
+			for (java.lang.reflect.Type argument : parameterized.getActualTypeArguments()) {
+				collectRecords(argument, found);
+			}
+			return;
+		}
+		if (!(type instanceof Class<?> raw) || !raw.isRecord() || !found.add(raw)) {
+			return;
+		}
+		for (java.lang.reflect.RecordComponent component : raw.getRecordComponents()) {
+			collectRecords(component.getGenericType(), found);
+		}
 	}
 
 	// ── 4. 계약 → 구현 ───────────────────────────────────────
@@ -517,5 +596,238 @@ class OpenApiContractTests {
 				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
 		assertThat(recordComponentsOf(com.neowadaeum.identity.api.MeResponse.class))
 				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
+	}
+
+	// ── 6. AI 고지 Footer (#291) ──────────────────────────────
+
+	/** 면제 표시. 값은 <b>왜 면제인지</b>를 적은 문장이며, {@code true} 로 갈음하지 않는다. */
+	private static final String NOTICE_EXEMPT = "x-notice-exempt";
+
+	/** 계약이 쓰는 표기는 소문자다. 위 {@code HTTP_METHODS} 는 컨트롤러 쪽 대문자 표기라 따로 둔다. */
+	private static final Set<String> SPEC_METHODS = Set.of("get", "post", "put", "patch", "delete");
+
+	/**
+	 * <b>응답은 고지 문구를 싣거나, 왜 싣지 않는지 말하거나 둘 중 하나다</b> (#291, R11.1).
+	 *
+	 * <p>AI 고지 Footer 를 그리는 화면의 응답에 {@code noticeText} 가 빠지는 일이 <b>세 번</b>
+	 * 있었다 — #257(라이브러리 · 작품 상세) · #284(내 이야기 · 내 작품 · 플레이 · 기록) ·
+	 * #289(섹션 전체 보기). 매번 <b>프론트가 화면을 붙이다 발견했다.</b> 응답을 하나씩 채우는
+	 * 방식은 열 번째 화면에서 같은 이슈를 다시 부른다.
+	 *
+	 * <p><b>어려운 쪽은 "무엇을 검사할 것인가"였다.</b> "Footer 를 그리는 화면"은 계약에 표시되어
+	 * 있지 않아 판정 기준이 없었다. 표시를 <b>대상 쪽</b>에 두는 안(Footer 응답에 표시하고 표시된
+	 * 것만 강제)은 <b>표시를 잊으면 그대로 샌다</b> — #257 → #284 → #289 가 정확히 그 모양이었다.
+	 * 그래서 뒤집었다. <b>기본이 "싣는다"</b>이고, 싣지 않는 응답이 면제를 밝힌다. 빠뜨리면
+	 * 여기서 깨지므로 침묵하지 않는다.
+	 *
+	 * <p>값을 {@code true} 가 아니라 <b>문장</b>으로 받는 이유는, 면제가 늘어날 때 그것이
+	 * 판단이었는지 관성이었는지를 나중에 구분할 수 있어야 하기 때문이다.
+	 *
+	 * <p>본문이 없는 응답({@code 204}, {@code 202})은 화면이 아니므로 보지 않는다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void Issue291_every_success_response_carries_the_notice_text_or_says_why_not() {
+		List<String> silent = new ArrayList<>();
+		paths().forEach((path, operations) -> ((Map<String, Object>) operations).forEach((method, operation) -> {
+			if (!SPEC_METHODS.contains(method)) {
+				return;
+			}
+			Map<String, Object> responses = (Map<String, Object>) ((Map<String, Object>) operation).get("responses");
+			if (responses == null) {
+				return;
+			}
+			responses.forEach((code, response) -> {
+				if (!code.startsWith("2")) {
+					return;
+				}
+				Map<String, Object> body = jsonBodyOf(response);
+				if (body == null || carriesNoticeText(body) || declaresExemption(body)) {
+					return;
+				}
+				silent.add("%s %s (%s) → %s".formatted(method.toUpperCase(Locale.ROOT), path, code,
+						schemaNameOf(response)));
+			});
+		}));
+
+		assertThat(silent)
+				.as("이 응답들은 고지 문구를 싣지도, 왜 싣지 않는지 말하지도 않는다 (#291). "
+						+ "Footer 를 그리는 화면이면 noticeText 를 required 로 더하고, 아니면 응답 스키마에 "
+						+ "%s: '<왜 면제인지>' 를 적는다", NOTICE_EXEMPT)
+				.isEmpty();
+	}
+
+	/**
+	 * 면제 표시가 <b>이유를 적고 있다</b> (#291).
+	 *
+	 * <p>{@code true} 나 빈 문자열을 받아 주면 표시는 남지만 근거가 사라진다. 그러면 면제 목록이
+	 * 늘어날 때 그것이 판단이었는지 관성이었는지 알 수 없다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void Issue291_every_exemption_says_why() {
+		Map<String, Object> schemas = (Map<String, Object>) ((Map<String, Object>) SPEC.get("components"))
+				.get("schemas");
+		schemas.forEach((name, schema) -> {
+			Object reason = ((Map<String, Object>) schema).get(NOTICE_EXEMPT);
+			if (reason == null) {
+				return;
+			}
+			assertThat(reason).as("%s 의 %s 는 이유를 적은 문장이어야 한다", name, NOTICE_EXEMPT)
+					.isInstanceOf(String.class);
+			assertThat((String) reason).as("%s 의 면제 이유가 비어 있다", name).isNotBlank();
+		});
+	}
+
+	/**
+	 * 성공 응답의 JSON 본문 스키마. 본문이 없으면 {@code null} 이다.
+	 *
+	 * <p>{@code $ref} 는 끝까지 따라간다 — 응답 자체가 {@code components/responses} 를 가리킬 수도,
+	 * 그 안의 스키마가 {@code components/schemas} 를 가리킬 수도 있다.
+	 */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> jsonBodyOf(Object response) {
+		Map<String, Object> resolved = resolve(response, "responses");
+		Map<String, Object> content = (Map<String, Object>) resolved.get("content");
+		if (content == null) {
+			return null;
+		}
+		Map<String, Object> json = (Map<String, Object>) content.get("application/json");
+		if (json == null || json.get("schema") == null) {
+			return null;
+		}
+		return resolve(json.get("schema"), "schemas");
+	}
+
+	/** {@code $ref} 하나를 푼다. 참조가 아니면 그대로 돌려준다. */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> resolve(Object node, String bucket) {
+		Map<String, Object> map = (Map<String, Object>) node;
+		Object ref = map.get("$ref");
+		if (!(ref instanceof String pointer)) {
+			return map;
+		}
+		String name = pointer.substring(pointer.lastIndexOf('/') + 1);
+		Map<String, Object> components = (Map<String, Object>) SPEC.get("components");
+		Map<String, Object> found = (Map<String, Object>) ((Map<String, Object>) components.get(bucket)).get(name);
+		assertThat(found).as("스펙이 없는 %s 를 가리킨다: %s", bucket, pointer).isNotNull();
+		return found;
+	}
+
+	/** 표시를 어디에 붙여야 하는지 실패 메시지가 스스로 말하게 한다. */
+	@SuppressWarnings("unchecked")
+	private static String schemaNameOf(Object response) {
+		Map<String, Object> resolved = resolve(response, "responses");
+		Map<String, Object> json = (Map<String, Object>) ((Map<String, Object>) resolved.get("content"))
+				.get("application/json");
+		Object ref = ((Map<String, Object>) json.get("schema")).get("$ref");
+		return (ref instanceof String pointer) ? pointer.substring(pointer.lastIndexOf('/') + 1) : "(인라인 스키마)";
+	}
+
+	@SuppressWarnings("unchecked")
+	private static boolean carriesNoticeText(Map<String, Object> schema) {
+		List<String> required = (List<String>) schema.get("required");
+		return required != null && required.contains("noticeText");
+	}
+
+	private static boolean declaresExemption(Map<String, Object> schema) {
+		return schema.get(NOTICE_EXEMPT) != null;
+	}
+
+	// ── 7. 단위가 있는 수치 (#275) ────────────────────────────
+
+	/**
+	 * 단위가 있는 수치 필드의 이름 — <b>이름이 단위를 들고 있는 것만 고른다.</b>
+	 *
+	 * <p>{@code chapterNo} · {@code turnNo} · {@code order} 같은 카운터는 단위가 없다. 그런
+	 * 필드에까지 설명을 강제하면 규칙이 소음이 되고, <b>소음이 된 규칙은 형식적으로 채워진다</b> —
+	 * "정수"라고 적힌 {@code description} 은 없는 것과 같다.
+	 */
+	private static final List<String> UNIT_SUFFIXES =
+			List.of("Rate", "Percent", "Ms", "Millis", "Seconds", "Micro", "Tokens", "Bytes", "Cost");
+
+	/** 비율은 범위와 예시까지 요구한다 — {@code 0.12} 인지 {@code 12} 인지가 설명만으로는 갈린다. */
+	private static final List<String> RATIO_SUFFIXES = List.of("Rate", "Percent");
+
+	/**
+	 * <b>단위가 있는 수치는 단위를 말한다</b> (#275, R2.7).
+	 *
+	 * <p>{@code reachRate} 는 타입이 {@code number} 뿐이라 {@code 0.12} 인지 {@code 12} 인지
+	 * 계약이 말하지 않았다 (#260). 표본이 적은 동안 {@code null} 이라 <b>틀렸다면 운영에서 처음
+	 * 드러났을 것</b>이고, 그래서 그 필드 하나에 단위·예시·상하한을 못박았다.
+	 *
+	 * <p><b>방어가 그 필드에만 있었다.</b> 계약 테스트는 <i>구현 ⊆ 계약</i> 한 방향만 보므로
+	 * <b>타입은 맞고 단위가 없는 필드</b>는 어느 쪽도 잡지 못한다. 컴파일도 테스트도 통과한다.
+	 *
+	 * <p>같은 모양이 실제로 하나 더 있었다 — {@code AdminAiCall.costMicro} 는 <b>백만분의 1
+	 * 단위인데 무엇의 백만분의 1인지가 레포 어디에도 없다.</b> 지금은 아무 Provider 도 채우지
+	 * 않아 항상 {@code null} 이라 드러나지 않았을 뿐이고, 통화는 #311 이 정한다.
+	 */
+	@Test
+	void Issue275_numeric_fields_with_a_unit_declare_it() {
+		List<String> silent = new ArrayList<>();
+		List<String> unbounded = new ArrayList<>();
+
+		eachSchemaProperty((schemaName, property, definition) -> {
+			if (!isNumeric(definition) || !endsWithAny(property, UNIT_SUFFIXES)) {
+				return;
+			}
+			String where = schemaName + "." + property;
+			if (!(definition.get("description") instanceof String text) || text.isBlank()) {
+				silent.add(where);
+			}
+			if (endsWithAny(property, RATIO_SUFFIXES)
+					&& !(definition.containsKey("examples") && definition.containsKey("minimum")
+							&& definition.containsKey("maximum"))) {
+				unbounded.add(where);
+			}
+		});
+
+		assertThat(silent)
+				.as("단위가 있는 수치인데 계약이 단위를 말하지 않는다 (#275). description 에 무엇의 "
+						+ "단위인지 적는다 — 타입이 number 인 것만으로는 12 가 12%% 인지 12건인지 갈린다")
+				.isEmpty();
+		assertThat(unbounded)
+				.as("비율 필드에 상하한과 예시가 없다 (#275, R2.7). 0.12 인지 12 인지는 설명만으로는 "
+						+ "갈리지 않는다 — 범위와 예시가 함께 있어야 한다")
+				.isEmpty();
+	}
+
+	/** 모든 컴포넌트 스키마의 속성을 한 번씩 준다. */
+	@SuppressWarnings("unchecked")
+	private static void eachSchemaProperty(SchemaPropertyVisitor visitor) {
+		Map<String, Object> schemas =
+				(Map<String, Object>) ((Map<String, Object>) SPEC.get("components")).get("schemas");
+		schemas.forEach((schemaName, schema) -> {
+			Object properties = ((Map<String, Object>) schema).get("properties");
+			if (properties == null) {
+				return;
+			}
+			((Map<String, Object>) properties).forEach((property, definition) -> {
+				if (definition instanceof Map) {
+					visitor.visit(schemaName, property, (Map<String, Object>) definition);
+				}
+			});
+		});
+	}
+
+	@FunctionalInterface
+	private interface SchemaPropertyVisitor {
+
+		void visit(String schemaName, String property, Map<String, Object> definition);
+	}
+
+	/** {@code type: integer} 와 {@code type: [integer, 'null']} 을 함께 본다. */
+	private static boolean isNumeric(Map<String, Object> definition) {
+		Object type = definition.get("type");
+		if (type instanceof String single) {
+			return "integer".equals(single) || "number".equals(single);
+		}
+		return type instanceof List<?> union
+				&& (union.contains("integer") || union.contains("number"));
+	}
+
+	private static boolean endsWithAny(String name, List<String> suffixes) {
+		return suffixes.stream().anyMatch(name::endsWith);
 	}
 }

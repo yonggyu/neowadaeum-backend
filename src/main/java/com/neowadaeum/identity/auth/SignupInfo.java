@@ -14,7 +14,8 @@ import java.util.Set;
  * 로그인 이력이 된다 — 그러면 "언제 무엇에 동의했는가"가 흐려진다.
  *
  * @param birthDate 만 나이 계산의 원본 (§2.2). 저장되고, 나이는 저장되지 않는다
- * @param consents  사용자가 화면에서 동의한 항목들
+ * @param consents  사용자가 화면에서 동의한 항목들. <b>{@link ConsentType#AGE} 는 들어오지 못한다</b>
+ *     — {@link #clientDeclarable(List)} 가 거른다 (이슈 #270)
  */
 public record SignupInfo(LocalDate birthDate, List<ConsentDecision> consents) {
 
@@ -31,7 +32,30 @@ public record SignupInfo(LocalDate birthDate, List<ConsentDecision> consents) {
 			Set.of(ConsentType.TOS, ConsentType.PRIVACY, ConsentType.AI_NOTICE);
 
 	public SignupInfo {
-		consents = List.copyOf(consents == null ? List.of() : consents);
+		consents = clientDeclarable(consents);
+	}
+
+	/**
+	 * 클라이언트가 <b>선언할 수 있는 것</b>만 남긴다 — {@link ConsentType#AGE} 는 버린다 (이슈 #270).
+	 *
+	 * <p><b>거절하지 않는 이유.</b> {@code GET /consents} 는 목록에 {@code age} 를 실어 보낸다
+	 * (이슈 #261 — 계정 설정 화면이 판본을 보여야 한다). 받은 목록을 그대로 되돌려 보내는 것은
+	 * 자연스러운 구현이고, 그것으로 <b>가입을 실패시킬 이유가 없다.</b>
+	 *
+	 * <p><b>버리는 이유.</b> {@code age} 는 사용자가 체크하는 항목이 아니라 서버가 생년월일로
+	 * 판정해 스스로 기록하는 사실이다 (§13-24, R10.2). 클라이언트가 보낸 것까지 저장하면
+	 * {@code consent_log} 에 같은 종류가 <b>두 줄</b> 남고 — 게다가 판본이 서로 다를 수 있어 —
+	 * 법적 증빙이어야 할 이력이 무엇을 뜻하는지 알 수 없게 된다.
+	 *
+	 * <p><b>거르는 자리가 여기인 것은 의도다.</b> 저장하는 쪽에서 거르면 동의를 읽는 다른 경로가
+	 * 생긴 날 그쪽이 같은 판단을 다시 해야 한다. 요청이 도메인으로 들어오는 이 한 지점에서 걸러
+	 * 두면 <b>클라이언트가 보낸 {@code age} 는 애초에 존재하지 않는다.</b>
+	 */
+	private static List<ConsentDecision> clientDeclarable(List<ConsentDecision> declared) {
+		if (declared == null) {
+			return List.of();
+		}
+		return declared.stream().filter(decision -> decision.type() != ConsentType.AGE).toList();
 	}
 
 	/**

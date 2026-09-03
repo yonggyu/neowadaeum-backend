@@ -60,13 +60,13 @@ class AdminTotpApiIntegrationTests extends ContainerTestBase {
 
 	/** <b>토큰이 없으면 401 이다.</b> 관리자 경로도 보안 체인의 예외가 아니다. */
 	@Test
-	void S4_an_anonymous_request_is_unauthenticated() throws Exception {
+	void SEC4_an_anonymous_request_is_unauthenticated() throws Exception {
 		this.mvc.perform(post(BASE + "/enroll")).andExpect(status().isUnauthorized());
 	}
 
 	/** <b>일반 회원은 403 이다.</b> 로그인만으로는 관리자 경로에 닿지 못한다. */
 	@Test
-	void S4_a_normal_user_is_forbidden() throws Exception {
+	void SEC4_a_normal_user_is_forbidden() throws Exception {
 		this.mvc.perform(post(BASE + "/enroll").with(asPlayer())).andExpect(status().isForbidden());
 	}
 
@@ -145,7 +145,7 @@ class AdminTotpApiIntegrationTests extends ContainerTestBase {
 	 * 2FA 뒤에 있어야 한다.
 	 */
 	@Test
-	void S4_re_enrollment_requires_a_step_up() throws Exception {
+	void SEC4_re_enrollment_requires_a_step_up() throws Exception {
 		givenAdmin();
 		String secret = enroll();
 		String stepUp = postCode("/confirm", currentCode(secret)).get("stepUpToken").asText();
@@ -159,7 +159,7 @@ class AdminTotpApiIntegrationTests extends ContainerTestBase {
 
 	/** <b>비밀이 두 번 나가지 않는다.</b> 확정·검증 응답에는 비밀이 없다 (S-3). */
 	@Test
-	void S3_the_secret_is_returned_only_once() throws Exception {
+	void SEC3_the_secret_is_returned_only_once() throws Exception {
 		givenAdmin();
 		String secret = enroll();
 

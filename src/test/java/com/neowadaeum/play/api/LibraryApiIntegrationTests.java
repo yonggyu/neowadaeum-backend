@@ -148,6 +148,35 @@ class LibraryApiIntegrationTests extends ContainerTestBase {
 	}
 
 	/**
+	 * <b>#289 — 섹션 단독 조회도 자기 응답에 고지 문구를 싣는다</b> (R11.1).
+	 *
+	 * <p>이 경로는 {@code LibraryResponse.noticeText} 없이 홀로 열린다 — Footer 를 그리려면
+	 * 이 응답이 직접 실어야 한다.
+	 */
+	@Test
+	void R11_1_the_standalone_section_carries_the_notice_text() throws Exception {
+		MvcResult result = this.mockMvc
+				.perform(get("/api/v1/library/sections/{key}", "genre:school").with(asPlayer()))
+				.andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(200);
+		JsonNode section = JSON.readTree(result.getResponse().getContentAsString());
+		assertThat(section.path("noticeText").asString()).isEqualTo(NOTICE);
+	}
+
+	/**
+	 * <b>문구가 없으면 섹션 단독 조회도 내보내지 않는다</b> (§11, R11.1) — 라이브러리 전체와
+	 * 같은 판단이다.
+	 */
+	@Test
+	void R11_1_the_standalone_section_fails_when_the_notice_is_not_configured() throws Exception {
+		this.configs.deleteById(NOTICE_KEY);
+
+		this.mockMvc.perform(get("/api/v1/library/sections/{key}", "genre:school").with(asPlayer()))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(500));
+	}
+
+	/**
 	 * <b>R11.1 — 고지 문구가 이 응답에 실려 온다</b> (#257).
 	 *
 	 * <p>Footer 가 문구를 상시 표시한다. 여기서 주지 않으면 클라이언트가 화면마다

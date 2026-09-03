@@ -325,8 +325,14 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	}
 
 	/** 파사드가 막는지 보려면 막힐 데이터를 만들 수 있어야 한다. */
+	/**
+	 * <b>#269 — {@code user} 는 {@code author_ref} 없이 존재할 수 없다.</b>
+	 *
+	 * <p>이 오버로드는 항상 {@code authorType = "user"}로만 불린다. 무작위 {@code UUID}는
+	 * 개별 단언과 무관하고, 제약(R13.1)을 만족시키는 것이 목적이다.
+	 */
 	private UUID insertStory(String authorType, String visibility, String reviewStatus) {
-		return insertStory(authorType, visibility, reviewStatus, null);
+		return insertStory(authorType, visibility, reviewStatus, UUID.randomUUID());
 	}
 
 	private UUID insertStory(String authorType, String visibility, String reviewStatus, UUID authorRef) {
