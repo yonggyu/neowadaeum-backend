@@ -10,6 +10,8 @@ import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -29,8 +31,8 @@ class ConsentTermsApiIntegrationTests extends ContainerTestBase {
 	private static final Instant SEEDED_AT = Instant.parse("2026-08-27T00:00:00Z");
 
 	private static final String TERMS = """
-			{"tos":     {"version":"1.2","documentUrl":"/terms/tos"},
-			 "privacy": {"version":"1.0","documentUrl":"/terms/privacy"}}
+			{"tos":     {"version":"v1.2","documentUrl":"https://example.invalid/terms/tos"},
+			 "privacy": {"version":"v1.0","documentUrl":"https://example.invalid/terms/privacy"}}
 			""";
 
 	@Autowired
@@ -64,8 +66,9 @@ class ConsentTermsApiIntegrationTests extends ContainerTestBase {
 	/** <b>R10.2 — 판본이 설정에서 온다.</b> 코드에도 프론트에도 없다 (#261). */
 	@Test
 	void R10_2_the_versions_come_from_configuration() throws Exception {
-		assertThat(termOf("tos").path("version").asString()).isEqualTo("1.2");
-		assertThat(termOf("tos").path("documentUrl").asString()).isEqualTo("/terms/tos");
+		assertThat(termOf("tos").path("version").asString()).isEqualTo("v1.2");
+		assertThat(termOf("tos").path("documentUrl").asString())
+				.isEqualTo("https://example.invalid/terms/tos");
 		assertThat(termOf("ai_notice").path("version").asString()).isEqualTo("2026-07-21");
 	}
 
@@ -73,11 +76,11 @@ class ConsentTermsApiIntegrationTests extends ContainerTestBase {
 	@Test
 	void R10_2_changing_the_configuration_changes_the_version() throws Exception {
 		ServiceConfig config = this.configs.findById("consent.terms").orElseThrow();
-		config.update("{\"tos\": {\"version\":\"2.0\"}, \"privacy\": {\"version\":\"1.0\"}}",
+		config.update("{\"tos\": {\"version\":\"v2.0\"}, \"privacy\": {\"version\":\"v1.0\"}}",
 				SEEDED_AT.plusSeconds(3600));
 		this.configs.saveAndFlush(config);
 
-		assertThat(termOf("tos").path("version").asString()).isEqualTo("2.0");
+		assertThat(termOf("tos").path("version").asString()).isEqualTo("v2.0");
 	}
 
 	/** 본문 주소가 없는 종류도 <b>키를 생략하지 않는다</b> (web-api 규칙). */
@@ -110,6 +113,53 @@ class ConsentTermsApiIntegrationTests extends ContainerTestBase {
 		assertThat(result.getResponse().getStatus()).isEqualTo(500);
 		assertThat(JSON.readTree(result.getResponse().getContentAsString()).path("error").asString())
 				.isEqualTo("INTERNAL_ERROR");
+	}
+
+	/**
+	 * <b>어긋난 설정도 같은 자리로 떨어진다</b> (§13-51, 이슈 #279).
+	 *
+	 * <p>서버는 이 값의 형식을 검증하지 않는다. 그러면 <b>"모양이 조금 다른 값"이 통과해 이상한
+	 * 판본이 동의 이력에 남는가</b>가 남는 질문이고, 답이 "아니다"라는 것을 여기서 고정한다 —
+	 * JSON 이 아니든, 최상위가 객체가 아니든, 종류나 판본이 빠졌든 결과는 500 하나다.
+	 */
+	@ParameterizedTest
+	@ValueSource(strings = {
+			"\"이건 객체가 아니다\"",
+			"[]",
+			"{}",
+			"{\"tos\": {\"version\": \"v1.0\"}}",
+			"{\"tos\": {\"documentUrl\": \"https://example.invalid/terms/tos\"}, \"privacy\": {}}",
+	})
+	void S13_51_a_malformed_configuration_still_fails_as_internal_error(String raw) throws Exception {
+		ServiceConfig config = this.configs.findById("consent.terms").orElseThrow();
+		config.update(raw, SEEDED_AT.plusSeconds(3600));
+		this.configs.saveAndFlush(config);
+
+		MvcResult result = this.mockMvc.perform(get("/api/v1/consents")).andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(500);
+		assertThat(JSON.readTree(result.getResponse().getContentAsString()).path("error").asString())
+				.isEqualTo("INTERNAL_ERROR");
+	}
+
+	/**
+	 * <b>S-6 — 설정이 깨져도 응답이 내부를 말하지 않는다.</b>
+	 *
+	 * <p>스택트레이스 · SQL · 패키지 경로 · 넣은 값 자체가 본문에 실리면 안 된다. "있어야 할
+	 * 것"만 단언하면 새어도 통과하므로 {@code doesNotContain} 을 함께 건다.
+	 */
+	@Test
+	void SEC6_a_broken_configuration_leaks_nothing_into_the_response() throws Exception {
+		ServiceConfig config = this.configs.findById("consent.terms").orElseThrow();
+		config.update("\"이건 객체가 아니다\"", SEEDED_AT.plusSeconds(3600));
+		this.configs.saveAndFlush(config);
+
+		String body = this.mockMvc.perform(get("/api/v1/consents")).andReturn().getResponse()
+				.getContentAsString();
+
+		assertThat(body).doesNotContain("com.neowadaeum").doesNotContain("Exception")
+				.doesNotContain("select").doesNotContain("service_config")
+				.doesNotContain("이건 객체가 아니다");
 	}
 
 	/**

@@ -99,10 +99,31 @@ B-48 이 `management.endpoint.health.probes.enabled` 를 켜 두었다.
    - **`GET /consents` 는 둘 다 있어야 뜬다.** `consent.terms` 만 넣으면 여전히 500 이다 —
      그 응답의 `ai_notice` 판본이 고지에서 오기 때문이다 (§13-51). 넣는 순서는 상관없다.
 
-   값의 모양은 각각 `CatalogAiNoticeQuery` · `CatalogConsentTermsQuery` 가 정의한다 —
-   **설정값의 모양을 아는 곳은 그 두 클래스뿐**이므로 절차서에 복사하지 않는다. `consent.terms` 는
-   `tos` · `privacy` 두 종류를 담고 각각 판본과 문서 주소를 갖는다. `ai_notice` 는 **거기에 적지
-   않는다** (§13-51). `age` 는 서버가 정하므로 설정에 없다 (§13-24).
+   값의 모양을 **정의하는** 곳은 각각 `CatalogAiNoticeQuery` · `CatalogConsentTermsQuery` 이고,
+   필드별 필수 여부는 §13-51 의 표가 든다. 아래는 그 정의를 **투입 문장의 모양으로** 옮긴 것이다 —
+   판단이 필요하면 §13-51 을 본다.
+
+   **넣는 모양** — `catalog` 스키마의 `service_config` 에 한 행씩 쓴다. **아래 `<...>` 는 전부
+   자리표시자다.** 실제 판본과 주소는 여기에도, 마이그레이션에도 적지 않는다 (S-11).
+
+   ```sql
+   -- catalog 스키마. 이미 있으면 갱신한다 — 약관 개정이 이 문장을 다시 부른다.
+   INSERT INTO service_config (config_key, config_value, updated_at)
+   VALUES ('consent.terms', '{
+     "tos":     {"version": "<v1.0>", "documentUrl": "<약관 절대 URL>"},
+     "privacy": {"version": "<v1.0>", "documentUrl": "<처리방침 절대 URL>"}
+   }'::jsonb, NOW())
+   ON CONFLICT (config_key) DO UPDATE
+      SET config_value = EXCLUDED.config_value, updated_at = NOW();
+   ```
+
+   - **판본은 `v<major>.<minor>`** 다 (§13-51). 두 종류는 각자 세므로 서로 달라도 된다.
+   - **`documentUrl` 은 절대 URL** 이다 — 웹과 앱이 같은 값을 그대로 링크로 건다. 생략하면
+     응답의 그 필드가 `null` 이 되고, 화면은 링크 없는 약관 항목을 그린다.
+   - **`ai_notice` · `age` 를 이 JSON 에 적지 않는다.** 적어도 읽지 않는다 (§13-51, §13-24).
+   - `ai.notice` 도 같은 표에 같은 방식으로 들어간다 — 모양은 `CatalogAiNoticeQuery` 가 정한다.
+   - **넣은 뒤 `GET /api/v1/consents` 가 200 인지 확인한다.** 어긋난 값은 조용히 통과하지 않고
+     500 `INTERNAL_ERROR` 로 떨어진다 (§13-51) — **이 한 번의 호출이 투입 검증의 전부**다.
 
    > **판본을 넣은 뒤 약관을 개정하면 판본도 함께 올린다.** 문구만 바꾸고 판본을 두면
    > **동의 이력이 옛 판본을 가리킨 채 새 문구에 동의한 것**이 되고, 그것이 이슈 #261 이
