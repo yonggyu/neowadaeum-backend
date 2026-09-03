@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -64,7 +65,10 @@ public class StoryReview {
 		review.reasons = reasonsJson;
 		review.reviewerRef = reviewerRef;
 		review.note = note;
-		review.reviewedAt = now;
+		// timestamptz 는 마이크로초까지만 담는다. 자르지 않으면 방금 만든 이 객체가 들고 있는
+		// 값과 다시 읽은 값이 나노초 자리에서 갈라진다 — 판정 응답이 돌려준 시각과 다음 조회가
+		// 돌려주는 시각이 다른 것으로 보인다 (§13-57 이 이 값을 응답에 싣기 시작했다).
+		review.reviewedAt = now.truncatedTo(ChronoUnit.MICROS);
 		return review;
 	}
 
