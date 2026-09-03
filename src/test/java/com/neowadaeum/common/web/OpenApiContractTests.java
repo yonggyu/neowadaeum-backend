@@ -518,4 +518,100 @@ class OpenApiContractTests {
 		assertThat(recordComponentsOf(com.neowadaeum.identity.api.MeResponse.class))
 				.doesNotContain("playerRef", "email", "birthDate", "socialId", "isLoggedIn");
 	}
+	// ── 7. 단위가 있는 수치 (#275) ────────────────────────────
+
+	/**
+	 * 단위가 있는 수치 필드의 이름 — <b>이름이 단위를 들고 있는 것만 고른다.</b>
+	 *
+	 * <p>{@code chapterNo} · {@code turnNo} · {@code order} 같은 카운터는 단위가 없다. 그런
+	 * 필드에까지 설명을 강제하면 규칙이 소음이 되고, <b>소음이 된 규칙은 형식적으로 채워진다</b> —
+	 * "정수"라고 적힌 {@code description} 은 없는 것과 같다.
+	 */
+	private static final List<String> UNIT_SUFFIXES =
+			List.of("Rate", "Percent", "Ms", "Millis", "Seconds", "Micro", "Tokens", "Bytes", "Cost");
+
+	/** 비율은 범위와 예시까지 요구한다 — {@code 0.12} 인지 {@code 12} 인지가 설명만으로는 갈린다. */
+	private static final List<String> RATIO_SUFFIXES = List.of("Rate", "Percent");
+
+	/**
+	 * <b>단위가 있는 수치는 단위를 말한다</b> (#275, R2.7).
+	 *
+	 * <p>{@code reachRate} 는 타입이 {@code number} 뿐이라 {@code 0.12} 인지 {@code 12} 인지
+	 * 계약이 말하지 않았다 (#260). 표본이 적은 동안 {@code null} 이라 <b>틀렸다면 운영에서 처음
+	 * 드러났을 것</b>이고, 그래서 그 필드 하나에 단위·예시·상하한을 못박았다.
+	 *
+	 * <p><b>방어가 그 필드에만 있었다.</b> 계약 테스트는 <i>구현 ⊆ 계약</i> 한 방향만 보므로
+	 * <b>타입은 맞고 단위가 없는 필드</b>는 어느 쪽도 잡지 못한다. 컴파일도 테스트도 통과한다.
+	 *
+	 * <p>같은 모양이 실제로 하나 더 있었다 — {@code AdminAiCall.costMicro} 는 <b>백만분의 1
+	 * 단위인데 무엇의 백만분의 1인지가 레포 어디에도 없다.</b> 지금은 아무 Provider 도 채우지
+	 * 않아 항상 {@code null} 이라 드러나지 않았을 뿐이고, 통화는 #311 이 정한다.
+	 */
+	@Test
+	void Issue275_numeric_fields_with_a_unit_declare_it() {
+		List<String> silent = new ArrayList<>();
+		List<String> unbounded = new ArrayList<>();
+
+		eachSchemaProperty((schemaName, property, definition) -> {
+			if (!isNumeric(definition) || !endsWithAny(property, UNIT_SUFFIXES)) {
+				return;
+			}
+			String where = schemaName + "." + property;
+			if (!(definition.get("description") instanceof String text) || text.isBlank()) {
+				silent.add(where);
+			}
+			if (endsWithAny(property, RATIO_SUFFIXES)
+					&& !(definition.containsKey("examples") && definition.containsKey("minimum")
+							&& definition.containsKey("maximum"))) {
+				unbounded.add(where);
+			}
+		});
+
+		assertThat(silent)
+				.as("단위가 있는 수치인데 계약이 단위를 말하지 않는다 (#275). description 에 무엇의 "
+						+ "단위인지 적는다 — 타입이 number 인 것만으로는 12 가 12%% 인지 12건인지 갈린다")
+				.isEmpty();
+		assertThat(unbounded)
+				.as("비율 필드에 상하한과 예시가 없다 (#275, R2.7). 0.12 인지 12 인지는 설명만으로는 "
+						+ "갈리지 않는다 — 범위와 예시가 함께 있어야 한다")
+				.isEmpty();
+	}
+
+	/** 모든 컴포넌트 스키마의 속성을 한 번씩 준다. */
+	@SuppressWarnings("unchecked")
+	private static void eachSchemaProperty(SchemaPropertyVisitor visitor) {
+		Map<String, Object> schemas =
+				(Map<String, Object>) ((Map<String, Object>) SPEC.get("components")).get("schemas");
+		schemas.forEach((schemaName, schema) -> {
+			Object properties = ((Map<String, Object>) schema).get("properties");
+			if (properties == null) {
+				return;
+			}
+			((Map<String, Object>) properties).forEach((property, definition) -> {
+				if (definition instanceof Map) {
+					visitor.visit(schemaName, property, (Map<String, Object>) definition);
+				}
+			});
+		});
+	}
+
+	@FunctionalInterface
+	private interface SchemaPropertyVisitor {
+
+		void visit(String schemaName, String property, Map<String, Object> definition);
+	}
+
+	/** {@code type: integer} 와 {@code type: [integer, 'null']} 을 함께 본다. */
+	private static boolean isNumeric(Map<String, Object> definition) {
+		Object type = definition.get("type");
+		if (type instanceof String single) {
+			return "integer".equals(single) || "number".equals(single);
+		}
+		return type instanceof List<?> union
+				&& (union.contains("integer") || union.contains("number"));
+	}
+
+	private static boolean endsWithAny(String name, List<String> suffixes) {
+		return suffixes.stream().anyMatch(name::endsWith);
+	}
 }

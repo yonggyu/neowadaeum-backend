@@ -14,6 +14,7 @@ paths:
 - 시간은 전부 **UTC ISO-8601**(`2026-08-22T11:20:00Z`). **만 나이 계산만 KST**다.
 - **nullable 필드는 키를 생략하지 않고 `null`로 명시한다** (`speakerName` · `sceneImage` · `endingId` · `reachRate`). 프론트가 키 존재 여부로 분기하지 않게 한다.
 - `docs/openapi.yaml`이 런타임 진실의 원천이다. 계약을 바꾸면 함께 고친다.
+- **단위가 있는 수치는 계약이 단위를 말한다** (#275, §13-53). 이름이 `Rate` · `Percent` · `Ms` · `Micro` · `Tokens` · `Bytes` · `Cost` 로 끝나는 수치 필드는 `description` 에 단위를 적고, 비율은 `minimum` · `maximum` · `examples` 까지 갖는다. **카운터(`turnNo` · `order`)는 대상이 아니다** — 거기까지 강제하면 규칙이 소음이 된다.
 
 ## 에러 응답
 
