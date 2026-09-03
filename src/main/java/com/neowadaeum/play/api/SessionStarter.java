@@ -75,14 +75,14 @@ public class SessionStarter {
 	 * 턴 생성은 그 뒤에 일어난다 — 안에서 부르면 Provider 호출이 트랜잭션에 들어온다.
 	 */
 	public StartedSession start(UUID playerRef, UUID storyId, boolean restart) {
-		UUID sessionId = this.transactions.execute(status -> createSession(playerRef, storyId, restart));
+		CreatedSession created = this.transactions.execute(status -> createSession(playerRef, storyId, restart));
 
 		// R11.3 — 플레이를 시작하는 순간이 사전 고지의 자리다 (§4.1 의 "사전"). 매 턴이 아니라
 		// 여기서 한 번 남긴다. 기록기는 실패해도 플레이를 막지 않는다.
 		this.aiNotices.recordExposure(playerRef, NoticeSurface.PLAY);
 
-		TurnOutcome first = this.pipeline.advance(sessionId, null);
-		return new StartedSession(sessionId, first);
+		TurnOutcome first = this.pipeline.advance(created.sessionId(), null);
+		return new StartedSession(created.sessionId(), created.storyVersionId(), first);
 	}
 
 	/**
@@ -92,7 +92,7 @@ public class SessionStarter {
 	 * 때문이다 — 애노테이션만 보고 트랜잭션이 있다고 믿게 되는 자리다. {@link TransactionTemplate}
 	 * 은 경계가 코드에 드러나고, {@code TurnPipeline} 과도 같은 방식이다.
 	 */
-	private UUID createSession(UUID playerRef, UUID storyId, boolean restart) {
+	private CreatedSession createSession(UUID playerRef, UUID storyId, boolean restart) {
 		Instant now = Instant.now(this.clock);
 
 		// §13-9 — 작품당 active 세션 1개. DB 의 partial unique index 가 마지막 방어선이고,
@@ -123,8 +123,11 @@ public class SessionStarter {
 		// 보므로, 순서를 맡겨 두면 새 세션 INSERT 가 먼저 나가 제약에 걸린다.
 		this.sessions.flush();
 
-		return this.sessions.save(PlaySession.start(playerRef, storyId, storyVersionId,
+		UUID sessionId = this.sessions.save(PlaySession.start(playerRef, storyId, storyVersionId,
 				this.provider.providerId(), SLICE_MODEL_ID, false, now)).getId();
+
+		// #294 — 방금 세션에 넣은 값을 그대로 들고 나간다. 다시 읽지 않는다.
+		return new CreatedSession(sessionId, storyVersionId);
 	}
 
 	/**
@@ -149,14 +152,25 @@ public class SessionStarter {
 		});
 	}
 
-	/** 응답 조립이 작품 버전을 필요로 한다 — 세션이 들고 있는 값을 그대로 준다 (I-4). */
-	public UUID storyVersionIdOf(UUID sessionId) {
-		return this.sessions.findById(sessionId)
-				.orElseThrow(() -> new IllegalStateException("방금 만든 세션을 찾지 못했다: " + sessionId))
-				.getStoryVersionId();
+	/**
+	 * 짧은 TX 가 내보내는 값.
+	 *
+	 * <p>엔티티를 트랜잭션 밖으로 들려 보내지 않는다 — 경계 밖에서 준영속 객체를 만지면 어디까지가
+	 * 커밋된 상태인지 코드에서 보이지 않는다.
+	 */
+	private record CreatedSession(UUID sessionId, UUID storyVersionId) {
 	}
 
-	/** 생성된 세션과 그 첫 턴. */
-	public record StartedSession(UUID sessionId, TurnOutcome firstTurn) {
+	/**
+	 * 생성된 세션과 그 첫 턴.
+	 *
+	 * @param sessionId      이후 턴 요청의 대상
+	 * @param storyVersionId 이 세션이 고정한 작품 버전 (I-4). 응답 조립이 필요로 하는 값이며,
+	 *                       {@link #createSession} 이 세션에 넣은 그 값이다 — {@code story_version_id}
+	 *                       는 {@code updatable = false} 이고 바꾸는 수단이 없으므로 세션을 다시 읽어도
+	 *                       같은 값이 나온다 (#294)
+	 * @param firstTurn      턴 1. 시작과 동시에 만들어진다
+	 */
+	public record StartedSession(UUID sessionId, UUID storyVersionId, TurnOutcome firstTurn) {
 	}
 }
