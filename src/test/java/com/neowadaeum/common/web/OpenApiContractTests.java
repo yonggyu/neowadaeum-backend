@@ -102,6 +102,17 @@ class OpenApiContractTests {
 		return values;
 	}
 
+	/** 스키마 안 <b>한 속성</b>의 {@code enum} 값 목록. 값이 스키마로 분리돼 있지 않은 자리다. */
+	@SuppressWarnings("unchecked")
+	private static List<String> enumOfProperty(String schemaName, String property) {
+		Map<String, Object> properties = (Map<String, Object>) schema(schemaName).get("properties");
+		Map<String, Object> found = (Map<String, Object>) properties.get(property);
+		assertThat(found).as("스펙의 %s 에 %s 속성이 없다", schemaName, property).isNotNull();
+		List<String> values = (List<String>) found.get("enum");
+		assertThat(values).as("스펙의 %s.%s 에 enum 이 없다", schemaName, property).isNotNull();
+		return values;
+	}
+
 	private static Set<String> recordComponentsOf(Class<?> type) {
 		return Arrays.stream(type.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName)
 				.collect(Collectors.toSet());
@@ -297,6 +308,20 @@ class OpenApiContractTests {
 				java.util.Arrays.stream(ResumeView.State.values())
 						.map(state -> state.name().toLowerCase(java.util.Locale.ROOT))
 						.toList());
+	}
+
+	/**
+	 * 검수 판정 값이 계약과 정확히 같다 (§13-64, R8.7).
+	 *
+	 * <p>한쪽만 늘어나면 <b>관리자 화면이 보내는 값을 서버가 400 으로 돌려주거나</b>, 반대로
+	 * 계약에 없는 판정이 조용히 받아들여진다 — 후자는 작품을 내리는 값이므로 더 나쁘다.
+	 */
+	@Test
+	void S13_64_review_verdicts_match_the_contract() {
+		assertThat(enumOfProperty("ReviewVerdictRequest", "verdict"))
+				.containsExactlyInAnyOrderElementsOf(
+						Arrays.stream(com.neowadaeum.authoring.review.ReviewVerdict.values())
+								.map(Enum::name).toList());
 	}
 
 	/**
