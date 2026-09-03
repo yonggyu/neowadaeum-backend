@@ -131,7 +131,7 @@ class PayloadWhitelistValidatorTests {
 	 * 막으려던 것이 로그로 나간다.
 	 */
 	@Test
-	void S3_the_violation_message_carries_field_names_but_no_values() {
+	void SEC3_the_violation_message_carries_field_names_but_no_values() {
 		PayloadWhitelistValidator narrowed = new PayloadWhitelistValidator(
 				Map.of(LeakyRequest.class, Set.of("storyVersionRef", "turnNo")));
 		String secret = "user@example.test";

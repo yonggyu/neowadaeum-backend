@@ -35,7 +35,7 @@ class FixedStoryScenarioLoaderTests {
 
 	/** S-3 · S-11 — 실패 메시지에 파일명만 남기고 본문·경로를 흘리지 않는다. */
 	@Test
-	void S3_invalid_scenario_reports_the_file_name_without_leaking_its_content() {
+	void SEC3_invalid_scenario_reports_the_file_name_without_leaking_its_content() {
 		assertThatThrownBy(() -> loader("classpath*:scenarios/broken/*.json").load())
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("s3-malformed.json")

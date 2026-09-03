@@ -133,7 +133,7 @@ class AdminTotpServiceTests {
 
 	/** 등록이 없으면 통과할 것이 없다. 코드 불일치와 <b>구분해 알리지 않는다</b> (S-6). */
 	@Test
-	void S6_an_unknown_registration_fails_the_same_way() {
+	void SEC6_an_unknown_registration_fails_the_same_way() {
 		AdminTotpService service = serviceAt(NOW);
 
 		assertThatThrownBy(() -> service.verify(this.adminUserId, "000000"))
@@ -160,7 +160,7 @@ class AdminTotpServiceTests {
 
 	/** <b>비밀이 예외 메시지에 실리지 않는다</b> (S-3). */
 	@Test
-	void S3_the_secret_never_appears_in_a_failure_message() {
+	void SEC3_the_secret_never_appears_in_a_failure_message() {
 		AdminTotpService service = serviceAt(NOW);
 		AdminTotpService.Enrollment enrollment = service.beginEnrollment(this.adminUserId, "admin");
 

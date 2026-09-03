@@ -86,7 +86,7 @@ class AdminMaintenanceApiIntegrationTests extends ContainerTestBase {
 
 	/** <b>승격 없이는 고칠 수 없다.</b> 보는 문과 고치는 문 모두에 세 조건이 서 있다 (S-4). */
 	@Test
-	void S4_without_a_step_up_nothing_can_be_rolled_back() throws Exception {
+	void SEC4_without_a_step_up_nothing_can_be_rolled_back() throws Exception {
 		givenAdmin();
 		UUID sessionId = givenSessionAt(5);
 

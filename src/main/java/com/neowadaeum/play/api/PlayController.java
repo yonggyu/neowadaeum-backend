@@ -58,7 +58,7 @@ public class PlayController {
 		SessionStarter.StartedSession started = this.sessionStarter.start(this.playerRefs.currentPlayerRef(),
 				storyId, restart);
 
-		TurnView firstTurn = this.turns.view(storyVersionOf(started), started.firstTurn());
+		TurnView firstTurn = this.turns.view(started.storyVersionId(), started.firstTurn());
 
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(new StartSessionResponse(started.sessionId(), firstTurn));
@@ -127,10 +127,6 @@ public class PlayController {
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void deleteSession(@PathVariable UUID sessionId) {
 		this.sessionStarter.delete(this.playerRefs.currentPlayerRef(), sessionId);
-	}
-
-	private UUID storyVersionOf(SessionStarter.StartedSession started) {
-		return this.sessionStarter.storyVersionIdOf(started.sessionId());
 	}
 
 	/**

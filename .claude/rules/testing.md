@@ -27,13 +27,24 @@ paths:
 
 ## 이름
 
-요구사항 ID를 이름에 남긴다.
+**근거 ID를 이름에 남긴다.** 실패 목록에서 "이 테스트가 무엇을 지키는가"가 이름만으로 답해져야 한다.
 
 ```java
 @Test void R4_2_affinity_delta_over_limit_is_clamped() { ... }
 ```
 
-절 번호 기반은 `S<절>_<항>_` (예: `S5_3_no_cross_schema_foreign_keys`). 표기 정리는 이슈 #23.
+| 근거 | 문서 표기 | 접두어 | 예 |
+|---|---|---|---|
+| 요구사항 · 원칙 | `R4.2` · `P7` | `R4_2_` · `P7_` | `R4_2_affinity_delta_over_limit_is_clamped` |
+| 불변 규칙 | `I-1` | `I1_` | `I1_unknown_choice_id_is_rejected` |
+| 절 번호 | `§5.3` · `§13-27` | `S<절>_<항>_` | `S5_3_no_cross_schema_foreign_keys` |
+| 보안 요건 | `S-11` | `SEC<번호>_` | `SEC11_the_contract_names_no_host` |
+
+**`S` 는 절 번호에만 쓴다. 보안 요건 ID(`docs/invariants-and-security.md` §7.5, S-1~S-11)는 `SEC` 다** (#23).
+`S11_` 로 적으면 §1.1 인지 S-11 인지 이름으로 갈라지지 않는다. `SEC` 는 security 로 읽히므로 뜻과 표기가 같은 쪽을 가리킨다.
+
+접두어는 **테스트가 단언하는 것**으로 고른다. 실패 메시지에 비밀이 새지 않는지 확인하는 테스트는
+그 비밀을 만드는 기능이 어느 절이든 `SEC3_` 이다.
 
 ## 필수 테스트
 

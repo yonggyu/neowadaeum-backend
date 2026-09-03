@@ -169,7 +169,13 @@ inspect → minimal change → targeted test → fast test → (필요 시) inte
 
 - **범위 밖 문제는 고치지 말고 이슈 후보로 보고한다.**
 - 미구현이면 스텁으로 통과시키지 말고 `UnsupportedOperationException`을 던지고 이슈를 만든다.
-- 요구사항 ID(`R4.2`, `P7`, `I-9`)를 코드 주석 또는 테스트 이름에 남긴다 — 예: `R4_2_affinity_delta_over_limit_is_clamped()`.
+- **근거 ID를 코드 주석 또는 테스트 이름에 남긴다.** 접두어가 체계마다 다르다 — 전문은 `.claude/rules/testing.md`.
+
+| 근거 | 문서 표기 | 테스트 이름 |
+|---|---|---|
+| 요구사항 · 불변 규칙 | `R4.2` · `P7` · `I-9` | `R4_2_affinity_delta_over_limit_is_clamped()` |
+| 절 번호 | `§5.3` | `S5_3_no_cross_schema_foreign_keys()` |
+| 보안 요건 | `S-11` | `SEC11_the_contract_names_no_host()` |
 
 ## 명령
 

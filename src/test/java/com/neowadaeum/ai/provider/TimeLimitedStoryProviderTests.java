@@ -152,7 +152,7 @@ class TimeLimitedStoryProviderTests {
 
 	/** S-3 — 예외 메시지에 요청 내용을 담지 않는다. 예외는 로그로 흐른다. */
 	@Test
-	void S3_timeout_message_carries_no_request_content() {
+	void SEC3_timeout_message_carries_no_request_content() {
 		TimeLimitedStoryProvider provider = new TimeLimitedStoryProvider(sleeping(new CountDownLatch(1)),
 				this.executor, SHORT, Clock.systemUTC());
 		UUID storyVersion = UUID.randomUUID();

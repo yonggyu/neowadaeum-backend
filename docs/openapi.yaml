@@ -536,6 +536,7 @@ paths:
             application/json:
               schema:
                 type: array
+                x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
                 items:
                   $ref: '#/components/schemas/DraftResponse'
         '401':
@@ -843,6 +844,11 @@ paths:
         동일인의 반복 신고는 누적으로 세지 않는다 — `UNIQUE(reporterRef, targetType, targetId)` (§13-9).
         누적이 자동 정지의 근거이므로, **중복이 세어지면 한 사람이 혼자 작품을 내릴 수 있다.**
 
+        그래서 `targetId` 는 **신고 대상 하나를 가리켜야 한다** (#297) — `story` 면 `storyId`,
+        `turn` 이면 `TurnResponse.turnId` 다. 세션을 넣으면 유니크 키가 세션 단위로 걸려
+        **한 세션에서 장면을 하나밖에 신고할 수 없다.** `sessionId` · `turnNo` 는 대상이
+        아니라 사후 검수가 읽는 맥락이다.
+
         **IP 로도 센다** (S-8). 계정 기준만으로는 계정을 여러 개 만들어 임계를 채우는 길이
         열려 있고, 신고는 **작품을 내릴 수 있는** 요청이다.
 
@@ -894,6 +900,9 @@ paths:
         `isLoggedIn` 을 반환하지 않는다. 클라이언트가 토큰 보유로 판단한다.
 
         `noticeText` 는 AI 사전 고지 문구이며 **하드코딩하지 않는다** — `service_config` 에서 온다 (R11.1).
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8, #277). `GET /api/v1/consents` 와
+        **같은 창을 쓴다** — 따로 세면 한쪽이 다른 쪽의 우회로가 된다.
       security: []
       x-implemented-by: B-37, B-14
       responses:
@@ -903,6 +912,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LandingResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── 약관 메타 — 가입 화면이 판본을 읽어 간다 (#261) ──────────
   /api/v1/consents:
@@ -923,6 +934,9 @@ paths:
 
         판본은 **하드코딩하지 않는다** — `service_config` 에서 온다. `ai_notice` 만은 사용자가
         실제로 본 고지의 판본을 그대로 쓴다 (R11.3).
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8, #277). `GET /api/v1/landing` 과
+        **같은 창을 쓴다** — 따로 세면 한쪽이 다른 쪽의 우회로가 된다.
       security: []
       x-implemented-by: '#261'
       responses:
@@ -932,6 +946,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConsentTermsResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── §14 Admin — 역할·IP·2FA 를 모두 통과해야 한다 (S-4) ──────
   /api/v1/admin/sessions/{sessionId}/debug:
@@ -1127,6 +1143,7 @@ paths:
             application/json:
               schema:
                 type: array
+                x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
                 items:
                   $ref: '#/components/schemas/BlocklistEntry'
         '401':
@@ -1234,6 +1251,7 @@ paths:
             application/json:
               schema:
                 type: array
+                x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
                 items:
                   $ref: '#/components/schemas/ReviewQueueItem'
         '401':
@@ -1731,6 +1749,10 @@ components:
         consentType:
           type: string
           enum: [tos, privacy, ai_notice, age]
+          description: |
+            `age` 는 **보내도 저장되지 않는다** — 서버가 생년월일로 판정해 스스로 한 줄을
+            남기며, 클라이언트가 보낸 것까지 저장하면 동의 이력에 같은 종류가 두 줄 남는다
+            (R10.2, §13-24, #270). 거절하지는 않는다
         version:
           type: string
           description: |
@@ -1740,6 +1762,7 @@ components:
           type: boolean
 
     ConsentTermsResponse:
+      x-notice-exempt: '인증·계정 화면이다. AI 생성물을 그리지 않으므로 사전 고지의 대상이 아니다'
       type: object
       description: |
         가입 화면이 읽는 약관 메타 (#261). **회원에 관한 값이 하나도 없다** — 인증 없이 열리는
@@ -1781,6 +1804,7 @@ components:
           type: string
 
     TokenResponse:
+      x-notice-exempt: '인증·계정 화면이다. AI 생성물을 그리지 않으므로 사전 고지의 대상이 아니다'
       type: object
       description: '`playerRef` 를 반환하지 않는다. 클라이언트가 알 필요가 없다'
       required: [accessToken, refreshToken, tokenType, expiresIn]
@@ -2016,6 +2040,7 @@ components:
 
     # ── §13.4 Session ───────────────────────────────────────
     StartSessionResponse:
+      x-notice-exempt: '고지는 이 안에 실린 turn 이 싣는다 — TurnResponse.noticeText 다. 같은 응답에 두 번 넣지 않는다'
       type: object
       description: 턴 1 이 함께 온다. 시작 직후 별도 턴 요청이 필요 없다
       required: [sessionId, turn]
@@ -2035,6 +2060,7 @@ components:
       enum: [valid, expired, deleted, version_changed, story_suspended]
 
     ResumeResponse:
+      x-notice-exempt: '화면이 아니라 어디로 보낼지의 답이다. 그려지는 것은 이 판정이 가리킨 화면이고, 고지는 그쪽이 싣는다'
       type: object
       required: [sessionId, storyId, title, chapterNo, chapterTitle, totalChapters, turnNo, updatedAt, lastSceneVisual, lastSceneSummary, lastChoiceText, sessionState, canViewHistory]
       properties:
@@ -2093,7 +2119,7 @@ components:
         `progressPercent` 를 만들지 않는다 (R7.5) — AI 생성이라 챕터당 턴 수가 가변이므로 백분율에 근거가 없다.
 
         엔딩이면 `isEnding: true` 이고 `choices` 는 **빈 배열**이다 (R7.8).
-      required: [storyId, title, turnNo, chapterNo, chapterTitle, chapterChanged, progressHint, speakerName, paragraphs, choices, isEnding, endingId, endingIndex, totalEndings, noticeText]
+      required: [storyId, title, turnId, turnNo, chapterNo, chapterTitle, chapterChanged, progressHint, speakerName, paragraphs, choices, isEnding, endingId, endingIndex, totalEndings, noticeText]
       properties:
         storyId:
           type: string
@@ -2104,6 +2130,15 @@ components:
         title:
           type: string
           description: '작품 제목 (#259). 플레이 헤더가 쓴다. **세션이 고정한 버전 기준이다** (I-4)'
+        turnId:
+          type: string
+          format: uuid
+          description: |
+            이 턴의 식별자 (#297). 신고(`POST /api/v1/reports`)가 `targetType: turn` 일 때
+            `targetId` 로 **이 값을** 보낸다.
+
+            `turnNo` 로 대신하지 않는다 — 그것은 세션 안에서만 유일하고, 신고의 중복 판정은
+            `UNIQUE(reporterRef, targetType, targetId)` 라 세션을 모르는 자리에서 대상을 센다.
         turnNo:
           type: integer
           description: '**요청값 + 1** 이다 (§13-14e)'
@@ -2379,6 +2414,7 @@ components:
       enum: [clean, warned, blocked]
 
     DraftResponse:
+      x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
       required: [draftId, step, safetyState, findings, updatedAt]
       properties:
@@ -2429,6 +2465,7 @@ components:
           description: 검사할 필드 경로 → 값. 예 `characters[0].name`
 
     PrecheckResponse:
+      x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
       required: [state, findings]
       properties:
@@ -2464,8 +2501,9 @@ components:
           type: string
 
     OutlineResponse:
+      x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
-      required: [chapters, endings]
+      required: [chapters, endings, conditionTemplates]
       properties:
         chapters:
           type: array
@@ -2475,6 +2513,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OutlineEnding'
+        conditionTemplates:
+          type: array
+          description: |
+            작성자가 고를 수 있는 조건 템플릿의 **키 목록** (R7.16, §13-35).
+
+            **클라이언트가 이 목록을 소스에 적지 않는다** — 목록이 바뀌는 날부터 옛 목록을 보여 주고,
+            서버가 거부할 때까지 아무도 모른다 (`noticeText` · `ConsentItem.version` 과 같은 종류다).
+
+            **표시 라벨은 아직 여기 없다.** 키를 사람이 읽는 문구로 옮기는 자리와, `affinity_at_least`
+            처럼 대상·임계가 더 필요한 템플릿을 어떻게 표현할지는 정해지지 않았다 (#282).
+          items:
+            type: string
+            enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
 
     OutlineChapter:
       type: object
@@ -2522,6 +2573,7 @@ components:
           $ref: '#/components/schemas/Visibility'
 
     ReviewStatusResponse:
+      x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
       description: |
         검수 **비율·임계값을 노출하지 않는다.** 값을 알면 그 아래로 관리할 수 있다 (§13-12, S-11).
@@ -2553,11 +2605,21 @@ components:
           enum: [turn, story]
         targetId:
           type: string
+          format: uuid
+          description: |
+            신고 대상 (#297). `targetType` 에 따라 무엇인지가 정해진다.
+
+            - `story` — `storyId`
+            - `turn` — `TurnResponse.turnId`. **`sessionId` 를 넣지 않는다** — 중복 판정이
+              `UNIQUE(reporterRef, targetType, targetId)` 라 세션을 넣으면 유니크 키가
+              세션 단위로 걸리고, 한 사람이 한 세션에서 장면을 하나밖에 신고하지 못한다
         sessionId:
           type: [string, 'null']
           format: uuid
+          description: '턴 신고의 맥락. **대상이 아니다** — 대상은 `targetId` 다 (#297)'
         turnNo:
           type: [integer, 'null']
+          description: '턴 신고의 맥락. 사후 검수가 읽는다. **대상이 아니다** (#297)'
         reason:
           type: string
           enum: [inappropriate, ip_violation, real_person, other]
@@ -2592,6 +2654,7 @@ components:
 
     # ── §14 Admin ────────────────────────────────────────────
     AdminSessionDebugResponse:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       description: |
         두 모듈이 준 것을 나란히 둔다. 합쳐서 평평한 하나로 만들면 어느 쪽이 무엇을 준 것인지가
@@ -2720,6 +2783,7 @@ components:
         createdAt: { type: string, format: date-time }
 
     TotpEnrollmentResponse:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       description: 등록을 시작하며 **한 번만** 나가는 값
       required: [secret, otpauthUri]
@@ -2741,6 +2805,7 @@ components:
           description: 인증기가 보여 주는 여섯 자리
 
     TotpStepUpResponse:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       required: [stepUpToken, expiresIn]
       properties:
@@ -2763,6 +2828,7 @@ components:
             첫 턴부터 잘못된 세션이 있다.
 
     RollbackResult:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       description: |
         **접은 수를 함께 돌려준다.** 감사에 남길 값이며 (R14.5), "되돌렸다"만으로는 사후에
@@ -2780,6 +2846,7 @@ components:
           description: 스냅샷과 **같은 기준**으로 접힌다 (R14.4)
 
     RegenerateResult:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       required: [turnNo, chapterNo, blocked, ended]
       properties:
@@ -2807,6 +2874,7 @@ components:
             형식만 검증한다. 내용 판정은 L1 이 한다 (I-17).
 
     FreeInputResult:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       required: [turnNo, chapterNo, blocked, ended]
       properties:
@@ -2847,6 +2915,7 @@ components:
           description: 어디서 왔는가. 사후에 근거를 되짚는 데 쓴다
 
     BlocklistEntry:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       description: |
         **정규화 값은 없다.** 대조에만 쓰는 내부 표현이며, 내보내면 정규화가 무엇을 어떻게
@@ -2914,6 +2983,7 @@ components:
           description: 내부 기록. **작성자에게 가지 않는다**
 
     ReviewVerdictResult:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
       description: |
         **`hold` 는 대기 상태 그대로 돌아온다** — 판정했지만 아무것도 바뀌지 않았다는 사실이
@@ -2929,6 +2999,7 @@ components:
             `suspended` 는 `suspended` 로.
 
     PreviewResponse:
+      x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
       description: |
         **상한을 함께 알린다.** 모르면 작성자는 네 번째 턴에서 왜 막혔는지를 `403` 으로 처음
@@ -2946,6 +3017,7 @@ components:
           description: 이 세션이 만들 수 있는 턴 수 (R8.13)
 
     MeResponse:
+      x-notice-exempt: '인증·계정 화면이다. AI 생성물을 그리지 않으므로 사전 고지의 대상이 아니다'
       type: object
       description: |
         **없는 것이 이 스키마의 내용이다.** `playerRef` · 이메일 · 소셜 식별자 · 생년월일이
