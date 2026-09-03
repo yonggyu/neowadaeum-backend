@@ -597,6 +597,35 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
 
   # ── §13.8 작품 만들기 ───────────────────────────────────────
+  /api/v1/authoring/metadata:
+    get:
+      tags: [authoring]
+      operationId: getAuthoringMetadata
+      summary: 작품 만들기 메타데이터 — 장르 · 조건 템플릿
+      description: |
+        작성자가 **고를 수 있는 값**을 한 번에 준다 (§13-56, 이슈 #282 · #315).
+
+        **클라이언트가 이 목록을 소스에 적지 않는다.** 결정은 있었지만(장르 §13-25 · 조건 템플릿
+        §13-35) 전달 경로가 없어 프론트가 키와 한국어 라벨을 상수로 들고 있었다 — 목록이 바뀌는
+        날부터 옛 목록을 보여 주고, 서버가 거부할 때까지 아무도 모른다. `noticeText`(#257) ·
+        `ConsentItem.version`(#261) 과 같은 종류의 문제다.
+
+        **둘을 한 경로로 묶은 이유**는 같은 화면(작품 만들기)이 같은 시점에 둘 다 필요로 하기
+        때문이다. 나누면 화면 하나가 왕복을 둘 하고, 새 항목이 생길 때마다 경로가 는다.
+
+        **작성자 경로이므로 토큰이 필요하다.** `/api/v1/consents` 가 열려 있는 것은 **가입 전에**
+        불리기 때문이고, 이 경로는 그렇지 않다.
+      x-implemented-by: '#282'
+      responses:
+        '200':
+          description: 고를 수 있는 장르와 조건 템플릿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthoringMetadataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/v1/authoring/drafts:
     get:
       tags: [authoring]
@@ -2580,6 +2609,93 @@ components:
         message:
           type: string
 
+    AuthoringMetadataResponse:
+      x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
+      type: object
+      required: [genres, conditionTemplates]
+      properties:
+        genres:
+          type: array
+          description: |
+            작성자가 고를 수 있는 장르 (§13-25).
+
+            **정본은 `catalog` 의 `genre` 표다** — 코드에 다섯을 적으면 라이브러리가 보여 주는
+            목록과 작성자가 고를 수 있는 목록이 서로 다른 정본을 갖게 되고, 갈라지는 날
+            **작성자가 고른 장르로는 열리지 않는 섹션**이 생긴다 (#315). 순서는 `display_order` 다.
+          items:
+            $ref: '#/components/schemas/AuthoringGenre'
+        conditionTemplates:
+          type: array
+          description: |
+            작성자가 고를 수 있는 조건 템플릿 (R7.16, §13-35).
+
+            **키만으로는 조건이 완성되지 않는다** (#282, §13-56) — 필요한 입력은 각 항목의
+            `parameters` 가 선언한다. 정본은 **코드의 열거형**이다: 넷은 조건 평가기가 지원하는
+            형태이지 운영 데이터가 아니며, 표에 한 줄을 더해도 그것을 평가할 코드가 없다.
+          items:
+            $ref: '#/components/schemas/ConditionTemplateSpec'
+
+    AuthoringGenre:
+      type: object
+      required: [key, label]
+      properties:
+        key:
+          type: string
+          description: |
+            API 표기. 라이브러리 섹션 키 `genre:<key>` 및 `Genre.genreId` 와 **같은 값**이다.
+          examples: [romance]
+        label:
+          type: string
+          description: 화면 문구. **정본은 서버**이며 배포 없이 바뀔 수 있다
+          examples: [로맨스]
+
+    ConditionTemplateSpec:
+      type: object
+      required: [key, label, description, parameters]
+      properties:
+        key:
+          type: string
+          enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
+        label:
+          type: string
+          description: 사람이 읽는 문구. **정본은 서버**다 — 프론트가 옮기면 표시 문구의 정본이 하나 더 생긴다
+          examples: [호감도 이상]
+        description:
+          type: string
+          description: 이 조건이 언제 참인지를 작성자에게 설명하는 한 줄
+        parameters:
+          type: array
+          description: |
+            이 템플릿을 쓰려면 채워야 하는 값. **비어 있는 템플릿은 지금 없다.**
+
+            `affinity_at_least` 는 **대상 인물과 임계값** 둘을 요구하고, `has_flag` · `lacks_flag`
+            는 플래그 하나를, `turn_at_least` 는 턴 수를 요구한다 (#282).
+          items:
+            $ref: '#/components/schemas/ConditionTemplateParameter'
+
+    ConditionTemplateParameter:
+      type: object
+      required: [name, type, label]
+      properties:
+        name:
+          type: string
+          description: 값을 담을 자리의 이름. 템플릿 안에서 유일하다
+          examples: [character]
+        type:
+          type: string
+          enum: [character, flag, integer]
+          description: |
+            화면이 무엇을 그려야 하는가. **자유 텍스트 입력이 아니다** — 셋 다 고르는 것이다.
+
+            - `character` — **선택지는 이 응답이 주지 않는다. 작성 중인 원고의 캐릭터 목록에서
+              온다** (§13.8 의 3단계에서 작성자가 만든 인물들). 조건은 그 인물의 호감도를 본다
+            - `flag` — 선택지는 그 원고가 선언한 플래그 목록에서 온다
+            - `integer` — 정수 임계값
+        label:
+          type: string
+          description: 화면 문구. **정본은 서버**다
+          examples: [인물]
+
     OutlineResponse:
       x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
@@ -2601,8 +2717,9 @@ components:
             **클라이언트가 이 목록을 소스에 적지 않는다** — 목록이 바뀌는 날부터 옛 목록을 보여 주고,
             서버가 거부할 때까지 아무도 모른다 (`noticeText` · `ConsentItem.version` 과 같은 종류다).
 
-            **표시 라벨은 아직 여기 없다.** 키를 사람이 읽는 문구로 옮기는 자리와, `affinity_at_least`
-            처럼 대상·임계가 더 필요한 템플릿을 어떻게 표현할지는 정해지지 않았다 (#282).
+            **표시 라벨과 필요한 입력은 여기 없다.** 키를 사람이 읽는 문구로 옮기는 자리와,
+            `affinity_at_least` 처럼 대상·임계가 더 필요한 템플릿의 입력 선언은 `getAuthoringMetadata`
+            가 갖는다 (#282, §13-56) — 초안 응답은 **이 원고에서 고를 수 있는 키**만 말한다.
           items:
             type: string
             enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
@@ -2619,7 +2736,12 @@ components:
           type: string
         conditionTemplateKey:
           type: [string, 'null']
-          description: 조건은 **템플릿 선택만** 한다 (R7.16). 사용자가 DSL 을 직접 쓰지 않는다
+          description: |
+            조건은 **템플릿 선택만** 한다 (R7.16). 사용자가 DSL 을 직접 쓰지 않는다.
+
+            **키만으로는 조건이 완성되지 않는다 — 필요한 입력은 `getAuthoringMetadata` 가
+            선언한다** (#282, §13-56). 예를 들어 `affinity_at_least` 는 대상 인물과 임계값
+            둘을 더 요구하며, 그 둘은 이 키 안에 접혀 있지 않다.
 
     OutlineEnding:
       type: object
@@ -2637,6 +2759,12 @@ components:
             기본 엔딩은 조건을 갖지 않고, 일반 엔딩은 조건을 반드시 갖는다 (R2.11, §13-16).
         conditionTemplateKey:
           type: [string, 'null']
+          description: |
+            조건은 **템플릿 선택만** 한다 (R7.16).
+
+            **키만으로는 조건이 완성되지 않는다 — 필요한 입력은 `getAuthoringMetadata` 가
+            선언한다** (#282, §13-56). 기본 엔딩(`isDefault: true`)은 조건을 갖지 않으므로
+            이 값이 `null` 이다 (§13-16).
 
     SubmitRequest:
       type: object

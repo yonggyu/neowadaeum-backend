@@ -5,7 +5,7 @@
  * 위반은 {@code ApplicationModules.verify()}가 빌드에서 잡는다.
  */
 @ApplicationModule(allowedDependencies = { "common", "catalog", "catalog :: publish",
-		"safety" })
+		"catalog :: query", "safety" })
 package com.neowadaeum.authoring;
 
 import org.springframework.modulith.ApplicationModule;
