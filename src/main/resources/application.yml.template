@@ -79,6 +79,25 @@ app:
       username: ${PROMPTLOG_DB_USER}
       password: ${PROMPTLOG_DB_PASSWORD}
 
+  # ── 원고 이미지 저장소 (#315, §13-65) ──────────────────────
+  # 커버·초상 이미지는 브라우저가 이 저장소로 **직접** 올린다(presigned URL). 서버는 URL 을
+  # 서명하고 올라온 뒤 크기·형식을 확인할 뿐, 파일 본문이 서버를 거치지 않는다.
+  #
+  # ★ 버킷은 **비공개여야 한다.** 공개 읽기가 열려 있으면 키를 아는 사람이 검수 전 이미지를
+  #   볼 수 있고, 그것은 코드가 막을 수 없는 자리에서 I-8 이 깨지는 것이다.
+  #
+  # 기본값을 두지 않는다 (§7.3). 다섯을 **함께** 넣는다 — 하나만 빠지면 부팅이 선다.
+  # 다섯이 전부 없으면 부팅은 되고 업로드 발급만 실패한다(로컬·CI 는 저장소를 갖지 않는다).
+  #
+  # 실제 엔드포인트·버킷명·자격증명을 이 파일에 적지 않는다 (S-11). 환경변수로만 넣는다.
+  # upload-url-ttl 은 코드가 기본값(10분)을 갖는다 — 배포마다 정할 값이 아니다.
+  image-storage:
+    endpoint: ${IMAGE_STORAGE_ENDPOINT}
+    region: ${IMAGE_STORAGE_REGION}
+    bucket: ${IMAGE_STORAGE_BUCKET}
+    access-key: ${IMAGE_STORAGE_ACCESS_KEY}
+    secret-key: ${IMAGE_STORAGE_SECRET_KEY}
+
 # ── 배치 (R2.7, I-20, #159) ──────────────────────────────────
 # 도달률은 배치 갱신이다 — 조회 경로가 계산하지 않는다 (I-20).
 # fixedDelay 이므로 앞 회차가 끝난 뒤부터 센다. 값이 없으면 코드가 1시간을 쓴다.
