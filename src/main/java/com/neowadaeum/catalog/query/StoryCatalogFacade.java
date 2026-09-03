@@ -1,5 +1,7 @@
 package com.neowadaeum.catalog.query;
 
+import com.neowadaeum.common.spi.StoryReviewTimes;
+import com.neowadaeum.common.spi.StoryReviewTimesQuery;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -59,9 +61,20 @@ public class StoryCatalogFacade {
 
 	private final Clock clock;
 
-	public StoryCatalogFacade(@Qualifier("catalogDataSource") DataSource catalogDataSource, Clock clock) {
+	/**
+	 * 검수 시각 (§13-57, #290).
+	 *
+	 * <p><b>{@code story_review} 를 직접 읽지 않는다.</b> 같은 스키마에 있지만 그 표를 쓰는
+	 * 모듈은 authoring 하나이고, 읽는 길을 여기서 새로 파면 <b>같은 표를 두 모듈이 각자
+	 * 해석하게</b> 된다 — 회차를 가르는 규칙이 둘이 되는 순간 목록과 상세가 다른 날짜를 말한다.
+	 */
+	private final StoryReviewTimesQuery reviewTimes;
+
+	public StoryCatalogFacade(@Qualifier("catalogDataSource") DataSource catalogDataSource, Clock clock,
+			StoryReviewTimesQuery reviewTimes) {
 		this.jdbc = JdbcClient.create(catalogDataSource);
 		this.clock = clock;
+		this.reviewTimes = reviewTimes;
 	}
 
 	/** 화면이 보여 줄 장르 목록. {@code display_order} 가 유일하므로 순서가 결정론이다. */
@@ -114,10 +127,17 @@ public class StoryCatalogFacade {
 
 		boolean more = rows.size() > size;
 		List<MyStoryRow> page = more ? rows.subList(0, size) : rows;
-		List<MyStoryView> stories = page.stream()
-				.map(row -> new MyStoryView(row.id(), row.title(), row.coverUrl(), row.visibility(),
-						reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt()))
-				.toList();
+
+		// §15 — 줄마다 물으면 20줄이 21번의 조회가 된다. 쪽 전체를 한 번에 묻는다 (#290).
+		Map<UUID, StoryReviewTimes> times = this.reviewTimes
+				.findByStoryIds(page.stream().map(MyStoryRow::id).toList());
+
+		List<MyStoryView> stories = page.stream().map(row -> {
+			var when = times.getOrDefault(row.id(), StoryReviewTimes.NONE);
+			return new MyStoryView(row.id(), row.title(), row.coverUrl(), row.visibility(),
+					reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt(),
+					when.submittedAt(), when.reviewedAt());
+		}).toList();
 
 		return new MyStoryPage(stories, more
 				? new Cursor(page.getLast().createdAt(), page.getLast().id()).encode() : null);

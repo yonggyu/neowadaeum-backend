@@ -8,6 +8,7 @@ import com.neowadaeum.authoring.precheck.PrecheckFinding;
 import com.neowadaeum.authoring.precheck.PrecheckScreen;
 import com.neowadaeum.catalog.publish.StoryDefinition;
 import com.neowadaeum.catalog.publish.StoryPublisher;
+import com.neowadaeum.common.spi.StoryReviewTimes;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -52,6 +53,9 @@ public class SubmissionService {
 
 	private final StoryReviewRepository reviews;
 
+	/** 신청·승인 시각은 여기서만 계산한다 (§13-57, #290). 회차를 가르는 규칙이 하나여야 한다. */
+	private final StoryReviewTimeline timeline;
+
 	private final UgcLimitProperties limits;
 
 	private final Clock clock;
@@ -59,12 +63,13 @@ public class SubmissionService {
 	private final TransactionTemplate transactions;
 
 	public SubmissionService(DraftService drafts, PrecheckScreen screen, StoryPublisher publisher,
-			StoryReviewRepository reviews, UgcLimitProperties limits, Clock clock,
-			PlatformTransactionManager catalogTransactionManager) {
+			StoryReviewRepository reviews, StoryReviewTimeline timeline, UgcLimitProperties limits,
+			Clock clock, PlatformTransactionManager catalogTransactionManager) {
 		this.drafts = drafts;
 		this.screen = screen;
 		this.publisher = publisher;
 		this.reviews = reviews;
+		this.timeline = timeline;
 		this.limits = limits;
 		this.clock = clock;
 		this.transactions = new TransactionTemplate(catalogTransactionManager);
@@ -110,7 +115,8 @@ public class SubmissionService {
 	public SubmissionOutcome reviewStatus(UUID authorRef, UUID draftId) {
 		StoryDraft draft = this.drafts.read(authorRef, draftId);
 		if (draft.getStoryId() == null) {
-			return new SubmissionOutcome(null, ReviewStatus.DRAFT, Visibility.PRIVATE, List.of());
+			return new SubmissionOutcome(null, ReviewStatus.DRAFT, Visibility.PRIVATE, List.of(),
+					StoryReviewTimes.NONE);
 		}
 		return this.transactions.execute(status -> {
 			StoryPublisher.StoryStatus stored = this.publisher.statusOf(draft.getStoryId())
@@ -122,7 +128,7 @@ public class SubmissionService {
 			return new SubmissionOutcome(draft.getStoryId(),
 					ReviewStatus.valueOf(stored.reviewStatus().toUpperCase(java.util.Locale.ROOT)),
 					Visibility.valueOf(stored.visibility().toUpperCase(java.util.Locale.ROOT)),
-					reasons);
+					reasons, this.timeline.of(draft.getStoryId()));
 		});
 	}
 
@@ -180,8 +186,9 @@ public class SubmissionService {
 	private SubmissionOutcome rejected(List<PrecheckFinding> findings) {
 		Set<String> reasons = new LinkedHashSet<>();
 		findings.forEach(finding -> reasons.add(finding.kind()));
+		// 작품이 만들어지지 않았으므로 검수 이력도 없다. 두 시각 모두 null 이다 (§13-57).
 		return new SubmissionOutcome(null, ReviewStatus.REJECTED, Visibility.PRIVATE,
-				List.copyOf(reasons));
+				List.copyOf(reasons), StoryReviewTimes.NONE);
 	}
 
 	/**
@@ -220,7 +227,10 @@ public class SubmissionService {
 			}
 			this.reviews.save(StoryReview.of(published.storyId(), ReviewStage.AUTO,
 					ReviewVerdict.PASS, "[]", null, null, Instant.now(this.clock)));
-			return new SubmissionOutcome(published.storyId(), status, effective, List.of());
+			// 방금 남긴 기록이 이 회차의 시작이다. 시각을 여기서 따로 짓지 않고 이력에서 읽는다
+			// — 응답과 목록이 같은 규칙을 쓰지 않으면 두 화면이 다른 날짜를 말한다 (§13-57).
+			return new SubmissionOutcome(published.storyId(), status, effective, List.of(),
+					this.timeline.of(published.storyId()));
 		});
 	}
 
@@ -255,6 +265,6 @@ public class SubmissionService {
 	 * <p><b>비율도 임계값도 담지 않는다</b> (§13-12, S-11) — 값을 알면 그 아래로 관리할 수 있다.
 	 */
 	public record SubmissionOutcome(UUID storyId, ReviewStatus reviewStatus, Visibility visibility,
-			List<String> rejectReasons) {
+			List<String> rejectReasons, StoryReviewTimes times) {
 	}
 }
