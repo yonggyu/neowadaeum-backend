@@ -89,7 +89,7 @@ class PublicReadGuardTests {
 	 * 함께 실려도 통과하므로 <b>원문이 아니라는 것</b>을 같이 못박는다 (S-11).
 	 */
 	@Test
-	void S8_the_public_read_is_counted_by_an_ip_hash_not_the_address() {
+	void S12_the_public_read_is_counted_by_an_ip_hash_not_the_address() {
 		allow();
 
 		this.guard.requireWithinIpLimit(requestFrom(ADDRESS));
@@ -100,7 +100,7 @@ class PublicReadGuardTests {
 
 	/** 회선이 다르면 창도 다르다 — 한 회선이 다른 회선을 막지 못한다. */
 	@Test
-	void S8_a_different_address_gets_a_different_window() {
+	void SEC8_a_different_address_gets_a_different_window() {
 		allow();
 
 		this.guard.requireWithinIpLimit(requestFrom(ADDRESS));
