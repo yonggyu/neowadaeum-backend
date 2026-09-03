@@ -3,6 +3,7 @@ package com.neowadaeum.identity.auth;
 import com.neowadaeum.common.web.ErrorResponseSecurityHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -16,7 +17,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * <p><b>이 클래스가 인증 우회를 대체한다.</b> 지금까지 {@code /api/v1/**} 는 {@code dev} 프로파일에서
  * {@code permitAll} 이었고 "누구인가"는 고정 상수였다 (ADR-0004). 이제 <b>토큰이 없으면 401 이다.</b>
  * <b>프로파일 조건이 없다</b> — 조건이 필요했던 것은 우회 쪽이고, {@code dev} 에서도 토큰이 필요하다.
- * 인증 없이 여는 것은 로그인 경로 둘뿐이며 계약의 {@code security: []} 가 그 둘에만 붙어 있다.
+ * 인증 없이 여는 것은 로그인 경로 둘과 인증 전 조회들이며 계약의 {@code security: []} 가 같은
+ * 목록을 표시한다 (§13-54, 이슈 #306 이 탐색 셋을 더했다).
  *
  * <p>{@code config} 가 아니라 {@code identity} 에 있다 — 인증 필터는 identity 의 내부 타입이고,
  * {@code config} 에 두면 모듈 경계 검증이 잡는다 (§5.4).
@@ -50,6 +52,25 @@ public class ApiSecurityConfiguration {
 	private static final String[] PUBLIC_PATHS = { "/api/v1/auth/oauth/*", "/api/v1/auth/refresh",
 			"/api/v1/landing", "/api/v1/consents" };
 
+	/**
+	 * 인증 없이 여는 <b>탐색</b> — {@code GET} 만이다 (§13-54, 이슈 #306).
+	 *
+	 * <p>랜딩이 추천 작품을 인증 없이 주면서 목록만 토큰을 요구했다. 그래서 <b>서비스를 처음 보는
+	 * 사람이 무엇이 있는지 둘러볼 수 없었다</b> — 이슈 #306 이 물은 것이 그것이고, 답은 목록까지
+	 * 여는 것이다. 대신 <b>로그인해야 의미가 있는 필드는 익명 응답에서 빈다</b>(§13-54).
+	 *
+	 * <p><b>메서드를 함께 못박는 것이 요점이다.</b> {@code /api/v1/stories/*} 는 경로만 보면
+	 * {@code PATCH .../visibility} 나 앞으로 생길 {@code DELETE .../{storyId}} 와 이웃한다 —
+	 * 한 세그먼트짜리 {@code *} 는 {@code /{storyId}/sessions} 를 매칭하지 않지만, <b>같은 경로에
+	 * 다른 메서드가 붙는 날</b>은 온다. {@code GET} 으로 좁혀 두면 그 날 조용히 열리지 않는다.
+	 *
+	 * <p><b>I-8 은 이 목록이 지키는 것이 아니다.</b> 검수·공개 조건은 {@code StoryCatalogFacade}
+	 * 의 SQL 한 곳에 있고, 인증은 그 보장을 대신한 적이 없다 — 토큰이 있는 누구에게나 같은 조건이
+	 * 걸려 있었다. 여기서 늘어난 것은 <b>부를 수 있는 사람</b>이지 <b>보이는 작품</b>이 아니다.
+	 */
+	private static final String[] PUBLIC_GET_PATHS = { "/api/v1/library", "/api/v1/library/sections/*",
+			"/api/v1/stories/*" };
+
 	/** 이 체인이 맡는 범위. {@code securityMatcher} 와 CSRF 면제가 같은 값을 봐야 한다. */
 	private static final String API_PATHS = "/api/v1/**";
 
@@ -68,7 +89,9 @@ public class ApiSecurityConfiguration {
 				.csrf(csrf -> csrf.ignoringRequestMatchers(API_PATHS))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(requests -> requests
-						.requestMatchers(PUBLIC_PATHS).permitAll().anyRequest().authenticated())
+						.requestMatchers(PUBLIC_PATHS).permitAll()
+						.requestMatchers(HttpMethod.GET, PUBLIC_GET_PATHS).permitAll()
+						.anyRequest().authenticated())
 				// 401·403 도 §9.1 형태 하나로 나간다. 없으면 Spring 기본 응답이 섞인다.
 				.exceptionHandling(handling -> handling
 						.authenticationEntryPoint(errorHandler).accessDeniedHandler(errorHandler))

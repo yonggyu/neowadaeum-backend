@@ -183,9 +183,14 @@ public class StoryCatalogFacade {
 	/**
 	 * 작품 상세 (§13.3, B-16).
 	 *
-	 * <p><b>노출 조건은 목록과 같다</b> (R2.3, I-8). 상세만 느슨하면 목록에서 가린 작품을
-	 * <b>id 를 아는 사람이 그대로 읽는다</b> — 가린 의미가 사라진다. 그래서 조건이 이 클래스의
-	 * 같은 규칙을 쓴다.
+	 * <p><b>검수 조건은 목록과 같다</b> (R2.3, I-8) — {@code approved} 이고 발행됐고 버전이
+	 * 고정된 것만이다. 이 셋이 느슨해지면 목록에서 가린 작품을 <b>id 를 아는 사람이 그대로
+	 * 읽는다</b> — 가린 의미가 사라진다.
+	 *
+	 * <p><b>가시성만 목록보다 한 칸 넓다</b> ({@code <> 'private'}, §13-54). {@code unlisted}
+	 * 는 <b>목록에 오르지 않되 링크로는 닿는</b> 상태이고, 그것이 {@code public} 과 구분되는
+	 * 유일한 이유다. 여기까지 {@code public} 으로 좁히면 {@code unlisted} 가 {@code private}
+	 * 과 같아지고, 세 값 중 하나가 뜻을 잃는다.
 	 *
 	 * <p>{@code current_version_id} 를 기준으로 읽는다. 상세는 <b>지금 시작하면 무엇을
 	 * 플레이하게 되는가</b>를 보여 주는 화면이므로 세션이 고정한 버전이 아니라 최신이다 (R2.1).
@@ -286,7 +291,7 @@ public class StoryCatalogFacade {
 						JOIN genre g ON g.id = sg.genre_id
 						JOIN story s ON s.id = sg.story_id
 						WHERE s.review_status = 'approved'
-						  AND s.visibility <> 'private'
+						  AND s.visibility = 'public'
 						  AND s.published_at IS NOT NULL
 						  AND s.current_version_id IS NOT NULL
 						  AND s.author_type = 'official'
@@ -406,10 +411,15 @@ public class StoryCatalogFacade {
 	}
 
 	/**
-	 * <b>노출 조건이 여기 한 곳에 있다</b> (R2.3, I-8).
+	 * <b>목록의 노출 조건이 여기 한 곳에 있다</b> (R2.3, I-8, §13-54).
 	 *
 	 * <p>공식 작품도 {@code approved} 를 요구한다 — 지금은 전부 승인 상태지만, 조건을 종류별로
 	 * 다르게 두면 <b>공식이라는 이유로 검수를 건너뛰는 경로</b>가 생긴다.
+	 *
+	 * <p><b>목록은 {@code public} 만이다</b> (§13-54). {@code unlisted} 는 사람 검수를
+	 * 요구하지 않는 범위이므로(R8.6), 목록에 올리면 <b>사람이 본 적 없는 작품을 둘러보던
+	 * 사람이 그냥 만난다.</b> 목록이 인증 밖으로 나가면서(#306) 그 사람이 익명이 됐다.
+	 * 상세는 {@code unlisted} 를 계속 연다 — 링크로 닿는 것이 그 상태의 정의다.
 	 */
 	private static String sql(LibrarySectionKey section, boolean afterCursor) {
 		// 작성자 표시명은 JOIN 으로 함께 읽는다 (#258) — 카드마다 물으면 20장이 21번의 조회가
@@ -425,7 +435,7 @@ public class StoryCatalogFacade {
 				LEFT JOIN author_profile ap
 				       ON ap.player_ref = s.author_ref AND s.author_type = 'user'
 				WHERE s.review_status = 'approved'
-				  AND s.visibility <> 'private'
+				  AND s.visibility = 'public'
 				  AND s.published_at IS NOT NULL
 				  AND s.current_version_id IS NOT NULL
 				""";

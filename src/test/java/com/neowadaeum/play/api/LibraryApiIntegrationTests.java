@@ -55,10 +55,62 @@ class LibraryApiIntegrationTests extends ContainerTestBase {
 		this.sessions.deleteAll();
 	}
 
-	/** 토큰 없이는 401 이다 — 이어하기가 자기 것이려면 누구인지 알아야 한다 (#34). */
+	/**
+	 * <b>토큰 없이도 열린다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>랜딩이 추천 작품을 인증 없이 주면서 목록만 토큰을 요구했다 — 서비스를 처음 보는 사람이
+	 * <b>무엇이 있는지 볼 수 없었다.</b> 이제 탐색은 로그인 이전의 화면이고, 로그인은 플레이하려
+	 * 할 때 한다.
+	 */
 	@Test
-	void S34_the_library_requires_a_token() throws Exception {
-		this.mockMvc.perform(get("/api/v1/library"))
+	void S13_54_the_library_opens_without_a_token() throws Exception {
+		MvcResult result = this.mockMvc.perform(get("/api/v1/library")).andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(200);
+		JsonNode body = JSON.readTree(result.getResponse().getContentAsString());
+		assertThat(sectionKeys(body)).contains("recommended", "community");
+		assertThat(body.path("noticeText").asString()).isEqualTo(NOTICE);
+	}
+
+	/**
+	 * <b>익명 응답에서 이어하기가 빈 배열이다</b> (§13-54).
+	 *
+	 * <p>세션을 만들어 둔 회선에서 <b>토큰 없이</b> 부른다 — 주인을 모르는 요청에 남의 세션이
+	 * 실리지 않는다는 것이 요점이다 (I-3). 회원이면서 세션이 없을 때와 <b>같은 모양</b>이므로
+	 * 클라이언트가 분기를 하나 더 갖지 않는다.
+	 */
+	@Test
+	void S13_54_an_anonymous_library_carries_no_continue_sessions() throws Exception {
+		startSession();
+
+		MvcResult result = this.mockMvc.perform(get("/api/v1/library")).andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(200);
+		assertThat(JSON.readTree(result.getResponse().getContentAsString()).path("continueSessions"))
+				.isEmpty();
+	}
+
+	/** 섹션 단독 조회도 토큰 없이 열린다 (§13-54) — 개인 필드가 처음부터 없는 응답이다. */
+	@Test
+	void S13_54_a_section_opens_without_a_token() throws Exception {
+		MvcResult result = this.mockMvc.perform(get("/api/v1/library/sections/{key}", "genre:school"))
+				.andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(200);
+		assertThat(storyIds(JSON.readTree(result.getResponse().getContentAsString())))
+				.contains(SEED_STORY.toString());
+	}
+
+	/**
+	 * <b>세션 생성은 여전히 토큰을 요구한다</b> (§13-54, #34).
+	 *
+	 * <p>열린 것은 <b>읽기</b>뿐이다. 보안 설정이 {@code GET} 만 열었다는 것을 <b>이웃한
+	 * 경로에서</b> 확인한다 — {@code /api/v1/stories/*} 를 메서드 없이 열면 이 경로가 함께
+	 * 열리는 날이 온다.
+	 */
+	@Test
+	void S13_54_starting_a_session_still_requires_a_token() throws Exception {
+		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY))
 				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(401));
 	}
 
