@@ -158,6 +158,46 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 				.andExpect(jsonPath("$.error").value("REVIEW_NOT_PENDING"));
 	}
 
+	/**
+	 * <b>사람이 손으로 내린다</b> (§13-64, R8.9) — 승인된 작품이 실제 요청 경로에서 내려간다.
+	 *
+	 * <p>자동 정지는 신고 임계가 하지만, 임계에 닿지 않은 것을 사람이 보고 내려야 할 때가 있다.
+	 */
+	@Test
+	void S13_64_a_manual_suspend_takes_an_approved_story_down() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String stepUp = stepUpToken();
+		this.mvc.perform(verdict(storyId, stepUp, "{\"verdict\":\"PASS\"}")).andExpect(status().isOk());
+
+		this.mvc.perform(verdict(storyId, stepUp, "{\"verdict\":\"SUSPEND\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reviewStatus").value("suspended"));
+	}
+
+	/**
+	 * <b>정지는 관리자만 내린다</b> (S-4, §14).
+	 *
+	 * <p>작품을 내리는 것은 <b>되돌릴 수 있는</b> 판단이지만, 아무나 내릴 수 있으면 그것은
+	 * 검수가 아니라 <b>누구나 쓸 수 있는 서비스 거부</b>다.
+	 */
+	@Test
+	void SEC4_a_manual_suspend_requires_an_admin() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String stepUp = stepUpToken();
+		this.mvc.perform(verdict(storyId, stepUp, "{\"verdict\":\"PASS\"}")).andExpect(status().isOk());
+
+		this.mvc.perform(post("/api/v1/admin/reviews/%s/verdict".formatted(storyId))
+						.with(asPlayer(UUID.randomUUID())).contentType(MediaType.APPLICATION_JSON)
+						.content("{\"verdict\":\"SUSPEND\"}"))
+				.andExpect(status().isForbidden());
+
+		this.mvc.perform(get("/api/v1/admin/reviews").with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUp))
+				.andExpect(jsonPath("$[?(@.storyId=='%s')]".formatted(storyId)).doesNotExist());
+	}
+
 	/** 알 수 없는 판정은 검증에서 걸린다 (§9.1). */
 	@Test
 	void R8_7_an_unknown_verdict_is_a_validation_error() throws Exception {

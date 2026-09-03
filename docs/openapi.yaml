@@ -1514,6 +1514,21 @@ paths:
         **기다리는 중인 작품만 판정할 수 있다.** 이미 처리된 것에 다시 판정이 오면
         `409 REVIEW_NOT_PENDING` 이다 — 두 검수자가 같은 작품을 각자 열어 두면 나중에
         누른 쪽이 이기고, 진 쪽은 자기 판정이 사라진 줄도 모른다.
+
+        **`suspend` 는 사람이 손으로 내리는 정지다** (§13-64, R8.9). 자동 정지는 신고
+        임계가 하지만, 임계에 닿지 않은 것을 사람이 보고 내려야 할 때가 있다.
+
+        - **`approved` 인 작품에만 쓴다.** 다른 셋과 조건이 반대다 — 정지의 대상은 이미
+          게시돼 돌아다니는 작품이고, 그런 작품은 정의상 큐에 없다. 아니면
+          `409 REVIEW_NOT_PENDING` 이며, **이미 `suspended` 인 작품도 여기 해당한다**
+          (멱등하지 않다 — 두 번 내리면 이력에 두 사건으로 남는다).
+        - **가시성을 건드리지 않는다** (§13-41). 그래야 나중에 `pass` 로 통과시킬 때
+          **내려가기 전 그 자리**로 돌려놓을 수 있다.
+        - 정지된 작품은 검수 큐에 남으며, 이어지는 판정은 `pass` 또는 `reject` 다.
+
+        **'작성자 경고'는 이 계약에 없다** (§13-64). 알림 채널이 없어 지금 만들면 갈 곳이
+        없기 때문이다. 작성자는 `getDraftReview` · `getMyStories` 의 `reviewStatus` 로
+        정지 사실을 본다.
       x-implemented-by: B-55
       parameters:
         - name: storyId
@@ -3390,7 +3405,11 @@ components:
       properties:
         verdict:
           type: string
-          enum: [PASS, REJECT, HOLD]
+          description: |
+            `suspend` 는 **사람이 손으로 내리는 정지**다 (§13-64, R8.9). `reject` 와 다르다 —
+            반려는 **아직 열린 적 없는** 작품을 열지 않는 판정이고, 정지는 **이미 열려 있는**
+            작품을 내리는 판정이다.
+          enum: [PASS, REJECT, HOLD, SUSPEND]
         reasons:
           type: array
           maxItems: 8
