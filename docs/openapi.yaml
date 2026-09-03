@@ -140,6 +140,21 @@ paths:
 
         진행률은 `progressPercent` 가 아니라 `chapterNo` / `totalChapters` 로 준다 (R13.2) —
         AI 생성이라 챕터당 턴 수가 가변이므로 백분율에 근거가 없다.
+
+        **인증 없이 열린다** (§13-54, #306). 탐색은 로그인 이전의 화면이며, 플레이하려 할 때
+        로그인한다. 토큰을 함께 보내면 같은 응답에 **자기 것**이 채워진다.
+
+        **익명 요청에서는 `continueSessions` 가 빈 배열이다** — 진행 중인 세션은 주인이 있어야
+        성립하는 값이다. 그 밖의 필드(`genres` · `sections` · `noticeText`)는 같다.
+
+        **보이는 작품은 인증 여부로 달라지지 않는다** (I-8, R2.3). 승인·공개 조건은 서버가 목록
+        질의 한 곳에서 걸며, 인증이 그 조건을 대신한 적이 없다.
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8). `GET /api/v1/stories/{storyId}` ·
+        `GET /api/v1/library/sections/{sectionKey}` 와 **같은 창을 쓰고**, `GET /api/v1/landing` ·
+        `GET /api/v1/consents` 와는 **다른 창을 쓴다** — 탐색이 가입 경로의 창을 소진하면
+        둘러보던 사람이 약관을 읽지 못한다 (§13-54).
+      security: []
       x-implemented-by: B-15
       responses:
         '200':
@@ -148,14 +163,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LibraryResponse'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /api/v1/library/sections/{sectionKey}:
     get:
       tags: [library]
       operationId: getLibrarySection
       summary: 섹션 단위 재시도
+      description: |
+        **인증 없이 열린다** (§13-54, #306). `GET /api/v1/library` 와 같은 이유이며 응답에
+        개인 필드가 없다 — **익명이든 아니든 같은 값**이다.
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8). 탐색 셋이 **같은 창을 쓴다**.
+      security: []
       x-implemented-by: B-15
       parameters:
         - $ref: '#/components/parameters/SectionKey'
@@ -172,10 +193,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LibrarySection'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── §13.3 Story Detail ──────────────────────────────────────
   /api/v1/stories/{storyId}:
@@ -188,6 +209,19 @@ paths:
 
         `totalEndings` 는 `isSecret = false` 인 엔딩만 센다 (R7.11).
         UGC 는 `authorDisplayName`(닉네임)을 표시한다. `playerRef` 는 노출하지 않는다 (§13-7).
+
+        **인증 없이 열린다** (§13-54, #306). 목록에서 들어온 사람이 로그인 없이 작품을 볼 수 있고,
+        플레이하려 할 때 로그인한다.
+
+        **익명 요청에서는 `mySession` 이 `null` 이다** — 세션이 없는 회원과 같은 모양이라
+        클라이언트가 분기를 하나 더 갖지 않는다. `story` 와 `characters` 는 같다.
+
+        **볼 수 없는 작품은 `404` 다 — 익명이든 아니든 같다** (I-8). 승인되지 않았거나 `private`
+        인 작품은 **없는 것과 구분되지 않는다**. `403` 을 쓰지 않는 이유는 그것이 작품의 존재를
+        알리기 때문이다.
+
+        **인증 없이 열리므로 IP 기준 호출 한도가 걸린다** (S-8). 탐색 셋이 **같은 창을 쓴다**.
+      security: []
       x-implemented-by: B-16
       parameters:
         - $ref: '#/components/parameters/StoryId'
@@ -198,10 +232,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StoryDetailResponse'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── §13.4 Session ───────────────────────────────────────────
   /api/v1/stories/{storyId}/sessions:

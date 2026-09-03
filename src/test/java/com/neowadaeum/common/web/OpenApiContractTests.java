@@ -230,6 +230,37 @@ class OpenApiContractTests {
 				.isEqualTo(List.of());
 	}
 
+	/**
+	 * <b>탐색 셋이 인증 밖에 있다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>랜딩이 추천 작품을 인증 없이 주는데 목록과 상세는 토큰을 요구하고 있었다 — 프론트는
+	 * 계약을 그대로 따라 익명을 로그인으로 보냈고, <b>서비스를 처음 보는 사람이 무엇이 있는지
+	 * 볼 수 없었다.</b>
+	 *
+	 * <p><b>{@code 429} 를 함께 못박는다.</b> 인증 밖으로 열린 읽기에는 IP 기준 한도가 붙으므로
+	 * (S-8), 그것이 계약에 없으면 클라이언트가 <b>예상하지 못한 코드</b>를 받는다.
+	 *
+	 * <p><b>{@code 401} 이 남아 있지 않은 것</b>도 확인한다. 남아 있으면 계약이 두 말을 하고,
+	 * 프론트의 인증 밖 화면 목록이 다시 갈린다 (#306 이 그 목록에서 시작했다).
+	 */
+	@ParameterizedTest
+	@CsvSource({ "/api/v1/library", "/api/v1/library/sections/{sectionKey}", "/api/v1/stories/{storyId}" })
+	@SuppressWarnings("unchecked")
+	void S13_54_browsing_is_declared_outside_authentication(String path) {
+		Map<String, Object> get = (Map<String, Object>) ((Map<String, Object>) paths().get(path)).get("get");
+
+		assertThat(get.get("security"))
+				.as("탐색은 로그인 이전의 화면이다 (§13-54) — %s", path)
+				.isEqualTo(List.of());
+		Map<String, Object> responses = (Map<String, Object>) get.get("responses");
+		assertThat(responses)
+				.as("인증 없이 열리면 IP 기준 한도가 붙는다 (S-8) — %s", path)
+				.containsKey("429");
+		assertThat(responses)
+				.as("인증을 요구하지 않는 경로가 401 을 선언하면 계약이 두 말을 한다 — %s", path)
+				.doesNotContainKey("401");
+	}
+
 	// ── 3. 구현 ⊆ 계약 ───────────────────────────────────────
 
 

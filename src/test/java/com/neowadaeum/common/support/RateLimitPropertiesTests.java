@@ -41,6 +41,20 @@ class RateLimitPropertiesTests {
 		assertThat(RateLimitProperties.defaults().publicReadPerMinutePerIp()).isPositive();
 	}
 
+	/**
+	 * <b>탐색의 한도는 설정 조회와 <i>다른 값</i>이다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>같은 값을 쓰면 창을 나눈 의미가 절반만 남는다 — 탐색은 한 화면이 섹션 더 보기와 작품
+	 * 상세로 이어져 설정 조회보다 훨씬 잦다. 값이 0 이 되면 <b>둘러보기가 통째로 막힌다.</b>
+	 */
+	@Test
+	void S13_54_the_browse_limit_is_positive_and_looser_than_the_config_read_one() {
+		RateLimitProperties limits = RateLimitProperties.defaults();
+
+		assertThat(limits.publicBrowsePerMinutePerIp()).isPositive()
+				.isGreaterThan(limits.publicReadPerMinutePerIp());
+	}
+
 	/** §13-28 — 일일 한도는 턴 수로 대리한다. 값이 있고 분당 한도보다 크다. */
 	@Test
 	void S13_28_the_daily_limit_is_larger_than_the_per_minute_one() {
@@ -52,7 +66,7 @@ class RateLimitPropertiesTests {
 	/** 설정이 값을 덮는다 — B-46 실측 후 조정할 수 있어야 한다. */
 	@Test
 	void S15_configuration_overrides_the_defaults() {
-		assertThat(new RateLimitProperties(3, 4, 5, 6, 7, 8).turnPerMinute()).isEqualTo(3);
+		assertThat(new RateLimitProperties(3, 4, 5, 6, 7, 8, 9).turnPerMinute()).isEqualTo(3);
 	}
 
 	/** 창 길이는 값이 아니라 규칙이다 — §15 가 "분당"이라고 적었다. */
