@@ -10,6 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.log.AdminAuditLogRepository;
 import com.neowadaeum.authoring.draft.StoryDraftRepository;
+import com.neowadaeum.authoring.report.ContentReport;
+import com.neowadaeum.authoring.report.ContentReportRepository;
+import com.neowadaeum.authoring.report.ReportReason;
+import com.neowadaeum.authoring.report.ReportTarget;
 import com.neowadaeum.authoring.review.StoryReviewRepository;
 import com.neowadaeum.identity.access.AdminAccessGuard;
 import com.neowadaeum.identity.domain.User;
@@ -43,6 +47,9 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 
 	private static final UUID ADMIN_PLAYER_REF = UUID.fromString("00000000-0000-4000-8000-0000000000e2");
 
+	/** 신고자가 쓴 자유 문장. <b>응답에 나가지 않는 것</b>을 확인하는 데 쓴다 (I-3, §13-62). */
+	private static final String REPORT_DETAIL = "신고자가 쓴 문장이다";
+
 	private static final String PAYLOAD = "{\"title\":\"봄의 학교\",\"shortDesc\":\"소개\","
 			+ "\"worldIntro\":\"소개\",\"worldPrompt\":\"봄의 학교에서 시작한다.\","
 			+ "\"chapters\":[{\"title\":\"1장\",\"summarySeed\":\"시작\"}],"
@@ -59,6 +66,9 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 
 	@Autowired
 	private StoryReviewRepository reviews;
+
+	@Autowired
+	private ContentReportRepository contentReports;
 
 	@Autowired
 	private AdminAuditLogRepository auditLogs;
@@ -82,6 +92,7 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 			jdbc.sql("DELETE FROM story_version WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM story WHERE id = ?").param(storyId).update();
 		});
+		this.contentReports.deleteAll();
 		this.reviews.deleteAll();
 		this.drafts.deleteAll();
 		this.auditLogs.deleteAll();
@@ -219,6 +230,129 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 		this.mvc.perform(verdict(storyId, stepUp,
 						"{\"verdict\":\"REJECT\",\"reasons\":[\"이나린 이라는 이름\"]}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	// ── 이 작품에 무엇이 신고됐는가 (§13-62, 이슈 #316) ────────
+
+	/**
+	 * <b>사유별로 몇 건인지가 먼저 온다</b> (§13-62).
+	 *
+	 * <p>검수자가 판정에 쓰는 것이 이 숫자다 — 없으면 제목과 상태만 보고 승인/반려하게 된다.
+	 */
+	@Test
+	void S13_62_the_reports_are_tallied_by_reason() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		givenReport(storyId, ReportReason.INAPPROPRIATE);
+		givenReport(storyId, ReportReason.INAPPROPRIATE);
+		givenReport(storyId, ReportReason.IP_VIOLATION);
+		String stepUp = stepUpToken();
+
+		this.mvc.perform(reports(storyId, stepUp)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.storyId").value(storyId.toString()))
+				.andExpect(jsonPath("$.reasonCounts[?(@.reason=='inappropriate')].count").value(2))
+				.andExpect(jsonPath("$.reasonCounts[?(@.reason=='ip_violation')].count").value(1));
+	}
+
+	/**
+	 * <b>개별 신고도 함께 온다</b> (§13-62) — 접수 시각 · 상태 · 대상 턴.
+	 *
+	 * <p>{@code turnNo} 는 <b>작품 신고에 없다.</b> 턴 신고에서 작품을 알아내려면 {@code play}
+	 * 의 세션 표를 읽어야 하므로 (§13-41, §5.3) 여기 오는 것은 작품 신고뿐이며, 키는 생략하지
+	 * 않고 {@code null} 로 명시한다.
+	 */
+	@Test
+	void S13_62_each_report_carries_its_time_status_and_turn_slot() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		givenReport(storyId, ReportReason.REAL_PERSON);
+		String stepUp = stepUpToken();
+
+		String body = this.mvc.perform(reports(storyId, stepUp)).andExpect(status().isOk())
+				.andExpect(jsonPath("$.reports[0].reason").value("real_person"))
+				.andExpect(jsonPath("$.reports[0].status").value("open"))
+				.andExpect(jsonPath("$.reports[0].createdAt").isNotEmpty())
+				.andReturn().getResponse().getContentAsString();
+
+		assertThat(body).as("nullable 필드는 키를 생략하지 않고 null 로 명시한다").contains("\"turnNo\":null");
+	}
+
+	/**
+	 * <b>신고자가 응답에 없다</b> (I-3, §13-62).
+	 *
+	 * <p>누가 신고했는지는 판정에 쓰이지 않으며, 쓰이지 않는 식별자는 담을 이유가 없다.
+	 * 신고자가 쓴 자유 문장도 나가지 않는다 — 그 안에는 신고자를 특정하는 말이 들어 있다.
+	 *
+	 * <p><b>"있어야 할 것"만 단언하면 값이 새어도 통과한다</b> — 그래서 없는 것을 본다.
+	 */
+	@Test
+	void I3_the_reports_response_does_not_carry_the_reporter() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		UUID reporterRef = givenReport(storyId, ReportReason.OTHER);
+		String stepUp = stepUpToken();
+
+		String body = this.mvc.perform(reports(storyId, stepUp)).andExpect(status().isOk())
+				.andReturn().getResponse().getContentAsString();
+
+		assertThat(body).doesNotContain("reporterRef").doesNotContain(reporterRef.toString())
+				.doesNotContain("detail").doesNotContain(REPORT_DETAIL);
+	}
+
+	/** <b>승격 없이는 신고 내용이 보이지 않는다</b> (S-4) — 형제 경로와 같은 문이다. */
+	@Test
+	void SEC4_without_a_step_up_the_reports_are_not_visible() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+
+		this.mvc.perform(get("/api/v1/admin/reviews/%s/reports".formatted(storyId))
+						.with(asPlayer(ADMIN_PLAYER_REF)))
+				.andExpect(status().isForbidden());
+	}
+
+	/** 없는 작품은 {@code 404} 다 — 빈 목록으로 답하면 오타 난 id 가 "신고 없음"으로 보인다. */
+	@Test
+	void S13_62_reports_for_an_unknown_story_are_not_found() throws Exception {
+		givenAdmin();
+		String stepUp = stepUpToken();
+
+		this.mvc.perform(reports(UUID.randomUUID(), stepUp)).andExpect(status().isNotFound());
+	}
+
+	/** <b>읽는 것도 감사에 남는다</b> (R14.5) — 누가 언제 신고 내용을 열었는지. */
+	@Test
+	void R14_5_reading_the_reports_is_audited() throws Exception {
+		UUID adminUserId = givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		givenReport(storyId, ReportReason.INAPPROPRIATE);
+		String stepUp = stepUpToken();
+
+		this.mvc.perform(reports(storyId, stepUp)).andExpect(status().isOk());
+
+		assertThat(this.auditLogs.findByAdminUserIdOrderByCreatedAtDesc(adminUserId, Limit.of(10)))
+				.anySatisfy(log -> {
+					assertThat(log.getAction()).isEqualTo("admin.review.reports.read");
+					assertThat(log.getTargetId()).isEqualTo(storyId);
+				});
+	}
+
+	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder reports(
+			UUID storyId, String stepUp) {
+		return get("/api/v1/admin/reviews/%s/reports".formatted(storyId))
+				.with(asPlayer(ADMIN_PLAYER_REF)).header(AdminAccessGuard.STEP_UP_HEADER, stepUp);
+	}
+
+	/**
+	 * 한 사람이 이 작품을 신고한다.
+	 *
+	 * <p><b>접수 경로가 아니라 표에 직접 넣는다.</b> 확인하려는 것은 <b>읽는 문</b>이고, 접수
+	 * 경로에는 IP 기준 레이트리밋이 걸려 있어 (S-8) 픽스처가 그것에 먼저 막힌다.
+	 */
+	private UUID givenReport(UUID storyId, ReportReason reason) {
+		UUID reporterRef = UUID.randomUUID();
+		this.contentReports.save(ContentReport.of(reporterRef, ReportTarget.STORY, storyId, null,
+				null, reason, REPORT_DETAIL, Instant.now()));
+		return reporterRef;
 	}
 
 	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder verdict(

@@ -1,8 +1,12 @@
 package com.neowadaeum.authoring.report;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /** 신고 (§2.4). catalog 스토어에 있고 소유는 authoring 이다 (ADR-0002). */
 public interface ContentReportRepository extends JpaRepository<ContentReport, UUID> {
@@ -24,4 +28,41 @@ public interface ContentReportRepository extends JpaRepository<ContentReport, UU
 	 * 수 있다.
 	 */
 	long countByTargetTypeAndTargetId(String targetType, UUID targetId);
+
+	/**
+	 * 이 대상의 신고를 최근 것부터 (§13-62).
+	 *
+	 * <p><b>한 번에 다 읽지 않는다.</b> 임계에 닿아 큐에 오른 작품에도 신고는 계속 쌓이며,
+	 * 판정에 먼저 필요한 것은 <b>무엇이 몇 건인지</b>다 — 그 답은 아래 집계가 <b>전건</b>으로
+	 * 준다.
+	 */
+	List<ContentReport> findByTargetTypeAndTargetIdOrderByCreatedAtDesc(String targetType,
+			UUID targetId, Limit limit);
+
+	/**
+	 * 사유별로 <b>몇 건인가</b> (§13-62).
+	 *
+	 * <p>목록과 달리 <b>상한이 없다.</b> 검수자가 먼저 보는 것이 이 숫자이므로, 그것이 페이지에
+	 * 잘리면 <b>같은 작품이 볼 때마다 다르게 보인다.</b>
+	 */
+	@Query("""
+			SELECT r.reason AS reason, COUNT(r) AS reportCount
+			FROM ContentReport r
+			WHERE r.targetType = :targetType AND r.targetId = :targetId
+			GROUP BY r.reason
+			""")
+	List<ReasonTally> tallyByReason(@Param("targetType") String targetType,
+			@Param("targetId") UUID targetId);
+
+	/**
+	 * 사유 하나의 집계.
+	 *
+	 * <p>{@code reason} 은 <b>컬럼 표기 그대로</b>다 — 열거형으로 바꾸는 것은 서비스가 한다.
+	 */
+	interface ReasonTally {
+
+		String getReason();
+
+		long getReportCount();
+	}
 }

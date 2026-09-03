@@ -1,5 +1,6 @@
 package com.neowadaeum.admin;
 
+import com.neowadaeum.authoring.report.ReportInspection;
 import com.neowadaeum.authoring.review.ReviewQueueService;
 import com.neowadaeum.common.web.PlayerRefResolver;
 import com.neowadaeum.identity.access.AdminAccessGuard;
@@ -33,13 +34,16 @@ public class AdminReviewController {
 
 	private final ReviewQueueService queue;
 
+	private final ReportInspection inspection;
+
 	private final AdminAccessGuard guard;
 
 	private final PlayerRefResolver playerRefs;
 
-	public AdminReviewController(ReviewQueueService queue, AdminAccessGuard guard,
-			PlayerRefResolver playerRefs) {
+	public AdminReviewController(ReviewQueueService queue, ReportInspection inspection,
+			AdminAccessGuard guard, PlayerRefResolver playerRefs) {
 		this.queue = queue;
+		this.inspection = inspection;
 		this.guard = guard;
 		this.playerRefs = playerRefs;
 	}
@@ -50,6 +54,27 @@ public class AdminReviewController {
 		this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
 
 		return this.queue.pending().stream().map(ReviewQueueItemResponse::of).toList();
+	}
+
+	/**
+	 * 이 작품에 무엇이 신고됐는가 (§13-62, 이슈 #316).
+	 *
+	 * <p><b>큐가 아니라 큐 안의 내용이다.</b> 임계에 닿은 작품은 이미 같은 검수 큐에
+	 * {@code suspended} 로 올라와 있으며 (§13-41), 없던 것은 <b>왜 올라왔는지</b>였다 —
+	 * 사유와 건수를 모르면 검수자는 제목과 상태만 보고 판정하게 된다.
+	 *
+	 * <p><b>읽는 것도 남긴다</b> (R14.5). 신고는 이용자가 쓴 것이고, 누가 언제 그것을 열었는지는
+	 * 사후에 되짚을 수 있어야 한다 — 큐 목록과 달리 이 문 뒤에는 <b>특정 작품에 대해 사람들이
+	 * 무엇을 문제 삼았는지</b>가 있다.
+	 */
+	@GetMapping("/{storyId}/reports")
+	public StoryReportsResponse reports(@PathVariable UUID storyId, HttpServletRequest request) {
+		UUID adminUserId = this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
+
+		StoryReportsResponse response = StoryReportsResponse.of(this.inspection.forStory(storyId));
+		this.guard.recordAction(adminUserId, "admin.review.reports.read", "story", storyId,
+				Map.of("reportCount", response.total()), request);
+		return response;
 	}
 
 	/**

@@ -1570,6 +1570,53 @@ paths:
                 message: 이미 처리된 검수예요.
                 details: {}
 
+  /api/v1/admin/reviews/{storyId}/reports:
+    get:
+      tags: [admin]
+      operationId: listStoryReports
+      summary: 이 작품에 무엇이 신고됐는가
+      description: |
+        **별도의 큐가 아니다.** 임계에 닿은 작품은 이미 같은 인간 검수 큐에 `suspended` 로
+        올라와 있고 (§13-41), 없던 것은 **그 안에서 무엇이 신고됐는가**였다. 이 경로가
+        없으면 검수자는 제목과 상태만 보고 판정하게 된다.
+
+        **둘을 함께 준다.** 사유별 집계는 *무엇이 몇 건인지*를, 개별 목록은 *언제 어떤 턴이
+        걸렸는지*를 답한다 — 나누면 검수자가 두 번 요청해야 하고 그 사이에 집계와 목록이
+        다른 시점을 가리킨다.
+
+        **작품 신고만 온다** (§13-41). 턴 신고에서 작품을 알아내려면 `authoring` 이 `play` 의
+        세션 표를 읽어야 하고, 스토어가 다르며(§5.3) 그 참조는 애플리케이션 레벨에서도 열려
+        있지 않다. 정지 임계가 세는 것과 검수자가 보는 것이 같아야 **왜 내려갔는지**가
+        화면에서 설명된다.
+
+        **신고자를 담지 않는다** (I-3, §13-62). 누가 신고했는지는 판정에 쓰이지 않으며,
+        신고자가 쓴 자유 문장(`detail`)도 나가지 않는다 — 그 안에는 신고자를 특정하는 말과
+        걸린 표현이 그대로 들어 있다 (S-11).
+
+        **읽는 것도 감사에 남는다** (R14.5).
+      x-implemented-by: B-57
+      parameters:
+        - name: storyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/AdminStepUp'
+      responses:
+        '200':
+          description: 사유별 집계와 개별 신고
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryReportsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/admin/2fa/enroll:
     post:
       tags: [admin]
@@ -3440,6 +3487,68 @@ components:
           description: |
             `hold` 는 **온 자리 그대로** 돌아온다 — `in_review` 는 `in_review` 로,
             `suspended` 는 `suspended` 로.
+
+    StoryReportsResponse:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
+      type: object
+      description: |
+        **신고자가 없다** (I-3, §13-62). `reporter_ref` 는 판정에 쓰이지 않으며, 쓰이지 않는
+        식별자는 담을 이유가 없다 — 검수자가 누가 신고했는지를 알면 그것이 판정에 섞인다.
+        검수 큐가 작성자를 담지 않는 것과 같은 이유다.
+
+        **신고자가 쓴 자유 문장(`detail`)도 없다.** 판정에 먼저 필요한 것은 무엇이 몇
+        건인지이고, 문장은 표에 남아 사후 조사가 쓴다.
+      required: [storyId, reasonCounts, reports]
+      properties:
+        storyId: { type: string, format: uuid }
+        reasonCounts:
+          type: array
+          description: |
+            사유별 **전건** 집계. 검수자가 먼저 보는 숫자이며, 이것이 페이지에 잘리면 같은
+            작품이 볼 때마다 다르게 보인다.
+          items:
+            $ref: '#/components/schemas/ReasonCount'
+        reports:
+          type: array
+          description: |
+            최근 신고. **상한이 있다** — 전건은 `reasonCounts` 가 답한다.
+          items:
+            $ref: '#/components/schemas/ReportItem'
+
+    ReasonCount:
+      type: object
+      description: 사유 하나에 몇 건. 표기는 신고 접수와 같은 소문자다 (§13.9)
+      required: [reason, count]
+      properties:
+        reason:
+          type: string
+          enum: [inappropriate, ip_violation, real_person, other]
+        count:
+          type: integer
+          minimum: 1
+          description: 이 사유로 신고한 **사람 수**. 같은 사람의 반복 신고는 한 건이다 (R8.9)
+
+    ReportItem:
+      type: object
+      description: |
+        개별 신고 한 건. **신고자를 담지 않는다** (I-3).
+      required: [reportId, reason, turnNo, createdAt, status]
+      properties:
+        reportId: { type: string, format: uuid }
+        reason:
+          type: string
+          enum: [inappropriate, ip_violation, real_person, other]
+        turnNo:
+          type: [integer, 'null']
+          description: |
+            신고된 턴. **작품 신고에는 없으므로 `null` 이 정상이다** — 키를 생략하지 않는다.
+        createdAt:
+          type: string
+          format: date-time
+          description: 접수 시각
+        status:
+          type: string
+          enum: [open, reviewing, actioned, dismissed]
 
     PreviewResponse:
       x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
