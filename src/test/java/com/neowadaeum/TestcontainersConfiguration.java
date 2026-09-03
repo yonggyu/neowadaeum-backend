@@ -115,6 +115,21 @@ public class TestcontainersConfiguration {
 	}
 
 	/**
+	 * {@code auth.refresh-cookie.secure} 도 런타임 전용이다 (ADR-0008, #278).
+	 * {@code ${REFRESH_COOKIE_SECURE}} 는 테스트에 {@code .env} 가 없어 플레이스홀더 문자열
+	 * 그대로 남고, 그것은 {@code Boolean} 으로 변환되지 않아 <b>부팅이 실패한다</b> —
+	 * {@code JWT_SECRET} 과 같은 이유이며 §7.3 이 의도한 동작이다.
+	 *
+	 * <p><b>{@code false} 인 것은 MockMvc 가 평문 HTTP 이기 때문</b>이다. {@code true} 로 두면
+	 * 쿠키가 굽히기는 하지만 실제 브라우저에서는 붙지 않으며, 그 차이가 테스트에 드러나지 않는다.
+	 * 배포된 환경은 반드시 {@code true} 다.
+	 */
+	@Bean
+	DynamicPropertyRegistrar refreshCookieSecureRegistrar() {
+		return registry -> registry.add("auth.refresh-cookie.secure", () -> "false");
+	}
+
+	/**
 	 * 호출 한도를 테스트에서 올린다 (B-38).
 	 *
 	 * <p><b>§15 의 값이 테스트를 막는다.</b> 40턴 E2E(B-44)는 <b>한 테스트가 정당하게 40번을

@@ -24,14 +24,23 @@ public class CommonWebConfiguration {
 			List.of("GET", "POST", "PATCH", "DELETE");
 
 	/**
+	 * 프론트가 CSRF 토큰을 돌려보내는 자리 (ADR-0008, #278).
+	 *
+	 * <p>Spring Security 의 기본 이름이며 {@code CookieCsrfTokenRepository} 가 굽는 쿠키
+	 * ({@code XSRF-TOKEN})와 짝이다. 허용 목록에 없으면 <b>preflight 에서 막히고</b>, 그때
+	 * 브라우저가 보고하는 것은 CSRF 가 아니라 CORS 오류다.
+	 */
+	private static final String CSRF_HEADER_NAME = "X-XSRF-TOKEN";
+
+	/**
 	 * 서버가 <b>실제로 읽는</b> 요청 헤더뿐이다.
 	 *
 	 * <p>{@code Idempotency-Key} 는 중복 과금을 막는 값이고 (R6.2), {@code X-Request-Id} 는
 	 * 클라이언트가 추적 ID 를 이어 붙이는 자리다 ({@link RequestIdFilter}). 목록을 넓히면
 	 * <b>서버가 무엇을 보는지</b>가 이 파일에서 사라진다.
 	 */
-	private static final List<String> ALLOWED_HEADERS =
-			List.of("Authorization", "Content-Type", "Idempotency-Key", RequestIdFilter.HEADER_NAME);
+	private static final List<String> ALLOWED_HEADERS = List.of("Authorization", "Content-Type",
+			"Idempotency-Key", RequestIdFilter.HEADER_NAME, CSRF_HEADER_NAME);
 
 	/**
 	 * 브라우저 스크립트가 <b>읽을 수 있는</b> 응답 헤더.
@@ -90,8 +99,13 @@ public class CommonWebConfiguration {
 		cors.setAllowedMethods(ALLOWED_METHODS);
 		cors.setAllowedHeaders(ALLOWED_HEADERS);
 		cors.setExposedHeaders(EXPOSED_HEADERS);
-		// 쿠키를 쓰지 않는다 (B-12 — Bearer 토큰). 켤 이유가 없고, 켜지 않는 것이 곧 방어다.
-		cors.setAllowCredentials(false);
+		// ADR-0008(#278) — 리프레시 토큰이 쿠키로 옮겨오면서 켠다. 브라우저는 자격 증명을
+		// 실은 교차 오리진 요청의 응답을 이것 없이는 버리므로, 끄면 Set-Cookie 도 무시되고
+		// 로그인 유지가 성립하지 않는다.
+		//
+		// 켤 수 있는 근거는 허용 목록이 **정확 일치이고 와일드카드를 거부한다**는 것 하나다
+		// (CorsProperties). 그 검사가 이 줄과 함께 있어야 의미를 갖는다.
+		cors.setAllowCredentials(true);
 		cors.setMaxAge(PREFLIGHT_MAX_AGE);
 
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
