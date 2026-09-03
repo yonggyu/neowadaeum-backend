@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.neowadaeum.ContainerTestBase;
+import com.neowadaeum.ai.log.AccessAuditLogRepository;
 import com.neowadaeum.ai.log.AdminAuditLogRepository;
 import com.neowadaeum.authoring.draft.StoryDraftRepository;
 import com.neowadaeum.authoring.report.ContentReport;
@@ -74,6 +75,9 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	private AdminAuditLogRepository auditLogs;
 
 	@Autowired
+	private AccessAuditLogRepository accessLogs;
+
+	@Autowired
 	@Qualifier("identityDataSource")
 	private DataSource identity;
 
@@ -96,6 +100,7 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 		this.reviews.deleteAll();
 		this.drafts.deleteAll();
 		this.auditLogs.deleteAll();
+		this.accessLogs.deleteAll();
 		this.users.findByPlayerRef(ADMIN_PLAYER_REF).ifPresent(this.users::delete);
 	}
 
@@ -310,6 +315,22 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 				.andExpect(status().isForbidden());
 	}
 
+	/**
+	 * <b>승격 없이는 원고가 열리지 않는다</b> (S-4, I-8).
+	 *
+	 * <p>여기 열리는 것은 <b>아직 아무도 보지 못한 작품의 원문</b>이며, 그것이 새면 검수 전
+	 * UGC 가 새는 것과 같다.
+	 */
+	@Test
+	void SEC4_without_a_step_up_the_manuscript_is_not_visible() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+
+		this.mvc.perform(get("/api/v1/admin/reviews/%s".formatted(storyId))
+						.with(asPlayer(ADMIN_PLAYER_REF)))
+				.andExpect(status().isForbidden());
+	}
+
 	/** 없는 작품은 {@code 404} 다 — 빈 목록으로 답하면 오타 난 id 가 "신고 없음"으로 보인다. */
 	@Test
 	void S13_62_reports_for_an_unknown_story_are_not_found() throws Exception {
@@ -336,6 +357,54 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 				});
 	}
 
+	/**
+	 * <b>검수자가 판정에 쓸 것이 온다</b> (#316, §13-61).
+	 *
+	 * <p>큐는 제목과 상태만 준다 — 그것만 보고 누르는 승인은 검수가 아니다.
+	 */
+	@Test
+	void S13_61_the_manuscript_carries_what_a_verdict_needs() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String stepUp = stepUpToken();
+
+		this.mvc.perform(manuscript(storyId, stepUp))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.storyId").value(storyId.toString()))
+				.andExpect(jsonPath("$.title").value("봄의 학교"))
+				.andExpect(jsonPath("$.reviewStatus").value("in_review"))
+				.andExpect(jsonPath("$.worldPrompt").value("봄의 학교에서 시작한다."))
+				.andExpect(jsonPath("$.chapters[0].title").value("1장"))
+				.andExpect(jsonPath("$.endings[0].label").value("좋은 끝"))
+				.andExpect(jsonPath("$.endings[0].epilogueText").value("잘 끝났다."))
+				.andExpect(jsonPath("$.autoCheck.verdict").value("pass"));
+	}
+
+	/**
+	 * <b>원문을 읽은 사실이 남는다</b> (R12.3, S-5).
+	 *
+	 * <p>{@code ReviewQueueItem} 이 <b>"원문 열람은 감사가 걸린 다른 문"</b>이라고 적은 그
+	 * 감사다 — 행위 기록(R14.5)과 별개의 표이며, 남기지 못하면 원문이 나가지 않는다.
+	 */
+	@Test
+	void R12_3_reading_a_manuscript_is_audited() throws Exception {
+		UUID adminUserId = givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String stepUp = stepUpToken();
+
+		this.mvc.perform(manuscript(storyId, stepUp)).andExpect(status().isOk());
+
+		assertThat(this.accessLogs.findByResourceAndResourceIdOrderByCreatedAtDesc("story_draft",
+				storyId, Limit.of(10)))
+				.singleElement()
+				.satisfies(log -> assertThat(log.getAdminUserId()).isEqualTo(adminUserId));
+		assertThat(this.auditLogs.findByAdminUserIdOrderByCreatedAtDesc(adminUserId, Limit.of(10)))
+				.anySatisfy(log -> {
+					assertThat(log.getAction()).isEqualTo("admin.review.manuscript");
+					assertThat(log.getTargetId()).isEqualTo(storyId);
+				});
+	}
+
 	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder reports(
 			UUID storyId, String stepUp) {
 		return get("/api/v1/admin/reviews/%s/reports".formatted(storyId))
@@ -355,6 +424,44 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 		return reporterRef;
 	}
 
+	/**
+	 * <b>작성자는 표시명으로만 온다</b> (§13-7, I-3).
+	 *
+	 * <p>있어야 할 것만 단언하면 식별자가 새어도 통과한다 — 응답 본문에 {@code player_ref} 가
+	 * 없다는 것을 함께 건다 (S-11).
+	 */
+	@Test
+	void I3_the_manuscript_carries_no_player_ref() throws Exception {
+		givenAdmin();
+		UUID authorRef = UUID.randomUUID();
+		UUID storyId = givenPublicSubmission(authorRef);
+		String stepUp = stepUpToken();
+
+		String body = this.mvc.perform(manuscript(storyId, stepUp)).andExpect(status().isOk())
+				.andReturn().getResponse().getContentAsString();
+
+		assertThat(body).doesNotContain(authorRef.toString()).doesNotContain("playerRef")
+				.doesNotContain("player_ref").doesNotContain("authorRef");
+	}
+
+	/** 없는 작품은 {@code 404} 다 — 그리고 열람 기록도 남지 않는다. */
+	@Test
+	void S13_61_an_unknown_story_has_no_manuscript() throws Exception {
+		UUID adminUserId = givenAdmin();
+		String stepUp = stepUpToken();
+
+		this.mvc.perform(manuscript(UUID.randomUUID(), stepUp)).andExpect(status().isNotFound());
+
+		assertThat(this.accessLogs.findByAdminUserIdOrderByCreatedAtDesc(adminUserId, Limit.of(10)))
+				.isEmpty();
+	}
+
+	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder manuscript(
+			UUID storyId, String stepUp) {
+		return get("/api/v1/admin/reviews/%s".formatted(storyId)).with(asPlayer(ADMIN_PLAYER_REF))
+				.header(AdminAccessGuard.STEP_UP_HEADER, stepUp);
+	}
+
 	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder verdict(
 			UUID storyId, String stepUp, String body) {
 		return post("/api/v1/admin/reviews/%s/verdict".formatted(storyId))
@@ -364,7 +471,10 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 
 	/** 작성자가 {@code public} 으로 제출한다 — 그것이 큐에 들어오는 유일한 길이다 (R8.6). */
 	private UUID givenPublicSubmission() throws Exception {
-		UUID authorRef = UUID.randomUUID();
+		return givenPublicSubmission(UUID.randomUUID());
+	}
+
+	private UUID givenPublicSubmission(UUID authorRef) throws Exception {
 		String created = this.mvc.perform(post("/api/v1/authoring/drafts").with(asPlayer(authorRef)))
 				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
 		UUID draftId = UUID.fromString(JSON.readTree(created).get("draftId").asString());
