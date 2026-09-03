@@ -443,6 +443,48 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+    patch:
+      tags: [me]
+      operationId: updateMe
+      summary: 표시명 설정·변경
+      description: |
+        **표시명을 만드는 유일한 경로다** (#271). 읽는 곳은 셋인데(작품 상세 · 커뮤니티 카드 ·
+        `GET /api/v1/me`) 쓰는 곳이 없어서, 실사용에서 `displayName` 이 항상 `null` 이었다.
+
+        **설정과 변경이 같은 요청이다.** 프로필이 없으면 만들고 있으면 바꾼다 — 화면이 어느
+        쪽인지 먼저 물어볼 필요가 없다.
+
+        **저장된 값이 보낸 값과 다를 수 있다.** 서버가 정규화한다 — NFC · 양끝 공백 제거 ·
+        내부 연속 공백 하나로. 그래서 응답이 `MeResponse` 이며, 화면은 **돌려받은 값을**
+        저장된 이름으로 쓴다.
+
+        **중복을 막지 않는다.** `author_profile` 에 표시명 유일 제약이 없고 (`catalog/V7` ·
+        `catalog/V11`), 이 작업은 제약을 새로 만들지 않는다 — 같은 이름을 가진 회원이 둘 이상
+        있을 수 있으며 화면은 표시명을 **식별자로 쓰지 않는다.** 그래서 `409` 가 없다.
+
+        **정지·탈퇴 회원은 `403` 이다.** 액세스 토큰은 탈퇴 후에도 만료 전까지 살아 있으므로
+        (R12.5), 막지 않으면 파기 배치가 익명으로 바꿔 둔 이름을 되돌릴 수 있다.
+      x-implemented-by: '#271'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: 바뀐 내 계정
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
     delete:
       tags: [me]
       operationId: withdraw
@@ -3056,3 +3098,29 @@ components:
           description: |
             `withdrawn` 은 **탈퇴 신청이 접수된 상태**다 (R12.5). 파기 배치 전까지 이미 발급된
             액세스 토큰은 만료 전까지 살아 있으므로, 그 사이에 이 값이 사실을 알린다.
+
+    UpdateMeRequest:
+      type: object
+      description: |
+        **필드가 하나뿐이다** (#271). 역할과 상태는 사용자가 정하는 값이 아니며, 여기에 두면
+        **스스로 관리자가 되는 경로**가 된다 (S-4).
+
+        **`null` 을 "지우기"로 읽지 않는다.** 표시명을 없애는 것은 다른 행위이고, 그것을 이
+        요청에 겸하면 실수로 보낸 `null` 하나가 이름을 지운다.
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 2
+          maxLength: 12
+          examples: ['연우']
+          description: |
+            공개 표시명. 길이는 **코드포인트** 기준이며 허용 문자는 한글 · 영문 · 숫자 ·
+            `_` · `-` · 공백이다 (#287).
+
+            **`@` 로 시작하면 거절한다.** 그것은 화면이 붙이는 표기이고, 값에 두면
+            `yeonwoo` 와 `@yeonwoo` 가 서로 다른 값이면서 같게 보인다.
+
+            **`탈퇴한 사용자` 는 쓸 수 없다** — 파기 배치가 쓰는 이름이므로 사칭이 된다.
+
+            규칙의 정본은 서버 도메인이다. 화면 검증은 편의이지 계약이 아니다.
