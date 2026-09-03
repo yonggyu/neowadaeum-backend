@@ -1727,6 +1727,27 @@ paths:
 
         **읽는 것도 감사에 남는다** (R14.5).
       x-implemented-by: B-57
+      parameters:
+        - name: storyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/AdminStepUp'
+      responses:
+        '200':
+          description: 사유별 집계와 개별 신고
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryReportsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/admin/reviews/{storyId}/history:
     get:
@@ -1761,12 +1782,6 @@ paths:
         - $ref: '#/components/parameters/AdminStepUp'
       responses:
         '200':
-          description: 사유별 집계와 개별 신고
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StoryReportsResponse'
-
           description: 최근 판정부터. **판정이 없으면 빈 목록이다** — 없는 작품과 다른 사실이다
           content:
             application/json:
