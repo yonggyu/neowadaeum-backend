@@ -973,6 +973,68 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/stories/{storyId}/appeal:
+    post:
+      tags: [authoring]
+      operationId: appealStorySuspension
+      summary: 정지된 작품의 재검토 요청
+      description: |
+        **자동으로 내려간 것을 사람이 다시 보는 길이다** (#290, §13-59). 신고 누적으로
+        `suspended` 가 된 작품은 사람이 판정한 결과가 아니라 **셈**의 결과이며 (R8.9, §13-41),
+        그것에 대고 작성자가 말할 자리가 없으면 정지 화면의 "이의가 있으면 문의해 주세요"는
+        안내가 아니라 방치다.
+
+        **이 요청은 작품의 상태를 바꾸지 않는다.** 정지된 작품은 **이미** 인간 검수 큐에 있다
+        (§13-41 — 큐가 `in_review` 와 `suspended` 를 함께 본다). 여기서 `reviewStatus` 를
+        움직이면 작성자가 검수 결과를 되돌리는 길이 된다 (I-8). 바뀌는 것은 둘이다.
+
+        - **기록** — 작성자가 다투었다는 사실과 그 사유
+        - **신호** — 검수 큐의 `ReviewQueueItem.appealed` 가 `true` 가 된다
+
+        **순서는 바꾸지 않는다.** 요청은 공짜이므로 앞세우면 줄을 사는 길이 되고, 아직
+        아무도 보지 못한 작품들이 그만큼 밀린다.
+
+        **정지 건마다 한 번이다.** 사람이 판정하면(통과든 반려든) 그 요청은 답을 받은 것이
+        되고, 다시 정지되면 다시 요청할 수 있다. 답을 받기 전 두 번째 요청은 `409` 다.
+
+        **사람이 반려한 작품(`rejected`)은 대상이 아니다.** 이미 사람이 본 결과이며, 고쳐서
+        다시 내는 길이 그쪽에 있다 (§13-40).
+
+        **본문을 되돌려주지 않는다.** 되돌려줄 것이 없다 — 상태는 그대로 `suspended` 이고
+        그 값은 `GET /api/v1/me/stories` 가 이미 준다.
+      x-implemented-by: B-57
+      parameters:
+        - $ref: '#/components/parameters/StoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppealRequest'
+      responses:
+        '202':
+          description: 접수됨. 복구를 약속하지 않는다 — 판정은 사람이 한다
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            재검토를 요청할 수 있는 자리가 아니다.
+
+            - `STORY_NOT_SUSPENDED` — 내려가지 않은 작품이다
+            - `ALREADY_EXISTS` — 이번 정지에 대해 이미 요청했고 아직 답을 받지 않았다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: STORY_NOT_SUSPENDED
+                message: 지금은 재검토를 요청할 수 없어요.
+                details: {}
+
   # ── §13.9 신고 ──────────────────────────────────────────────
   /api/v1/reports:
     post:
@@ -1817,6 +1879,7 @@ components:
         - SESSION_ALREADY_ACTIVE
         - ALREADY_EXISTS
         - REVIEW_NOT_PENDING
+        - STORY_NOT_SUSPENDED
         - SAFETY_BLOCKED
         - STORY_SUSPENDED
         - RETRY_COOLDOWN
@@ -2843,6 +2906,21 @@ components:
         visibility:
           $ref: '#/components/schemas/Visibility'
 
+    AppealRequest:
+      type: object
+      description: |
+        **사유는 필수다.** 정지된 작품은 이미 검수 큐에 있으므로 (§13-41), 사유 없는 요청은
+        검수자에게 아무것도 주지 않는다 — 그러면 이 경로는 큐를 다시 채우는 버튼일 뿐이다.
+
+        **이 문자열은 검수자만 읽는다** (S-11). 응답에도 검수 큐의 한 줄에도 실리지 않으며,
+        AI 페이로드로도 가지 않는다.
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
     ReviewStatusResponse:
       x-notice-exempt: '작품 만들기는 창작 도구 화면이며 감상 화면이 아니다 — 사전 고지 Footer 를 그리지 않는다 (§13-52)'
       type: object
@@ -3233,7 +3311,7 @@ components:
 
         **원고 본문도 담지 않는다.** 큐는 무엇을 볼 차례인지를 답하는 자리이며, 원문 열람은
         감사가 걸린 다른 문이다 (S-5).
-      required: [storyId, title, reviewStatus, queuedAt]
+      required: [storyId, title, reviewStatus, queuedAt, appealed]
       properties:
         storyId: { type: string, format: uuid }
         title: { type: string }
@@ -3252,6 +3330,16 @@ components:
           type: string
           format: date-time
           description: 언제부터 기다렸는가. 마지막 판정 시각이다
+        appealed:
+          type: boolean
+          description: |
+            **작성자가 이번 정지에 이의를 제기했고 아직 답을 받지 않았다** (#290, §13-59).
+
+            **사유는 담지 않는다** — 큐는 무엇을 볼 차례인지를 답하는 자리이고, 작성자가 쓴
+            글은 원고와 같은 문으로 본다 (S-5).
+
+            **판정의 근거가 아니다.** 이의는 다시 보라는 요청이지 통과시킬 이유가 아니며,
+            제기하지 않은 작품도 똑같이 사람이 본다. 큐의 순서도 바뀌지 않는다.
 
     ReviewVerdictRequest:
       type: object
