@@ -59,11 +59,18 @@ public final class MyStoriesView {
 	/**
 	 * 작품 한 줄.
 	 *
+	 * <p><b>{@code updatedAt} 하나로는 기다리는 사람에게 답이 되지 않는다</b> (#290). "보통
+	 * 1~3일"이라는 안내는 <b>언제부터 세는지</b>를 알아야 뜻을 갖고, 신청한 날과 승인된 날은
+	 * 서로 다른 사실이다. 두 시각은 검수 이력에서 온다 (§13-57).
+	 *
 	 * @param rejectReasons <b>카테고리만</b> (R8.7)
 	 * @param playCount     플레이된 횟수. play 스토어에서 온다 (§5.3)
+	 * @param submittedAt   검수를 요청한 시각. 요청한 적이 없으면 {@code null}
+	 * @param reviewedAt    그 회차에서 사람이 마지막으로 판정한 시각. 아직 없으면 {@code null}
 	 */
 	public record StoryItem(UUID storyId, String title, String coverImage, String visibility,
-			String reviewStatus, List<String> rejectReasons, long playCount, Instant updatedAt) {
+			String reviewStatus, List<String> rejectReasons, long playCount, Instant updatedAt,
+			Instant submittedAt, Instant reviewedAt) {
 
 		public StoryItem {
 			rejectReasons = List.copyOf(rejectReasons == null ? List.of() : rejectReasons);

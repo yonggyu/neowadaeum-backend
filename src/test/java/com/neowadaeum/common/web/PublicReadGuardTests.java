@@ -22,6 +22,11 @@ import com.neowadaeum.identity.api.ConsentTermsController;
 import com.neowadaeum.identity.api.ConsentTermsService;
 import com.neowadaeum.play.api.LandingController;
 import com.neowadaeum.play.api.LandingService;
+import com.neowadaeum.play.api.LibraryController;
+import com.neowadaeum.play.api.LibraryService;
+import com.neowadaeum.play.api.StoryDetailController;
+import com.neowadaeum.play.api.StoryDetailService;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -30,6 +35,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /**
  * 이슈 #277 — <b>인증 없이 열리는 설정 조회의 호출 한도</b> (S-8, §13.10, #261).
+ *
+ * <p>§13-54(이슈 #306) — 탐색 셋도 인증 밖으로 열렸다. 그쪽은 <b>같은 창을 쓰되 설정 조회와는
+ * 나뉘는지</b>를 함께 본다.
  *
  * <p>컨테이너를 띄우지 않는다 (ADR-0001). Redis 로 실제 창을 소진하는 것은 {@code RateLimiter}
  * 의 몫이고 {@code RateLimitIntegrationTests} 가 이미 본다 — 여기서 확인하는 것은 <b>이 두 경로가
@@ -134,7 +142,69 @@ class PublicReadGuardTests {
 		assertThat(this.keys.getAllValues().get(0)).isEqualTo(this.keys.getAllValues().get(1));
 	}
 
+	/**
+	 * <b>탐색 셋이 한 창을 쓴다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>라이브러리 · 섹션 · 작품 상세는 같은 화면 흐름이고 같은 catalog 읽기다. 따로 세면 한
+	 * 축을 다 쓴 뒤 다른 축으로 옮겨 가면 되고, 그러면 한도가 <b>셋으로 곱해진다.</b>
+	 */
+	@Test
+	void S13_54_the_three_browse_reads_share_one_window() throws Exception {
+		allow();
+		MockMvc mvc = browseControllers();
+
+		mvc.perform(get("/api/v1/library"));
+		mvc.perform(get("/api/v1/library/sections/recommended"));
+		mvc.perform(get("/api/v1/stories/{storyId}", UUID.randomUUID()));
+
+		captureCalls(3);
+		assertThat(this.scopes.getAllValues()).containsOnly(this.scopes.getAllValues().getFirst());
+		assertThat(this.keys.getAllValues()).containsOnly(this.keys.getAllValues().getFirst());
+	}
+
+	/**
+	 * <b>탐색과 설정 조회는 <i>다른</i> 창이다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>합치면 <b>둘러보던 사람이 창을 다 쓴 뒤 가입하지 못한다</b> — {@code /consents} 가
+	 * 막히면 약관 판본을 읽을 수 없고 가입 요청이 성립하지 않는다. 우회로가 아닌 이유는 지키는
+	 * 대상이 다르기 때문이다: 탐색 창을 다 써도 설정 조회의 DB 읽기는 자기 한도로 묶여 있다.
+	 */
+	@Test
+	void S13_54_browsing_does_not_spend_the_signup_paths_window() throws Exception {
+		allow();
+		MockMvc mvc = MockMvcBuilders
+				.standaloneSetup(new LandingController(mock(LandingService.class), this.guard),
+						new LibraryController(playerRefs(), mock(LibraryService.class), this.guard))
+				.setControllerAdvice(new GlobalExceptionHandler())
+				.build();
+
+		mvc.perform(get("/api/v1/landing"));
+		mvc.perform(get("/api/v1/library"));
+
+		captureCalls(2);
+		assertThat(this.scopes.getAllValues()).doesNotHaveDuplicates();
+		// 같은 회선이다 — 갈린 것은 축이지 키가 아니다.
+		assertThat(this.keys.getAllValues()).containsOnly(this.keys.getAllValues().getFirst());
+	}
+
 	// ── 보조 ────────────────────────────────────────────────
+
+	/** 탐색 셋을 한 MockMvc 에 태운다 — 같아야 하는 것은 선언이 아니라 실제로 넘어가는 축이다. */
+	private MockMvc browseControllers() {
+		return MockMvcBuilders
+				.standaloneSetup(new LibraryController(playerRefs(), mock(LibraryService.class), this.guard),
+						new StoryDetailController(playerRefs(), mock(StoryDetailService.class), this.guard))
+				.setControllerAdvice(new GlobalExceptionHandler())
+				.build();
+	}
+
+	/** 익명 요청이다 (§13-54) — 한도는 주체와 무관하게 걸린다. */
+	private static PlayerRefResolver playerRefs() {
+		PlayerRefResolver resolver = mock(PlayerRefResolver.class);
+		given(resolver.currentPlayerRefIfAuthenticated()).willReturn(java.util.Optional.empty());
+		return resolver;
+	}
+
 
 	private void allow() {
 		given(this.rateLimiter.tryAcquire(anyString(), anyString(), anyInt(), any())).willReturn(true);

@@ -88,7 +88,7 @@ class AiCallLogFacadeTests {
 		assertThat(view.inputTokens()).isEqualTo(11);
 		assertThat(view.outputTokens()).isEqualTo(22);
 		assertThat(view.latencyMs()).isEqualTo(33);
-		assertThat(view.costMicro()).isEqualTo(44L);
+		assertThat(view.costMicroKrw()).isEqualTo(44L);
 		assertThat(view.providerId()).isEqualTo("fixed");
 		assertThat(view.modelId()).isEqualTo("scenario");
 	}

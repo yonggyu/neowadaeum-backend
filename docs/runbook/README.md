@@ -26,7 +26,7 @@ GET /actuator/prometheus  지표
 | `ai.call.latency` | `provider` `model` `purpose` | Provider 응답 시간 |
 | `ai.call.fallback` | `from` `to` | **지목된 provider 가 죽었다** |
 | `ai.call.tokens` | `provider` `model` `purpose` `direction` | 토큰 사용량 |
-| `ai.call.cost.micro` | `provider` `model` `purpose` | 비용 |
+| `ai.call.cost.micro.krw` | `provider` `model` `purpose` | 비용 |
 | `safety.judgement` | `level` `outcome` | 레벨별 통과·차단 |
 | `safety.blocked.category` | `level` `category` | 무엇으로 막혔는가 |
 

@@ -26,8 +26,10 @@ class ConsentTermsServiceTests {
 
 	@BeforeEach
 	void configureTerms() {
-		given(this.terms.find("tos")).willReturn(Optional.of(new ConsentTerm("1.2", "/terms/tos")));
-		given(this.terms.find("privacy")).willReturn(Optional.of(new ConsentTerm("1.0", "/terms/privacy")));
+		given(this.terms.find("tos"))
+				.willReturn(Optional.of(new ConsentTerm("v1.2", "https://example.invalid/terms/tos")));
+		given(this.terms.find("privacy"))
+				.willReturn(Optional.of(new ConsentTerm("v1.0", "https://example.invalid/terms/privacy")));
 		given(this.terms.find("ai_notice")).willReturn(Optional.of(new ConsentTerm("2026-07-21", null)));
 	}
 
@@ -42,8 +44,8 @@ class ConsentTermsServiceTests {
 	/** R10.2 — 판본이 설정에서 온다. 코드에 없다. */
 	@Test
 	void R10_2_versions_come_from_configuration() {
-		assertThat(versionOf("tos")).isEqualTo("1.2");
-		assertThat(versionOf("privacy")).isEqualTo("1.0");
+		assertThat(versionOf("tos")).isEqualTo("v1.2");
+		assertThat(versionOf("privacy")).isEqualTo("v1.0");
 		assertThat(versionOf("ai_notice")).isEqualTo("2026-07-21");
 	}
 

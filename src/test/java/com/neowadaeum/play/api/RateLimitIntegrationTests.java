@@ -10,6 +10,7 @@ import com.neowadaeum.common.support.RateLimiter;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.TurnRepository;
+import jakarta.servlet.http.Cookie;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -108,25 +110,32 @@ class RateLimitIntegrationTests extends ContainerTestBase {
 	/**
 	 * <b>S-8 — 인증 경로는 IP 로 센다.</b>
 	 *
-	 * <p>인증 전이라 계정 기준 한도를 걸 수 없다. 걸지 않으면 ID 토큰을 무작위로 던져 보는
+	 * <p>인증 전이라 계정 기준 한도를 걸 수 없다. 걸지 않으면 리프레시 토큰을 무작위로 던져 보는
 	 * 요청이 무제한이 된다.
+	 *
+	 * <p><b>CSRF 토큰을 싣는다</b> (ADR-0008). 이 경로는 면제에서 빠졌고 CSRF 필터가 컨트롤러보다
+	 * 먼저 돌므로, 싣지 않으면 한도에 닿기 전에 403 이 나가고 <b>한도를 재는 것이 아니라 위조
+	 * 방지를 재게 된다.</b>
 	 */
 	@Test
 	void SEC8_the_auth_path_is_limited_by_ip() throws Exception {
 		for (int attempt = 0; attempt < this.limits.authPerMinutePerIp(); attempt++) {
-			this.mockMvc.perform(post("/api/v1/auth/refresh")
-					.contentType(MediaType.APPLICATION_JSON)
-					.content("{\"refreshToken\":\"not-a-token\"}"));
+			this.mockMvc.perform(refreshAttempt());
 		}
 
-		MvcResult result = this.mockMvc.perform(post("/api/v1/auth/refresh")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"refreshToken\":\"not-a-token\"}"))
-				.andReturn();
+		MvcResult result = this.mockMvc.perform(refreshAttempt()).andReturn();
 
 		assertThat(result.getResponse().getStatus()).isEqualTo(429);
 		assertThat(JSON.readTree(result.getResponse().getContentAsString()).path("error").asString())
 				.isEqualTo("RATE_LIMITED");
+	}
+
+	/** 통하지 않는 리프레시 시도 한 번. 자격 증명은 쿠키 하나이고 본문은 없다 (ADR-0008). */
+	private static MockHttpServletRequestBuilder refreshAttempt() {
+		String csrf = UUID.randomUUID().toString();
+		return post("/api/v1/auth/refresh")
+				.cookie(new Cookie("nwd_rt", "not-a-token"), new Cookie("XSRF-TOKEN", csrf))
+				.header("X-XSRF-TOKEN", csrf);
 	}
 
 	/**

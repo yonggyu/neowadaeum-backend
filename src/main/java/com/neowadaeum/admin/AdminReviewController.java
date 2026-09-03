@@ -1,5 +1,11 @@
 package com.neowadaeum.admin;
 
+import com.neowadaeum.authoring.report.ReportInspection;
+
+import com.neowadaeum.authoring.review.ReviewManuscript;
+import com.neowadaeum.authoring.review.ReviewManuscriptService;
+
+import com.neowadaeum.authoring.review.ReviewHistoryService;
 import com.neowadaeum.authoring.review.ReviewQueueService;
 import com.neowadaeum.common.web.PlayerRefResolver;
 import com.neowadaeum.identity.access.AdminAccessGuard;
@@ -33,13 +39,22 @@ public class AdminReviewController {
 
 	private final ReviewQueueService queue;
 
+	private final ReportInspection inspection;
+	private final ReviewHistoryService history;
+
+	private final ReviewManuscriptService manuscripts;
+
 	private final AdminAccessGuard guard;
 
 	private final PlayerRefResolver playerRefs;
 
-	public AdminReviewController(ReviewQueueService queue, AdminAccessGuard guard,
-			PlayerRefResolver playerRefs) {
+	public AdminReviewController(ReviewQueueService queue, ReportInspection inspection,
+			ReviewManuscriptService manuscripts, ReviewHistoryService history,
+			AdminAccessGuard guard, PlayerRefResolver playerRefs) {
 		this.queue = queue;
+		this.inspection = inspection;
+		this.manuscripts = manuscripts;
+		this.history = history;
 		this.guard = guard;
 		this.playerRefs = playerRefs;
 	}
@@ -50,6 +65,66 @@ public class AdminReviewController {
 		this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
 
 		return this.queue.pending().stream().map(ReviewQueueItemResponse::of).toList();
+	}
+
+	/**
+	 * 이 작품에 무엇이 신고됐는가 (§13-62, 이슈 #316).
+	 *
+	 * <p><b>큐가 아니라 큐 안의 내용이다.</b> 임계에 닿은 작품은 이미 같은 검수 큐에
+	 * {@code suspended} 로 올라와 있으며 (§13-41), 없던 것은 <b>왜 올라왔는지</b>였다 —
+	 * 사유와 건수를 모르면 검수자는 제목과 상태만 보고 판정하게 된다.
+	 *
+	 * <p><b>읽는 것도 남긴다</b> (R14.5). 신고는 이용자가 쓴 것이고, 누가 언제 그것을 열었는지는
+	 * 사후에 되짚을 수 있어야 한다 — 큐 목록과 달리 이 문 뒤에는 <b>특정 작품에 대해 사람들이
+	 * 무엇을 문제 삼았는지</b>가 있다.
+	 */
+	@GetMapping("/{storyId}/reports")
+	public StoryReportsResponse reports(@PathVariable UUID storyId, HttpServletRequest request) {
+		UUID adminUserId = this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
+
+		StoryReportsResponse response = StoryReportsResponse.of(this.inspection.forStory(storyId));
+		this.guard.recordAction(adminUserId, "admin.review.reports.read", "story", storyId,
+				Map.of("reportCount", response.total()), request);
+		return response;
+	}
+
+	/**
+	 * 원고를 연다 (#316, §13-61).
+	 *
+	 * <p><b>큐가 답하지 않는 것이 여기 있다.</b> 큐는 제목과 상태만 주고 원고 본문을 담지 않으며,
+	 * 그것만 보고 누르는 승인은 검수가 아니다 — 이 문이 <b>무엇을 보고 판정하는가</b>를 답한다.
+	 *
+	 * <p><b>열람은 두 번 남는다.</b> 관리자 행위로 한 번 (R14.5), <b>원문 열람</b>으로 한 번
+	 * (R12.3, S-5) — 후자는 서비스가 남기고 <b>기록에 실패하면 원문이 나가지 않는다.</b> 여기서
+	 * 둘 다 남기면 기록을 잊은 호출자가 생긴다.
+	 */
+	@GetMapping("/{storyId}")
+	public ReviewManuscript manuscript(@PathVariable UUID storyId, HttpServletRequest request) {
+		UUID adminUserId = this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
+
+		ReviewManuscript manuscript = this.manuscripts.read(adminUserId, storyId);
+		this.guard.recordAction(adminUserId, "admin.review.manuscript", "story", storyId, Map.of(),
+				request);
+		return manuscript;
+	}
+
+	/**
+	 * 지난 판정 (§13-63, #316).
+	 *
+	 * <p><b>검수 이력은 append-only 다</b> (I-5). 마지막 판정만 보이면 검수자는 지금 이 작품이
+	 * <b>전에 무엇으로 걸렸던 작품인지</b>를 모른 채 판정한다 — 재제출과 승격이 같은 작품을
+	 * 여러 번 큐에 올리므로 그 정보는 흔하다.
+	 *
+	 * <p><b>감사 기록을 남기지 않는다</b> (R14.5). 남기는 자리는 <b>상태를 바꾸는 판정</b>과
+	 * 원고 원문 열람이며 (S-5), 이력은 관리자가 <b>자기가 남긴 기록</b>을 다시 보는 일이고
+	 * UGC 원문을 담지 않는다 — 큐를 여는 {@link #pending} 과 같은 판단이다.
+	 */
+	@GetMapping("/{storyId}/history")
+	public List<ReviewHistoryEntryResponse> history(@PathVariable UUID storyId,
+			HttpServletRequest request) {
+		this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
+
+		return this.history.of(storyId).stream().map(ReviewHistoryEntryResponse::of).toList();
 	}
 
 	/**

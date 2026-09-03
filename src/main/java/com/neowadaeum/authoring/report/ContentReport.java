@@ -86,6 +86,19 @@ public class ContentReport {
 		return ReportTarget.valueOf(this.targetType.toUpperCase(Locale.ROOT));
 	}
 
+	/** 왜 신고했는가. 검수자가 <b>무엇이 몇 건인지</b>를 보는 축이다 (§13-62). */
+	public ReportReason getReason() {
+		return ReportReason.valueOf(this.reason.toUpperCase(Locale.ROOT));
+	}
+
+	/** 어느 턴이 신고됐는가. 작품 신고에는 없다 — {@code null} 이 정상이다. */
+	public Integer getTurnNo() {
+		return this.turnNo;
+	}
+
+	// **reporter_ref 와 detail 에는 게터가 없다** (I-3, §13-62). 응답 DTO 가 실수로
+	// 담을 수 있는 자리를 만들지 않는 것이 그 보장이며, 없는 게터는 잊혀도 새지 않는다.
+
 	public ReportStatus getStatus() {
 		return ReportStatus.valueOf(this.status.toUpperCase(Locale.ROOT));
 	}

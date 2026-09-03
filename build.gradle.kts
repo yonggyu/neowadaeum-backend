@@ -19,6 +19,18 @@ repositories {
 
 extra["springModulithVersion"] = "2.1.0"
 
+// ── 객체 저장소 SDK (#315) ───────────────────────────────────
+// 커버·초상 이미지는 브라우저가 저장소로 **직접** 올린다(presigned URL). 서버가 하는 일은
+// URL 서명과 업로드 후 확인(HEAD)뿐이며, 둘 다 SigV4 서명을 요구한다.
+//
+// **직접 서명하지 않는다.** SigV4 는 규격이 길고 틀려도 조용히 동작하는 구간이 있다 —
+// 서명 오류는 "가끔 403" 으로 나타나고, 그때 의심하는 곳은 서명이 아니라 정책이다.
+// 벤더 SDK 하나로 그 표면을 통째로 넘긴다.
+//
+// **S3 전용이 아니다.** 엔드포인트·자격증명이 전부 설정이므로 S3 호환 저장소면 무엇이든
+// 붙는다 (§13-65). 레포에는 키 이름만 있고 실제 값은 환경에만 있다 (S-11).
+extra["awsSdkVersion"] = "2.54.11"
+
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
@@ -36,6 +48,8 @@ dependencies {
 	// docs/openapi.yaml 이 진실의 원천이라는 규칙이 무너진다 (CLAUDE.md Source of Truth).
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
 	implementation("org.springframework.modulith:spring-modulith-starter-insight")
+	// #315 — presigned URL 서명과 업로드 후 HEAD 확인. 버전은 BOM 이 고정한다.
+	implementation("software.amazon.awssdk:s3")
 	compileOnly("org.projectlombok:lombok")
 	developmentOnly("org.springframework.boot:spring-boot-docker-compose")
 	runtimeOnly("io.micrometer:micrometer-registry-prometheus")
@@ -67,6 +81,7 @@ dependencies {
 dependencyManagement {
 	imports {
 		mavenBom("org.springframework.modulith:spring-modulith-bom:${property("springModulithVersion")}")
+		mavenBom("software.amazon.awssdk:bom:${property("awsSdkVersion")}")
 	}
 }
 

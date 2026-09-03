@@ -16,10 +16,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p><b>운영 오리진을 이 레포에 적지 않는다</b> (S-11). 여기 있는 것은 키와 형식뿐이다.
  *
- * <p><b>자격 증명을 허용하지 않는다.</b> 인증은 {@code Authorization} 헤더의 Bearer 토큰이고
- * 쿠키를 쓰지 않으므로 (B-12), 브라우저가 자동으로 실어 보낼 것이 없다 — 그래서
- * {@code Access-Control-Allow-Credentials} 를 켤 이유가 없고, 켜지 않으므로 <b>와일드카드의
- * 유혹도 성립하지 않는다.</b>
+ * <p><b>자격 증명이 붙는 목록이다</b> (ADR-0008, #278). 리프레시 토큰이 재발급 경로 전용 쿠키로
+ * 옮겨오면서 {@code Access-Control-Allow-Credentials} 가 켜졌다 — 이제 이 목록은 <i>"응답을 읽을
+ * 수 있는 곳"</i> 이 아니라 <b>"자격 증명을 붙여 부를 수 있는 곳"</b> 이다.
+ *
+ * <p>그래서 아래 <b>와일드카드 거부가 선택에서 필수로 바뀌었다.</b> 자격 증명을 켠 채 와일드카드를
+ * 허용하는 것은 브라우저가 거부하는 조합이기도 하지만, 그 전에 이 서비스가 허용해서는 안 되는
+ * 조합이다.
  *
  * @param allowedOrigins 스킴과 호스트(포트)까지. 경로·끝 슬래시·와일드카드를 받지 않는다
  */

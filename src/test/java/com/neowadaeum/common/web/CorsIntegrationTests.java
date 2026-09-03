@@ -86,19 +86,38 @@ class CorsIntegrationTests extends ContainerTestBase {
 	}
 
 	/**
-	 * <b>자격 증명은 허용하지 않는다.</b>
+	 * <b>자격 증명을 허용한다</b> (ADR-0008, #278).
 	 *
-	 * <p>인증이 Bearer 토큰이고 쿠키를 쓰지 않으므로 (B-12) 켤 이유가 없다. 켜져 있으면
-	 * 브라우저가 자동으로 실어 보내는 것이 생기고, 그때 CSRF 면제(§ApiSecurityConfiguration)의
-	 * 전제가 무너진다.
+	 * <p>리프레시 토큰이 쿠키로 옮겨오면서 켰다. 브라우저는 자격 증명을 실은 교차 오리진
+	 * 요청의 응답을 <b>이 헤더 없이는 버리므로</b>, 끄면 {@code Set-Cookie} 도 무시되고 로그인
+	 * 유지가 성립하지 않는다.
+	 *
+	 * <p>켤 수 있는 근거는 허용 목록이 <b>정확 일치이고 와일드카드를 거부한다</b>는 것 하나이며,
+	 * 그것은 {@code CorsPropertiesTests} 가 지킨다.
 	 */
 	@Test
-	void B12_credentials_are_not_allowed() throws Exception {
+	void Issue278_credentials_are_allowed_because_the_refresh_token_is_a_cookie() throws Exception {
 		this.mvc.perform(options("/api/v1/me")
 						.header("Origin", ALLOWED)
 						.header("Access-Control-Request-Method", "GET"))
 				.andExpect(status().isOk())
-				.andExpect(header().doesNotExist("Access-Control-Allow-Credentials"));
+				.andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+	}
+
+	/**
+	 * <b>CSRF 토큰 헤더가 허용 목록에 있다</b> (ADR-0008).
+	 *
+	 * <p>빠지면 재발급 요청이 <b>preflight 에서 막히고</b>, 브라우저가 보고하는 것은 CSRF 가
+	 * 아니라 CORS 오류다 — 원인이 어디에도 드러나지 않는다.
+	 */
+	@Test
+	void Issue278_the_csrf_header_is_allowed_on_the_refresh_path() throws Exception {
+		this.mvc.perform(options("/api/v1/auth/refresh")
+						.header("Origin", ALLOWED)
+						.header("Access-Control-Request-Method", "POST")
+						.header("Access-Control-Request-Headers", "X-XSRF-TOKEN"))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Access-Control-Allow-Origin", ALLOWED));
 	}
 
 	/**

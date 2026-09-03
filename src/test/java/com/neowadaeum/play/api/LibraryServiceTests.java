@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.neowadaeum.catalog.query.GenreView;
 import com.neowadaeum.catalog.query.StoryCatalogFacade;
@@ -28,6 +30,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>#289 — 섹션 단독 조회({@code GET /library/sections/{sectionKey}})도 같은 이유로 자기
  * 응답에 고지 문구를 싣는다. {@link LibraryView#noticeText()} 없이 단독으로 열리는 경로다.
+ *
+ * <p>§13-54(이슈 #306) — 이 화면은 <b>인증 밖으로 열렸다.</b> 익명 요청에서 개인 필드가 비는
+ * 것과, 그때 <b>주인 없는 조회가 나가지 않는 것</b>을 함께 본다.
  *
  * <p>컨테이너가 필요 없다 (ADR-0001).
  */
@@ -58,7 +63,7 @@ class LibraryServiceTests {
 	void R11_1_the_library_carries_the_configured_notice_text() {
 		given(this.notices.current()).willReturn(Optional.of(new AiNotice("2026-07-21", NOTICE)));
 
-		assertThat(this.service.library(UUID.randomUUID()).noticeText()).isEqualTo(NOTICE);
+		assertThat(this.service.library(Optional.of(UUID.randomUUID())).noticeText()).isEqualTo(NOTICE);
 	}
 
 	/**
@@ -71,7 +76,7 @@ class LibraryServiceTests {
 	void R11_1_a_missing_notice_fails_the_library_instead_of_blanking_it() {
 		given(this.notices.current()).willReturn(Optional.empty());
 
-		assertThatThrownBy(() -> this.service.library(UUID.randomUUID()))
+		assertThatThrownBy(() -> this.service.library(Optional.of(UUID.randomUUID())))
 				.isInstanceOf(ApiException.class)
 				.extracting(ex -> ((ApiException) ex).errorCode())
 				.isEqualTo(ErrorCode.INTERNAL_ERROR);
@@ -119,5 +124,37 @@ class LibraryServiceTests {
 				.isInstanceOf(ApiException.class)
 				.extracting(ex -> ((ApiException) ex).errorCode())
 				.isEqualTo(ErrorCode.NOT_FOUND);
+	}
+
+	/**
+	 * <b>익명이면 이어하기가 빈 배열이다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>주체 없이도 <b>터지지 않는 것</b>이 먼저다 — 인증 밖으로 열린 경로에서 익명은 정상이며,
+	 * 예외로 다루면 목록 전체가 401 로 끝난다.
+	 */
+	@Test
+	void S13_54_an_anonymous_library_carries_no_continue_sessions() {
+		given(this.notices.current()).willReturn(Optional.of(new AiNotice("2026-07-21", NOTICE)));
+
+		LibraryView view = this.service.library(Optional.empty());
+
+		assertThat(view.continueSessions()).isEmpty();
+		assertThat(view.noticeText()).isEqualTo(NOTICE);
+	}
+
+	/**
+	 * <b>익명이면 세션 조회 자체가 나가지 않는다</b> (§13-54, I-3).
+	 *
+	 * <p>빈 배열만 단언하면 <b>{@code null} 을 키로 조회하고 결과가 비어서</b> 통과하는 구현도
+	 * 함께 통과한다. 주인이 없는 요청에 "진행 중인 세션"이라는 질문은 성립하지 않는다.
+	 */
+	@Test
+	void S13_54_an_anonymous_request_does_not_query_sessions_at_all() {
+		given(this.notices.current()).willReturn(Optional.of(new AiNotice("2026-07-21", NOTICE)));
+
+		this.service.library(Optional.empty());
+
+		verify(this.sessions, never())
+				.findByPlayerRefAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(any(), any(), any());
 	}
 }

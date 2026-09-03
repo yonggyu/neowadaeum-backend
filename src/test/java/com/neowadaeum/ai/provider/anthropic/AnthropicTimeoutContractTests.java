@@ -105,7 +105,7 @@ class AnthropicTimeoutContractTests {
 
 	private AnthropicStoryProvider adapter() {
 		AnthropicProperties properties = new AnthropicProperties("test-key", turnModel("claude-opus-5"),
-				"http://localhost:" + this.server.port(), 4096);
+				"http://localhost:" + this.server.port(), 4096, null);
 
 		return new AnthropicStoryProvider(
 				AnthropicProviderConfiguration.restClient(properties,

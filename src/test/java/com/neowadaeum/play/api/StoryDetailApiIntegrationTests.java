@@ -84,11 +84,64 @@ class StoryDetailApiIntegrationTests extends ContainerTestBase {
 		this.created.clear();
 	}
 
-	/** 토큰 없이는 401 이다 — {@code mySession} 이 자기 것이려면 누구인지 알아야 한다. */
+	/**
+	 * <b>토큰 없이도 열린다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>목록에서 들어온 사람이 로그인 없이 작품을 볼 수 있다 — 로그인은 플레이하려 할 때 한다.
+	 */
 	@Test
-	void S34_the_detail_requires_a_token() throws Exception {
-		this.mockMvc.perform(get("/api/v1/stories/{storyId}", SEED_STORY))
-				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(401));
+	void S13_54_the_detail_opens_without_a_token() throws Exception {
+		MvcResult result = this.mockMvc.perform(get("/api/v1/stories/{storyId}", SEED_STORY)).andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(200);
+		JsonNode body = JSON.readTree(result.getResponse().getContentAsString());
+		assertThat(body.path("story").path("title").asString()).isNotBlank();
+		assertThat(body.path("story").path("ageRating").asString()).isEqualTo("15세 이용가");
+	}
+
+	/**
+	 * <b>익명 응답에서 {@code mySession} 이 {@code null} 이다</b> (§13-54).
+	 *
+	 * <p>세션을 만들어 둔 뒤 <b>토큰 없이</b> 부른다 — 주인을 모르는 요청에 남의 세션이 실리지
+	 * 않는다 (I-3). 세션이 없는 회원과 <b>같은 모양</b>이라 클라이언트가 분기를 더 갖지 않는다.
+	 */
+	@Test
+	void S13_54_an_anonymous_detail_carries_no_my_session() throws Exception {
+		this.mockMvc.perform(post("/api/v1/stories/{storyId}/sessions", SEED_STORY).with(asPlayer()))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(201));
+
+		MvcResult result = this.mockMvc.perform(get("/api/v1/stories/{storyId}", SEED_STORY)).andReturn();
+
+		assertThat(result.getResponse().getStatus()).isEqualTo(200);
+		assertThat(JSON.readTree(result.getResponse().getContentAsString()).path("mySession").isNull())
+				.isTrue();
+	}
+
+	/**
+	 * <b>I-8 — 익명에게도 볼 수 없는 작품은 없는 것과 구분되지 않는다</b> (§13-54).
+	 *
+	 * <p><b>이 작업에서 가장 중요한 단언이다.</b> 인증을 걷어내면서 노출 조건이 느슨해졌다면
+	 * 여기서 드러난다 — 검수 대기 · 비공개 · 정지된 작품이 전부 {@code 404} 여야 하고,
+	 * {@code 403} 이면 <b>id 하나로 그 작품의 존재가 확인된다.</b>
+	 */
+	@Test
+	void I8_an_invisible_story_is_not_found_for_an_anonymous_request_too() throws Exception {
+		UUID pending = insertStory("user", "public", "pending");
+		UUID privateStory = insertStory("user", "private", "approved");
+		UUID suspended = insertStory("user", "public", "suspended");
+
+		assertThat(anonymousStatusOf(pending)).isEqualTo(404);
+		assertThat(anonymousStatusOf(privateStory)).isEqualTo(404);
+		assertThat(anonymousStatusOf(suspended)).isEqualTo(404);
+		assertThat(anonymousStatusOf(UUID.randomUUID())).isEqualTo(404);
+	}
+
+	/** 승인·공개된 사용자 작품은 익명에게도 보인다 — 가리는 것은 조건이지 인증이 아니다 (§13-54). */
+	@Test
+	void I8_an_approved_public_user_story_is_visible_to_an_anonymous_request() throws Exception {
+		UUID userStory = insertStory("user", "public", "approved");
+
+		assertThat(anonymousStatusOf(userStory)).isEqualTo(200);
 	}
 
 	/**
@@ -226,6 +279,12 @@ class StoryDetailApiIntegrationTests extends ContainerTestBase {
 				.andReturn();
 		assertThat(result.getResponse().getStatus()).isEqualTo(200);
 		return JSON.readTree(result.getResponse().getContentAsString());
+	}
+
+	/** 토큰을 싣지 않는다 (§13-54) — 익명 요청의 판정을 그대로 본다. */
+	private int anonymousStatusOf(UUID storyId) throws Exception {
+		return this.mockMvc.perform(get("/api/v1/stories/{storyId}", storyId)).andReturn().getResponse()
+				.getStatus();
 	}
 
 	private int statusOf(UUID storyId) throws Exception {

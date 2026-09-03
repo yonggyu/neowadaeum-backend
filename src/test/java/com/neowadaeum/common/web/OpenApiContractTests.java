@@ -102,6 +102,17 @@ class OpenApiContractTests {
 		return values;
 	}
 
+	/** 스키마 안 <b>한 속성</b>의 {@code enum} 값 목록. 값이 스키마로 분리돼 있지 않은 자리다. */
+	@SuppressWarnings("unchecked")
+	private static List<String> enumOfProperty(String schemaName, String property) {
+		Map<String, Object> properties = (Map<String, Object>) schema(schemaName).get("properties");
+		Map<String, Object> found = (Map<String, Object>) properties.get(property);
+		assertThat(found).as("스펙의 %s 에 %s 속성이 없다", schemaName, property).isNotNull();
+		List<String> values = (List<String>) found.get("enum");
+		assertThat(values).as("스펙의 %s.%s 에 enum 이 없다", schemaName, property).isNotNull();
+		return values;
+	}
+
 	private static Set<String> recordComponentsOf(Class<?> type) {
 		return Arrays.stream(type.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName)
 				.collect(Collectors.toSet());
@@ -138,6 +149,9 @@ class OpenApiContractTests {
 		"/api/v1/authoring/drafts/{draftId}/submit, post",
 		"/api/v1/authoring/drafts/{draftId}/review, get",
 		"/api/v1/stories/{storyId}/visibility, patch",
+		// §13-58 (#290) — 원문에는 없다. 원고는 지울 수 있는데 게시된 작품은 지울 수 없던 자리를
+		// 정정본이 열었고, 계약이 그 문을 잃으면 화면의 [작품 삭제] 가 다시 갈 곳을 잃는다.
+		"/api/v1/stories/{storyId}, delete",
 		"/api/v1/reports, post",
 		"/api/v1/landing, get" })
 	@SuppressWarnings("unchecked")
@@ -230,6 +244,37 @@ class OpenApiContractTests {
 				.isEqualTo(List.of());
 	}
 
+	/**
+	 * <b>탐색 셋이 인증 밖에 있다</b> (§13-54, 이슈 #306).
+	 *
+	 * <p>랜딩이 추천 작품을 인증 없이 주는데 목록과 상세는 토큰을 요구하고 있었다 — 프론트는
+	 * 계약을 그대로 따라 익명을 로그인으로 보냈고, <b>서비스를 처음 보는 사람이 무엇이 있는지
+	 * 볼 수 없었다.</b>
+	 *
+	 * <p><b>{@code 429} 를 함께 못박는다.</b> 인증 밖으로 열린 읽기에는 IP 기준 한도가 붙으므로
+	 * (S-8), 그것이 계약에 없으면 클라이언트가 <b>예상하지 못한 코드</b>를 받는다.
+	 *
+	 * <p><b>{@code 401} 이 남아 있지 않은 것</b>도 확인한다. 남아 있으면 계약이 두 말을 하고,
+	 * 프론트의 인증 밖 화면 목록이 다시 갈린다 (#306 이 그 목록에서 시작했다).
+	 */
+	@ParameterizedTest
+	@CsvSource({ "/api/v1/library", "/api/v1/library/sections/{sectionKey}", "/api/v1/stories/{storyId}" })
+	@SuppressWarnings("unchecked")
+	void S13_54_browsing_is_declared_outside_authentication(String path) {
+		Map<String, Object> get = (Map<String, Object>) ((Map<String, Object>) paths().get(path)).get("get");
+
+		assertThat(get.get("security"))
+				.as("탐색은 로그인 이전의 화면이다 (§13-54) — %s", path)
+				.isEqualTo(List.of());
+		Map<String, Object> responses = (Map<String, Object>) get.get("responses");
+		assertThat(responses)
+				.as("인증 없이 열리면 IP 기준 한도가 붙는다 (S-8) — %s", path)
+				.containsKey("429");
+		assertThat(responses)
+				.as("인증을 요구하지 않는 경로가 401 을 선언하면 계약이 두 말을 한다 — %s", path)
+				.doesNotContainKey("401");
+	}
+
 	// ── 3. 구현 ⊆ 계약 ───────────────────────────────────────
 
 
@@ -263,6 +308,20 @@ class OpenApiContractTests {
 				java.util.Arrays.stream(ResumeView.State.values())
 						.map(state -> state.name().toLowerCase(java.util.Locale.ROOT))
 						.toList());
+	}
+
+	/**
+	 * 검수 판정 값이 계약과 정확히 같다 (§13-64, R8.7).
+	 *
+	 * <p>한쪽만 늘어나면 <b>관리자 화면이 보내는 값을 서버가 400 으로 돌려주거나</b>, 반대로
+	 * 계약에 없는 판정이 조용히 받아들여진다 — 후자는 작품을 내리는 값이므로 더 나쁘다.
+	 */
+	@Test
+	void S13_64_review_verdicts_match_the_contract() {
+		assertThat(enumOfProperty("ReviewVerdictRequest", "verdict"))
+				.containsExactlyInAnyOrderElementsOf(
+						Arrays.stream(com.neowadaeum.authoring.review.ReviewVerdict.values())
+								.map(Enum::name).toList());
 	}
 
 	/**
@@ -744,7 +803,8 @@ class OpenApiContractTests {
 	 * "정수"라고 적힌 {@code description} 은 없는 것과 같다.
 	 */
 	private static final List<String> UNIT_SUFFIXES =
-			List.of("Rate", "Percent", "Ms", "Millis", "Seconds", "Micro", "Tokens", "Bytes", "Cost");
+			List.of("Rate", "Percent", "Ms", "Millis", "Seconds", "Micro", "MicroKrw", "Tokens",
+					"Bytes", "Cost");
 
 	/** 비율은 범위와 예시까지 요구한다 — {@code 0.12} 인지 {@code 12} 인지가 설명만으로는 갈린다. */
 	private static final List<String> RATIO_SUFFIXES = List.of("Rate", "Percent");
@@ -760,8 +820,10 @@ class OpenApiContractTests {
 	 * <b>타입은 맞고 단위가 없는 필드</b>는 어느 쪽도 잡지 못한다. 컴파일도 테스트도 통과한다.
 	 *
 	 * <p>같은 모양이 실제로 하나 더 있었다 — {@code AdminAiCall.costMicro} 는 <b>백만분의 1
-	 * 단위인데 무엇의 백만분의 1인지가 레포 어디에도 없다.</b> 지금은 아무 Provider 도 채우지
-	 * 않아 항상 {@code null} 이라 드러나지 않았을 뿐이고, 통화는 #311 이 정한다.
+	 * 단위인데 무엇의 백만분의 1인지가 레포 어디에도 없었다.</b> 아무 Provider 도 채우지 않아
+	 * 항상 {@code null} 이라 드러나지 않았을 뿐이다. #311 이 통화를 KRW 로 정하고 <b>이름이
+	 * 그것을 말하게</b> 했다 ({@code costMicroKrw}) — 그래서 {@code MicroKrw} 도 단위 접미어
+	 * 목록에 있다. 이름이 바뀌었다고 설명 강제가 빠지면 규칙이 이름 하나로 우회된다.
 	 */
 	@Test
 	void Issue275_numeric_fields_with_a_unit_declare_it() {

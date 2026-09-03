@@ -89,6 +89,22 @@ class OllamaStoryProviderContractTests {
 						.formatted(JSON.writeValueAsString(content)))));
 	}
 
+	/**
+	 * <b>로컬 Provider 는 비용을 남기지 않는다</b> (#311, §13-53).
+	 *
+	 * <p>통화가 KRW 로 정해졌어도 이쪽은 여전히 {@code null} 이다 — 로컬 실행이라 벤더 단가라는
+	 * <b>개념 자체가 없다.</b> 0 을 넣지 않는다: 0 은 "이 호출은 공짜였다"는 사실 진술이고,
+	 * 그것이 합계에 섞이면 <b>모른다와 공짜가 구분되지 않는다.</b>
+	 */
+	@Test
+	void S13_53_a_local_provider_records_no_cost() {
+		respondWith(VALID_TURN);
+
+		this.provider.generateTurn(request());
+
+		assertThat(this.recorded.getFirst().costMicroKrw()).isNull();
+	}
+
 	/** 정상 응답이 {@code GeneratedTurn} 이 된다 — 파서를 거친다 (B-21). */
 	@Test
 	void R3_2_a_valid_response_becomes_a_generated_turn() {

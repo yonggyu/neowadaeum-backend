@@ -3,9 +3,13 @@ package com.neowadaeum.identity.api;
 import com.neowadaeum.common.web.PlayerRefResolver;
 import com.neowadaeum.identity.account.AccountWithdrawalService;
 import com.neowadaeum.identity.account.MyAccountQueryService;
+import com.neowadaeum.identity.account.MyAccountUpdateService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,12 +33,15 @@ public class AccountController {
 
 	private final MyAccountQueryService myAccount;
 
+	private final MyAccountUpdateService update;
+
 	private final PlayerRefResolver playerRefs;
 
 	public AccountController(AccountWithdrawalService withdrawal, MyAccountQueryService myAccount,
-			PlayerRefResolver playerRefs) {
+			MyAccountUpdateService update, PlayerRefResolver playerRefs) {
 		this.withdrawal = withdrawal;
 		this.myAccount = myAccount;
+		this.update = update;
 		this.playerRefs = playerRefs;
 	}
 
@@ -47,6 +54,25 @@ public class AccountController {
 	@GetMapping
 	public MeResponse me() {
 		return MeResponse.of(this.myAccount.myAccount(this.playerRefs.currentPlayerRef()));
+	}
+
+	/**
+	 * 표시명 설정·변경 (#271, §13-7).
+	 *
+	 * <p><b>{@code PATCH} 다.</b> 계정의 일부만 바꾸며, {@code PUT} 으로 두면 보내지 않은 필드를
+	 * 지운다는 뜻이 되어 <b>이름만 바꾸려는 요청이 나머지를 날린다.</b>
+	 *
+	 * <p><b>설정과 변경이 같은 요청이다.</b> 프로필이 없으면 만들고 있으면 바꾼다 — 화면이 어느
+	 * 쪽인지 먼저 물어볼 필요가 없다.
+	 *
+	 * <p><b>응답이 {@code MeResponse} 다.</b> 저장된 값은 정규화 결과라 보낸 값과 다를 수 있고
+	 * (양끝 공백 · 연속 공백 · NFC), 돌려주지 않으면 화면은 <b>다시 {@code GET} 을 불러야</b> 자기가
+	 * 무엇을 저장했는지 안다.
+	 */
+	@PatchMapping
+	public MeResponse updateMe(@Valid @RequestBody UpdateMeRequest request) {
+		return MeResponse.of(
+				this.update.updateDisplayName(this.playerRefs.currentPlayerRef(), request.displayName()));
 	}
 
 	/**
