@@ -44,6 +44,10 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	@Autowired
 	private Clock clock;
 
+	/** #290 — 검수 시각은 authoring 이 소유한 표에서 온다. 파사드는 계약만 안다 (§13-57). */
+	@Autowired
+	private com.neowadaeum.common.spi.StoryReviewTimesQuery reviewTimes;
+
 	private final List<UUID> created = new java.util.ArrayList<>();
 
 	private final List<UUID> createdProfiles = new java.util.ArrayList<>();
@@ -273,7 +277,8 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 		}
 
 		AtomicInteger statements = new AtomicInteger();
-		StoryCatalogFacade counted = new StoryCatalogFacade(countingDataSource(statements), this.clock);
+		StoryCatalogFacade counted = new StoryCatalogFacade(countingDataSource(statements), this.clock,
+				this.reviewTimes);
 
 		statements.set(0);
 		counted.cards(section("community"), null, 2);

@@ -100,7 +100,8 @@ public class MyStoriesService {
 		for (MyStoryView story : page.stories()) {
 			items.add(new MyStoriesView.StoryItem(story.storyId(), story.title(), story.coverImage(),
 					story.visibility(), story.reviewStatus(), story.rejectReasons(),
-					this.sessions.countByStoryIdAndDeletedAtIsNull(story.storyId()), story.updatedAt()));
+					this.sessions.countByStoryIdAndDeletedAtIsNull(story.storyId()), story.updatedAt(),
+					story.submittedAt(), story.reviewedAt()));
 		}
 		return new MyStoriesView.Stories(items, page.nextCursor(), page.hasMore(),
 				this.notice.require("my_stories"));

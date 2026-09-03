@@ -2493,7 +2493,8 @@ components:
 
     MyStoryItem:
       type: object
-      required: [storyId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount, updatedAt]
+      required: [storyId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount, updatedAt,
+                 submittedAt, reviewedAt]
       properties:
         storyId:
           type: string
@@ -2516,6 +2517,23 @@ components:
         updatedAt:
           type: string
           format: date-time
+        submittedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            **검수를 요청한 시각** (#290, §13-57). 제출 · 재제출 · `unlisted → public` 승격이
+            모두 이 시각을 새로 잡는다 — 기다린 시간을 세는 기준이 이것이다.
+
+            **`null`** — 검수를 요청한 적이 없다. 미리보기로만 만들어진 `draft` 작품이 그렇다.
+        reviewedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            그 회차에서 **사람이 마지막으로 판정한 시각** (#290, §13-57).
+
+            **`null`** — 아직 아무도 보지 않았거나, 사람을 거치지 않고 열린 작품이다
+            (`unlisted` 는 자동 검수만으로 승인된다). 재제출 · 승격 직후에도 `null` 로
+            돌아간다 — 지난 회차의 판정은 이번 신청에 대한 답이 아니다.
 
     # ── §13.8 작품 만들기 ───────────────────────────────────
     SafetyState:
@@ -2785,7 +2803,7 @@ components:
       type: object
       description: |
         검수 **비율·임계값을 노출하지 않는다.** 값을 알면 그 아래로 관리할 수 있다 (§13-12, S-11).
-      required: [storyId, reviewStatus, visibility, rejectReasons, updatedAt]
+      required: [storyId, reviewStatus, visibility, rejectReasons, updatedAt, submittedAt, reviewedAt]
       properties:
         storyId:
           type: [string, 'null']
@@ -2802,6 +2820,25 @@ components:
         updatedAt:
           type: string
           format: date-time
+          description: '**이 응답을 만든 시각이다.** 신청 시각도 승인 시각도 아니다 (#290)'
+        submittedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            **검수를 요청한 시각** (#290, §13-57). 제출 · 재제출 · `unlisted → public` 승격이
+            모두 이 시각을 새로 잡는다 — 기다린 시간을 세는 기준이 이것이다.
+
+            **`null`** — 검수를 요청한 적이 없다. 아직 제출하지 않은 원고(`draft`)와
+            자동 검수에서 반려되어 작품이 만들어지지 않은 경우가 그렇다.
+        reviewedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            그 회차에서 **사람이 마지막으로 판정한 시각** (#290, §13-57).
+
+            **`null`** — 아직 아무도 보지 않았거나, 사람을 거치지 않고 열린 작품이다
+            (`unlisted` 는 자동 검수만으로 승인된다). 재제출 · 승격 직후에도 `null` 로
+            돌아간다 — 지난 회차의 판정은 이번 신청에 대한 답이 아니다.
 
     # ── §13.9 신고 ──────────────────────────────────────────
     ReportRequest:

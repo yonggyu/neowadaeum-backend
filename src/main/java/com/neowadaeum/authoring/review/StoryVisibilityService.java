@@ -3,6 +3,7 @@ package com.neowadaeum.authoring.review;
 import com.neowadaeum.catalog.publish.StoryPublisher;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.spi.StoryReviewTimes;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
@@ -37,14 +38,19 @@ public class StoryVisibilityService {
 
 	private final StoryReviewRepository reviews;
 
+	/** 신청·승인 시각은 검수 이력에서 온다 (§13-57, #290). 승격도 그 이력을 남기므로 새 회차다. */
+	private final StoryReviewTimeline timeline;
+
 	private final Clock clock;
 
 	private final TransactionTemplate transactions;
 
 	public StoryVisibilityService(StoryPublisher publisher, StoryReviewRepository reviews,
-			Clock clock, PlatformTransactionManager catalogTransactionManager) {
+			StoryReviewTimeline timeline, Clock clock,
+			PlatformTransactionManager catalogTransactionManager) {
 		this.publisher = publisher;
 		this.reviews = reviews;
+		this.timeline = timeline;
 		this.clock = clock;
 		this.transactions = new TransactionTemplate(catalogTransactionManager);
 	}
@@ -72,10 +78,10 @@ public class StoryVisibilityService {
 						Map.of("reason", "story_not_approved"));
 			}
 			if (current == target) {
-				return new VisibilityOutcome(storyId, reviewStatus, current);
+				return withTimes(new VisibilityOutcome(storyId, reviewStatus, current, null));
 			}
-			return (target == Visibility.PUBLIC) ? promote(storyId, current)
-					: narrow(storyId, target);
+			return withTimes((target == Visibility.PUBLIC) ? promote(storyId, current)
+					: narrow(storyId, target));
 		});
 	}
 
@@ -100,7 +106,7 @@ public class StoryVisibilityService {
 				current.columnValue());
 		this.reviews.save(StoryReview.of(storyId, ReviewStage.AUTO, ReviewVerdict.PASS, "[]", null,
 				null, Instant.now(this.clock)));
-		return new VisibilityOutcome(storyId, ReviewStatus.IN_REVIEW, current);
+		return new VisibilityOutcome(storyId, ReviewStatus.IN_REVIEW, current, null);
 	}
 
 	/**
@@ -113,7 +119,18 @@ public class StoryVisibilityService {
 	private VisibilityOutcome narrow(UUID storyId, Visibility target) {
 		this.publisher.applyReview(storyId, ReviewStatus.APPROVED.columnValue(),
 				target.columnValue());
-		return new VisibilityOutcome(storyId, ReviewStatus.APPROVED, target);
+		return new VisibilityOutcome(storyId, ReviewStatus.APPROVED, target, null);
+	}
+
+	/**
+	 * 검수 시각을 얹는다 (§13-57).
+	 *
+	 * <p><b>쓰고 나서 읽는다.</b> 승격이 남긴 기록이 새 회차의 시작이므로, 값을 여기서 따로
+	 * 짓지 않고 이력에서 읽어야 목록·상세·이 응답이 같은 날짜를 말한다.
+	 */
+	private VisibilityOutcome withTimes(VisibilityOutcome outcome) {
+		return new VisibilityOutcome(outcome.storyId(), outcome.reviewStatus(), outcome.visibility(),
+				this.timeline.of(outcome.storyId()));
 	}
 
 	private static ReviewStatus statusOf(String columnValue) {
@@ -130,6 +147,7 @@ public class StoryVisibilityService {
 	 * <p><b>반려 사유를 담지 않는다.</b> 이 요청은 판정이 아니라 요청이며, 사유가 생기는 자리는
 	 * 검수다 (R8.7).
 	 */
-	public record VisibilityOutcome(UUID storyId, ReviewStatus reviewStatus, Visibility visibility) {
+	public record VisibilityOutcome(UUID storyId, ReviewStatus reviewStatus, Visibility visibility,
+			StoryReviewTimes times) {
 	}
 }
