@@ -23,7 +23,7 @@
 | `ai.call` | counter | `provider` · `model` · `purpose` · `outcome` | Provider 실패율. **응답 원문이 비어 있으면 실패**로 센다 — 그 정의를 여기서 못박지 않으면 대시보드마다 다르게 센다 |
 | `ai.call.latency` | timer | `provider` · `purpose` | 느린 원인이 모델인지 우리인지. `play.turn.duration` 과의 차이가 서버 몫이다 |
 | `ai.call.tokens` | counter | `provider` · `model` · `purpose` · `direction` | 입력과 출력은 단가가 다르다 |
-| `ai.call.cost.micro` | counter | `provider` · `model` | 비용. 마이크로 단위 누적이며 대시보드가 기간으로 나눈다 |
+| `ai.call.cost.micro.krw` | counter | `provider` · `model` | 비용. **원(KRW)의 백만분의 1** 누적이며 대시보드가 기간으로 나눈다 (#311). 단가 설정이 없는 모델은 세지 않는다 — 0 을 더하면 "공짜로 돌았다" 가 된다 |
 | `ai.call.fallback` | counter | `from` · `to` | fallback 이 얼마나 도는가 (R3.7) — **그것이 곧 원래 provider 의 건강 상태**다 |
 
 `/actuator/prometheus` 로 나간다.
@@ -40,7 +40,7 @@
 | **fallback 상시 발동** | 지목한 provider 가 사실상 죽었는데 **서비스는 멀쩡해 보인다** — 조용히 다른 모델로 이야기가 만들어지고 있다 | `ai.call.fallback` 이 0 이 아닌 상태의 지속 |
 | **세이프티 차단율 급등** | 오탐이면 정상 플레이가 막히고, 정탐이면 그런 입력이 몰려오고 있다. **둘 다 즉시 봐야 한다** | `safety.judgement{outcome="blocked"}` 의 비율과 `safety.blocked.category` 의 분포 변화 |
 | **턴 지연 p95 상승** | 25초 예산에 가까워지면 타임아웃이 늘고, 그 앞에 커넥션 풀이 먼저 마른다 | `play.turn.duration{status="generated"}` |
-| **비용 기울기 변화** | 모델 단가나 프롬프트 길이가 바뀌었다는 뜻이다. **월말에 알면 늦다** | `ai.call.cost.micro` 의 시간당 증가량 |
+| **비용 기울기 변화** | 모델 단가나 프롬프트 길이가 바뀌었다는 뜻이다. **월말에 알면 늦다** | `ai.call.cost.micro.krw` 의 시간당 증가량 |
 
 각 시나리오의 대응 절차는 운영 런북(B-64)이다.
 

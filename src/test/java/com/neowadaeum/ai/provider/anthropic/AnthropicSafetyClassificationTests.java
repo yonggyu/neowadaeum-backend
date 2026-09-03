@@ -62,7 +62,7 @@ class AnthropicSafetyClassificationTests {
 
 	private AnthropicStoryProvider adapter(AnthropicProperties.Models models) {
 		AnthropicProperties properties = new AnthropicProperties("test-key", models,
-				"http://localhost:" + this.server.port(), 4096);
+				"http://localhost:" + this.server.port(), 4096, null);
 		return new AnthropicStoryProvider(
 				RestClient.builder()
 						.baseUrl(properties.baseUrl())

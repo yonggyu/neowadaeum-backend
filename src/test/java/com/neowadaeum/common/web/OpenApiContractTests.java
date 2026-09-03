@@ -744,7 +744,8 @@ class OpenApiContractTests {
 	 * "정수"라고 적힌 {@code description} 은 없는 것과 같다.
 	 */
 	private static final List<String> UNIT_SUFFIXES =
-			List.of("Rate", "Percent", "Ms", "Millis", "Seconds", "Micro", "Tokens", "Bytes", "Cost");
+			List.of("Rate", "Percent", "Ms", "Millis", "Seconds", "Micro", "MicroKrw", "Tokens",
+					"Bytes", "Cost");
 
 	/** 비율은 범위와 예시까지 요구한다 — {@code 0.12} 인지 {@code 12} 인지가 설명만으로는 갈린다. */
 	private static final List<String> RATIO_SUFFIXES = List.of("Rate", "Percent");
@@ -760,8 +761,10 @@ class OpenApiContractTests {
 	 * <b>타입은 맞고 단위가 없는 필드</b>는 어느 쪽도 잡지 못한다. 컴파일도 테스트도 통과한다.
 	 *
 	 * <p>같은 모양이 실제로 하나 더 있었다 — {@code AdminAiCall.costMicro} 는 <b>백만분의 1
-	 * 단위인데 무엇의 백만분의 1인지가 레포 어디에도 없다.</b> 지금은 아무 Provider 도 채우지
-	 * 않아 항상 {@code null} 이라 드러나지 않았을 뿐이고, 통화는 #311 이 정한다.
+	 * 단위인데 무엇의 백만분의 1인지가 레포 어디에도 없었다.</b> 아무 Provider 도 채우지 않아
+	 * 항상 {@code null} 이라 드러나지 않았을 뿐이다. #311 이 통화를 KRW 로 정하고 <b>이름이
+	 * 그것을 말하게</b> 했다 ({@code costMicroKrw}) — 그래서 {@code MicroKrw} 도 단위 접미어
+	 * 목록에 있다. 이름이 바뀌었다고 설명 강제가 빠지면 규칙이 이름 하나로 우회된다.
 	 */
 	@Test
 	void Issue275_numeric_fields_with_a_unit_declare_it() {

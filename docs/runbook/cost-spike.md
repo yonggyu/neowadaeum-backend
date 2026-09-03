@@ -7,7 +7,7 @@
 
 | 지표 | 무엇을 본다 |
 |---|---|
-| `ai.call.cost.micro{provider,model,purpose}` | **어느 용도가 쓰는가** |
+| `ai.call.cost.micro.krw{provider,model,purpose}` | **어느 용도가 쓰는가** |
 | `ai.call.tokens{purpose,direction}` | 입력이 늘었나 출력이 늘었나 |
 | `ai.call{purpose}` | 호출 **횟수**가 늘었나 |
 | `play.turn.outcome` | 실패가 늘면 재요청이 늘고, 재요청은 비용이다 |

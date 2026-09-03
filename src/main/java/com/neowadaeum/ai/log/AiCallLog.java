@@ -75,9 +75,18 @@ public class AiCallLog {
 	@Column(name = "latency_ms", updatable = false)
 	private Integer latencyMs;
 
-	/** 백만분의 1 단위. 부동소수로 돈을 세지 않는다. */
-	@Column(name = "cost_micro", updatable = false)
-	private Long costMicro;
+	/**
+	 * 호출 비용 — <b>원(KRW)의 백만분의 1 단위</b> (#311, §13-53). 부동소수로 돈을 세지 않는다.
+	 *
+	 * <p><b>이름이 통화를 든다.</b> 예전 이름은 배율만 말하고 무엇의 백만분의 1인지는 어디에도
+	 * 없었다 — 벤더 단가가 USD 로 고시되므로 어댑터마다 각자 가정하면 <b>합계가 뜻을 잃는다.</b>
+	 *
+	 * <p><b>환율은 서버에 없다.</b> 단가를 KRW 로 설정에 넣고 어댑터가 그것으로 곱한다. 단가를
+	 * 모르면 {@code null} 이며, <b>지어낸 0 을 넣지 않는다</b> — 0 은 "공짜"라는 사실 진술이고,
+	 * 그것으로 만든 합계는 조용히 낮다.
+	 */
+	@Column(name = "cost_micro_krw", updatable = false)
+	private Long costMicroKrw;
 
 	/** R9.3 — 세이프티 카테고리 배열. 통과면 빈 배열이다. */
 	@JdbcTypeCode(SqlTypes.JSON)
@@ -113,7 +122,7 @@ public class AiCallLog {
 		log.inputTokens = draft.inputTokens();
 		log.outputTokens = draft.outputTokens();
 		log.latencyMs = draft.latencyMs();
-		log.costMicro = draft.costMicro();
+		log.costMicroKrw = draft.costMicroKrw();
 		log.safetyFlags = (draft.safetyFlags() != null) ? draft.safetyFlags() : "[]";
 		log.attemptNo = draft.attemptNo();
 		log.createdAt = now;
@@ -164,8 +173,9 @@ public class AiCallLog {
 		return this.latencyMs;
 	}
 
-	public Long getCostMicro() {
-		return this.costMicro;
+	/** 원(KRW)의 백만분의 1. 단가 설정이 없으면 {@code null} 이다 (#311). */
+	public Long getCostMicroKrw() {
+		return this.costMicroKrw;
 	}
 
 	public String getSafetyFlags() {
@@ -185,6 +195,9 @@ public class AiCallLog {
 	 *
 	 * <p><b>{@code playerRef} 를 담을 자리가 없다</b> (I-3). 엔티티와 같은 성질이며, 기록을
 	 * 만드는 쪽에서도 그 값을 실을 방법이 없다.
+	 *
+	 * @param costMicroKrw 호출 비용, <b>원(KRW)의 백만분의 1</b> (#311). 단가를 모르면
+	 *                     {@code null} 이다 — 0 은 "공짜"라는 진술이라 대신 쓸 수 없다
 	 */
 	public record Draft(
 			UUID sessionId,
@@ -198,7 +211,7 @@ public class AiCallLog {
 			Integer inputTokens,
 			Integer outputTokens,
 			Integer latencyMs,
-			Long costMicro,
+			Long costMicroKrw,
 			String safetyFlags,
 			int attemptNo) {
 
