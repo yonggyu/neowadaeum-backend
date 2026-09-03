@@ -94,7 +94,12 @@ paths:
               $ref: '#/components/schemas/OAuthLoginRequest'
       responses:
         '200':
-          description: 발급된 토큰
+          description: |
+            발급된 액세스 토큰. **리프레시 토큰은 본문에 없다** — `Set-Cookie` 로만 나간다
+            (ADR-0008, 이슈 #278).
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
           content:
             application/json:
               schema:
@@ -111,23 +116,46 @@ paths:
       tags: [auth]
       operationId: refreshToken
       summary: 액세스 토큰 재발급
+      description: |
+        **요청에 본문이 없다** (ADR-0008, 이슈 #278). 자격 증명은 로그인·재발급이 구운
+        `HttpOnly` 쿠키 하나이며, 브라우저가 이 경로에만 자동으로 붙인다.
+
+        **이 경로 하나만 CSRF 토큰을 요구한다.** `/api/v1/**` 의 나머지는 면제 그대로다 —
+        거기에는 브라우저가 자동으로 붙이는 자격 증명이 없기 때문이다.
+
+        - 쿠키가 없거나 유효하지 않다 → `401 UNAUTHENTICATED`
+        - CSRF 토큰이 없거나 쿠키와 다르다 → `403 FORBIDDEN`
+
+        호출하는 쪽은 **자격 증명을 실어야 한다** (`credentials: 'include'`). 실지 않으면
+        브라우저가 쿠키를 붙이지 않고, 응답의 `Set-Cookie` 도 버린다.
       security: []
       x-implemented-by: B-12
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshRequest'
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          schema:
+            type: string
+          description: |
+            `XSRF-TOKEN` 쿠키에서 읽은 값을 그대로 돌려보낸다 (double-submit). 서버는 모든
+            `/api/v1/**` 응답에 그 쿠키를 갱신하므로 별도로 발급받는 경로가 없다.
       responses:
         '200':
-          description: 재발급된 토큰
+          description: |
+            재발급된 액세스 토큰. **리프레시 토큰은 본문에 없다** — 새 쿠키가 함께 나간다.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/RefreshTokenCookie'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   # ── §13.2 Library ───────────────────────────────────────────
   /api/v1/library:
@@ -1628,6 +1656,25 @@ components:
       bearerFormat: JWT
       description: '`Authorization: Bearer <accessToken>`'
 
+  headers:
+    RefreshTokenCookie:
+      description: |
+        리프레시 토큰 (ADR-0008, 이슈 #278). **이 헤더가 리프레시 토큰이 나가는 유일한 자리다.**
+
+        속성 넷 중 셋을 서버가 고정한다.
+
+        - `HttpOnly` — JS 가 읽지 못한다. 이 결정의 이유 자체다
+        - `Path=/api/v1/auth/refresh` — 브라우저가 **다른 어떤 경로에도 붙이지 않는다**
+        - `SameSite=Strict` — 교차 사이트 요청에 붙지 않는다
+
+        `Secure` 만 배포 설정이며 배포된 모든 환경에서 켜진다. 수명은 리프레시 토큰의 수명과
+        같다.
+
+        **프론트가 이 값을 읽을 수 없고, 읽을 필요도 없다.** 재발급을 부를 때 브라우저가 붙인다.
+      schema:
+        type: string
+        examples: ['nwd_rt=<token>; Path=/api/v1/auth/refresh; Max-Age=2592000; HttpOnly; SameSite=Strict']
+
   parameters:
     AdminStepUp:
       name: X-Admin-Step-Up
@@ -2013,22 +2060,18 @@ components:
             가입에 **사용자의 동의**가 필요한가. `age` 만 `false` 이며 그것은 서버가 판정해
             스스로 기록하는 사실이다 (R10.2, §13-24)
 
-    RefreshRequest:
-      type: object
-      required: [refreshToken]
-      properties:
-        refreshToken:
-          type: string
-
     TokenResponse:
       x-notice-exempt: '인증·계정 화면이다. AI 생성물을 그리지 않으므로 사전 고지의 대상이 아니다'
       type: object
-      description: '`playerRef` 를 반환하지 않는다. 클라이언트가 알 필요가 없다'
-      required: [accessToken, refreshToken, tokenType, expiresIn]
+      description: |
+        `playerRef` 를 반환하지 않는다. 클라이언트가 알 필요가 없다.
+
+        **`refreshToken` 도 반환하지 않는다** (ADR-0008, 이슈 #278). 본문으로 한 번 주면 JS 가
+        읽었다는 뜻이고, 그러면 `HttpOnly` 가 주는 보장이 문장으로만 남는다. `RefreshRequest`
+        가 계약에서 사라진 것도 같은 이유다 — 본문으로도 보낼 수 있는 우회로를 남기지 않는다.
+      required: [accessToken, tokenType, expiresIn]
       properties:
         accessToken:
-          type: string
-        refreshToken:
           type: string
         tokenType:
           type: string

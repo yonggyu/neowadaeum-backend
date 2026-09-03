@@ -11,7 +11,8 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({ JwtProperties.class, GoogleOAuthProperties.class,
-		com.neowadaeum.identity.access.AdminAccessProperties.class, AdminTotpProperties.class })
+		com.neowadaeum.identity.access.AdminAccessProperties.class, AdminTotpProperties.class,
+		RefreshCookieProperties.class })
 public class AuthConfiguration {
 
 }

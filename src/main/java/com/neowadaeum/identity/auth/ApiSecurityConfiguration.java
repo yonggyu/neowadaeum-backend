@@ -10,6 +10,14 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.AndRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * 플레이 API 의 보안 체인 (B-12, #34).
@@ -23,18 +31,20 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * <p>{@code config} 가 아니라 {@code identity} 에 있다 — 인증 필터는 identity 의 내부 타입이고,
  * {@code config} 에 두면 모듈 경계 검증이 잡는다 (§5.4).
  *
- * <p><b>CSRF 는 이 체인의 경로에서만 면제한다.</b> 여기는 세션도 쿠키도 쓰지 않으므로
- * ({@code STATELESS}) 자격 증명이 {@code Authorization} 헤더로만 온다 — 브라우저가 자동으로 실어
- * 보내는 것이 없어 <b>위조할 요청이 성립하지 않는다.</b> 이전 체인이 CSRF 를 켠 이유는 그때
- * <b>인증이 우회된 상태</b>였기 때문이며(남의 사이트가 고정 {@code player_ref} 로 세션을 만들 수
- * 있었다) 그 조건이 사라졌다.
+ * <p><b>CSRF 는 이 체인의 경로에서 면제하되, 재발급 경로 하나를 뺀다</b> (ADR-0008, #278).
+ * 나머지 경로는 세션도 쿠키도 쓰지 않으므로 ({@code STATELESS}) 자격 증명이
+ * {@code Authorization} 헤더로만 온다 — 브라우저가 자동으로 실어 보내는 것이 없어 <b>위조할
+ * 요청이 성립하지 않는다.</b> 이전 체인이 CSRF 를 켠 이유는 그때 <b>인증이 우회된 상태</b>였기
+ * 때문이며(남의 사이트가 고정 {@code player_ref} 로 세션을 만들 수 있었다) 그 조건이 사라졌다.
  *
- * <p><b>{@code disable()} 이 아니라 경로 면제인 것은 의도다.</b> 필터는 남아 있고 다른 체인의
- * 경로는 계속 보호된다. <b>쿠키로 인증하는 경로를 만든다면 {@code /api/v1/**} 밖에 두거나 이
- * 면제를 좁혀야 한다</b> — 그러지 않으면 그 경로가 조용히 무방비가 된다.
+ * <p><b>{@code disable()} 이 아니라 경로 면제인 것은 의도다.</b> 그리고 이 클래스의 옛 주석이
+ * 적어 둔 경고 — <i>"쿠키로 인증하는 경로를 만든다면 이 면제를 좁혀야 한다"</i> — 가 #278 에서
+ * 실제로 발동했다. {@link RefreshTokenCookie#PATH} 는 브라우저가 자동으로 쿠키를 붙이는
+ * 유일한 경로이므로 <b>거기서만</b> CSRF 를 요구한다.
  *
- * <p>면제 없이 켜 두면 토큰 없는 요청이 <b>401 이 아니라 403</b> 이 된다 — CSRF 필터가 인가
- * 판정보다 먼저 돌기 때문이다. 계약(§13.1)이 약속한 {@code UNAUTHENTICATED} 가 나가지 않는다.
+ * <p>면제를 걷는 범위가 그 한 경로인 것도 의도다. 나머지에서 켜면 토큰 없는 요청이 <b>401 이
+ * 아니라 403</b> 이 된다 — CSRF 필터가 인가 판정보다 먼저 돌기 때문이다. 계약(§13.1)이 약속한
+ * {@code UNAUTHENTICATED} 가 나가지 않는다.
  */
 @Configuration(proxyBeanMethods = false)
 public class ApiSecurityConfiguration {
@@ -74,11 +84,58 @@ public class ApiSecurityConfiguration {
 	/** 이 체인이 맡는 범위. {@code securityMatcher} 와 CSRF 면제가 같은 값을 봐야 한다. */
 	private static final String API_PATHS = "/api/v1/**";
 
+	/**
+	 * CSRF 를 면제하는 범위 — <b>{@link #API_PATHS} 에서 재발급 경로를 뺀 것</b> (ADR-0008).
+	 *
+	 * <p>경로 패턴 하나로는 "빼기"를 적을 수 없어 부정 매처로 조합한다. <b>여기서 빼는 경로와
+	 * {@link RefreshTokenCookie#PATH} 는 같은 상수여야 한다</b> — 어긋나면 쿠키가 붙는 경로가
+	 * 무방비가 되거나, 쿠키가 붙지 않는 경로가 이유 없이 403 이 된다.
+	 */
+	private static RequestMatcher csrfExemptPaths() {
+		PathPatternRequestMatcher.Builder patterns = PathPatternRequestMatcher.withDefaults();
+		return new AndRequestMatcher(patterns.matcher(API_PATHS),
+				new NegatedRequestMatcher(patterns.matcher(RefreshTokenCookie.PATH)));
+	}
+
+	/**
+	 * CSRF 토큰의 자리 — <b>쿠키</b>다 (double-submit).
+	 *
+	 * <p>세션을 만들지 않으므로({@code STATELESS}) 서버가 토큰을 기억할 자리가 없다. 그래서
+	 * 프론트가 읽어 헤더로 돌려보내는 방식이며, 그 쿠키는 <b>{@code HttpOnly} 가 아니다</b> —
+	 * 읽히는 것이 목적이다. 리프레시 쿠키와 성질이 정반대인 이유가 여기 있다: 하나는 값 자체가
+	 * 자격 증명이고, 하나는 <b>같은 오리진에서 왔다는 증거</b>일 뿐이다.
+	 *
+	 * <p>{@code SameSite} · {@code Secure} 를 리프레시 쿠키와 맞춘다. 어긋나면 둘 중 하나만
+	 * 붙는 요청이 생기고, 그때 나가는 것은 원인을 말해 주지 않는 403 이다.
+	 */
+	private static CsrfTokenRepository csrfTokenRepository(RefreshCookieProperties properties) {
+		CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+		repository.setCookieCustomizer(cookie -> cookie.sameSite(RefreshTokenCookie.SAME_SITE).secure(properties.secure()));
+		return repository;
+	}
+
+	/**
+	 * 토큰을 <b>매 요청 즉시</b> 만들어 쿠키에 싣는다.
+	 *
+	 * <p>{@code csrfRequestAttributeName} 을 {@code null} 로 두면 지연 로딩이 꺼진다. 켜 두면
+	 * <b>CSRF 를 요구하지 않는 요청에서는 토큰이 만들어지지 않고</b>, 그러면 프론트는 재발급을
+	 * 부르기 전까지 보낼 토큰을 한 번도 받지 못한다 — 첫 재발급이 반드시 403 이 되는 구조다.
+	 *
+	 * <p><b>BREACH 마스킹({@code XorCsrfTokenRequestAttributeHandler})을 쓰지 않는다.</b> 그것이
+	 * 막는 것은 <i>압축된 응답 본문에 실린 토큰</i>이고, 이 서버는 HTML 을 그리지 않는다.
+	 */
+	private static CsrfTokenRequestHandler csrfTokenRequestHandler() {
+		CsrfTokenRequestAttributeHandler handler = new CsrfTokenRequestAttributeHandler();
+		handler.setCsrfRequestAttributeName(null);
+		return handler;
+	}
+
 	@Bean
 	@Order(0)
 	public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
 			BearerTokenAuthenticationFilter bearerTokenFilter,
-			ErrorResponseSecurityHandler errorHandler) throws Exception {
+			ErrorResponseSecurityHandler errorHandler,
+			RefreshCookieProperties refreshCookieProperties) throws Exception {
 		return http
 				.securityMatcher(API_PATHS)
 				// #248 — CORS 는 인가보다 먼저 판정돼야 한다. preflight(OPTIONS)에는
@@ -86,7 +143,10 @@ public class ApiSecurityConfiguration {
 				// 그것을 CORS 오류로 보고한다 — 원인이 인증이라는 사실이 드러나지 않는다.
 				// 정책 자체는 common 이 소유한다 (CorsConfigurationSource 빈).
 				.cors(Customizer.withDefaults())
-				.csrf(csrf -> csrf.ignoringRequestMatchers(API_PATHS))
+				.csrf(csrf -> csrf
+						.ignoringRequestMatchers(csrfExemptPaths())
+						.csrfTokenRepository(csrfTokenRepository(refreshCookieProperties))
+						.csrfTokenRequestHandler(csrfTokenRequestHandler()))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers(PUBLIC_PATHS).permitAll()

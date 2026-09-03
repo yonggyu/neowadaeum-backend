@@ -137,6 +137,18 @@ auth:
     # 관리자 단계 승격 수명 (B-40, S-4). 액세스 토큰보다 짧다 — 길게 잡으면 2FA 가
     # 로그인 때 한 번 하는 절차가 되고, 자리를 비운 사이의 화면이 관리자 콘솔이 된다.
     admin-step-up-ttl: PT15M
+  # 리프레시 쿠키 (ADR-0008, #278). 리프레시 토큰은 응답 본문이 아니라
+  # `POST /api/v1/auth/refresh` 전용 HttpOnly 쿠키로 오간다.
+  #
+  # 이름 · Path · HttpOnly · SameSite=Strict 는 코드가 고정한다 — 배포마다 달라질 값이 아니라
+  # 이 설계가 성립하기 위한 조건이다. 여기서 받는 것은 Secure 하나이며 그것은 **환경이 HTTPS
+  # 인가**라는 배포 사실이다.
+  #
+  # 기본값을 두지 않는다 (§7.3). false 를 기본으로 두면 설정을 빠뜨린 운영 배포가 평문으로
+  # 리프레시 토큰을 실어 나르고, true 를 기본으로 두면 로컬 개발이 원인 없이 로그인되지 않는다.
+  #   예) REFRESH_COOKIE_SECURE=false   (로컬 HTTP)  /  true (배포된 모든 환경)
+  refresh-cookie:
+    secure: ${REFRESH_COOKIE_SECURE}
 
 # client-id 는 ID 토큰의 대상(aud) 검증에 쓴다 (B-12). 없으면 다른 서비스용으로 발급된
 # 구글 토큰이 이 서버에서도 통한다 — 구글이 서명한 것은 맞지만 우리에게 발급된 것이 아니다.
