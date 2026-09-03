@@ -1,6 +1,7 @@
 package com.neowadaeum.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.play.api.TurnRequestBody;
@@ -34,7 +35,9 @@ import org.springframework.util.ClassUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * B-06 — <b>계약이 문서로만 남지 않게 한다.</b>
@@ -383,6 +386,28 @@ class OpenApiContractTests {
 		assertThat(new ClassPathResource("static/openapi/openapi.yaml").exists()).isFalse();
 		assertThat(new ClassPathResource("static/openapi.yaml").exists()).isFalse();
 		assertThat(new ClassPathResource("public/openapi.yaml").exists()).isFalse();
+	}
+
+	/**
+	 * <b>같은 자리에 키가 두 번 오면 실패한다</b> (#341).
+	 *
+	 * <p>SnakeYAML 은 기본 설정에서 <b>중복 키를 허용하고 마지막 것을 남긴다.</b> 그래서 이 파일이
+	 * 다른 파서에게는 이미 깨져 있는데도 이 클래스의 나머지 단언은 전부 통과할 수 있다 — 실제로
+	 * 그렇게 됐다. 인접한 두 오퍼레이션을 각각 더한 PR 둘이 순서대로 머지되면서 앞엣것의
+	 * {@code responses} 가 뒤엣것 안으로 접붙었고, <b>텍스트 충돌은 나지 않았다.</b>
+	 *
+	 * <p><b>다른 레포가 이 파일의 소비자다.</b> 프론트는 이것으로 타입을 만들며, 파싱되지 않으면
+	 * 계약과 무관한 PR 까지 전부 빨간불이 된다. 여기서 막지 않으면 그쪽에서 드러난다.
+	 */
+	@Test
+	void B06_the_contract_has_no_duplicated_keys() throws Exception {
+		LoaderOptions strict = new LoaderOptions();
+		strict.setAllowDuplicateKeys(false);
+
+		try (InputStream in = new ClassPathResource("openapi/openapi.yaml").getInputStream()) {
+			assertThatCode(() -> new Yaml(new SafeConstructor(strict)).load(in))
+					.doesNotThrowAnyException();
+		}
 	}
 
 	// ── 3-1. 커버리지 — 손 목록에 기대지 않는다 (#309) ────────
