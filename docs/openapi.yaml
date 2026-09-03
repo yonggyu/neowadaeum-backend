@@ -1731,6 +1731,10 @@ components:
         consentType:
           type: string
           enum: [tos, privacy, ai_notice, age]
+          description: |
+            `age` 는 **보내도 저장되지 않는다** — 서버가 생년월일로 판정해 스스로 한 줄을
+            남기며, 클라이언트가 보낸 것까지 저장하면 동의 이력에 같은 종류가 두 줄 남는다
+            (R10.2, §13-24, #270). 거절하지는 않는다
         version:
           type: string
           description: |
