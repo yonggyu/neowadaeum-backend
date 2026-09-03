@@ -49,6 +49,16 @@ public class StoryPublisher {
 	 */
 	private static final String SUSPENDED_STATUS = "suspended";
 
+	/**
+	 * <b>작성자가 지웠다</b> (§13-58, #290).
+	 *
+	 * <p><b>흡수 상태다.</b> 이 값의 행은 {@link #statusOf} · {@link #ownerStatusOf} 에 보이지
+	 * 않고, {@link #applyReview} · {@link #suspend} 는 그 행을 건드리지 않는다 — 그 둘이
+	 * 합쳐져 "지운 것은 어떤 경로로도 돌아오지 않는다"가 된다. 조회를 막는 것만으로는
+	 * 부족하다: 삭제 직전에 상태를 읽어 둔 검수 판정이 나중에 도착할 수 있다.
+	 */
+	private static final String DELETED_STATUS = "deleted";
+
 	/** UGC 다. 공식 작품과 섞이지 않는다. */
 	private static final String USER_AUTHOR_TYPE = "user";
 
@@ -154,16 +164,43 @@ public class StoryPublisher {
 	 *
 	 * <p>발행 시각은 <b>처음 공개될 때만</b> 찍는다 — 재승인 때마다 갱신하면 라이브러리의
 	 * "새로 나온 작품"(§13-25)이 옛 작품으로 채워진다.
+	 *
+	 * <p><b>지워진 작품은 판정으로 되살아나지 않는다</b> (§13-58). 검수자가 큐를 연 뒤 작성자가
+	 * 지우면 판정이 나중에 도착한다 — 조건절이 없으면 그 판정이 {@code deleted} 를
+	 * {@code approved} 로 덮어쓴다.
 	 */
 	@Transactional("catalogTransactionManager")
 	public void applyReview(UUID storyId, String reviewStatus, String visibility) {
 		this.jdbc.sql("""
 						UPDATE story SET review_status = ?, visibility = ?,
 								published_at = COALESCE(published_at, ?)
-						WHERE id = ?
+						WHERE id = ? AND review_status <> ?
 						""")
-				.params(reviewStatus, visibility, at(Instant.now(this.clock)), storyId)
+				.params(reviewStatus, visibility, at(Instant.now(this.clock)), storyId, DELETED_STATUS)
 				.update();
+	}
+
+	/**
+	 * <b>작성자가 지운다</b> (§13-58, #290-3).
+	 *
+	 * <p><b>행을 지우지 않는다.</b> 작품에는 플레이한 사람들의 기록이 매달려 있고(세션·턴·
+	 * 스냅샷·도달률) 그것은 작성자의 것이 아니다 — §13-44 가 탈퇴 파기에 대해 같은 이유로
+	 * 도달률을 되돌리지 않기로 한 것과 같은 판단이다.
+	 *
+	 * <p><b>가시성을 건드리지 않는다.</b> {@code review_status} 하나로 노출이 이미 닫힌다
+	 * (R2.3 — 타인 조회는 {@code approved} 를 요구한다). 함께 지우면 이 작품이 어디까지
+	 * 공개돼 있었는지가 사라지고, 신고·검수 이력을 나중에 읽는 사람이 그 맥락을 잃는다.
+	 *
+	 * <p><b>이미 지워진 작품은 다시 지워지지 않는다</b> — 조건절이 그 보장이며,
+	 * {@link #ownerStatusOf} 가 이미 그 행을 보지 못하므로 호출부는 여기까지 오지 않는다.
+	 *
+	 * @return 이 호출이 실제로 내렸으면 {@code true}
+	 */
+	@Transactional("catalogTransactionManager")
+	public boolean delete(UUID storyId) {
+		return this.jdbc
+				.sql("UPDATE story SET review_status = ? WHERE id = ? AND review_status <> ?")
+				.params(DELETED_STATUS, storyId, DELETED_STATUS).update() > 0;
 	}
 
 	/**
@@ -171,11 +208,16 @@ public class StoryPublisher {
 	 *
 	 * <p>작성자가 <b>지금 어디까지 왔는지</b>를 보는 자리다. 값은 작품에 있고, 그 이유는
 	 * 검수 이력에 있다 (R8.7).
+	 *
+	 * <p><b>지워진 작품은 없는 작품이다</b> (§13-58). 상태를 답하면 그 값을 읽은 쪽이 다음
+	 * 상태를 계산해 되쓰게 된다 — 제출(재제출)·검수 판정·신고가 전부 이 조회로 시작한다.
+	 * 여기서 한 번 가리면 그 셋이 모두 "없는 작품"으로 끝난다.
 	 */
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public Optional<StoryStatus> statusOf(UUID storyId) {
-		return this.jdbc.sql("SELECT review_status, visibility FROM story WHERE id = ?")
-				.param(storyId)
+		return this.jdbc
+				.sql("SELECT review_status, visibility FROM story WHERE id = ? AND review_status <> ?")
+				.params(storyId, DELETED_STATUS)
 				.query((rs, rowNum) -> new StoryStatus(rs.getString("review_status"),
 						rs.getString("visibility")))
 				.optional();
@@ -187,11 +229,18 @@ public class StoryPublisher {
 	 * <p><b>{@link #statusOf} 와 나눈 것은 의도다.</b> 검수자는 <b>누가 썼는지를 보지 않고</b>
 	 * 판정하며(B-55), 작성자만 할 수 있는 일은 그 반대로 소유를 먼저 확인해야 한다 — 한 조회가
 	 * 둘을 겸하면 검수 경로가 작성자를 알게 된다.
+	 *
+	 * <p><b>지워진 작품은 작성자에게도 없다</b> (§13-58). 이 조회가 작성자 전용 경로의 입구이므로
+	 * (가시성 변경 · 삭제) 여기서 가리면 그 경로들이 전부 {@code NOT_FOUND} 로 끝난다 — 두 번째
+	 * 삭제도, 지운 작품의 가시성을 되돌리는 시도도 같은 답을 받는다.
 	 */
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public Optional<OwnedStory> ownerStatusOf(UUID storyId) {
-		return this.jdbc.sql("SELECT author_ref, review_status, visibility FROM story WHERE id = ?")
-				.param(storyId)
+		return this.jdbc.sql("""
+						SELECT author_ref, review_status, visibility FROM story
+						WHERE id = ? AND review_status <> ?
+						""")
+				.params(storyId, DELETED_STATUS)
 				.query((rs, rowNum) -> new OwnedStory(rs.getObject("author_ref", UUID.class),
 						rs.getString("review_status"), rs.getString("visibility")))
 				.optional();
@@ -229,14 +278,18 @@ public class StoryPublisher {
 	 * <p><b>미리보기가 만든 것은 세지 않는다.</b> 그것은 매 미리보기마다 늘어나고(§13-37)
 	 * 파기는 B-61 이 가져간다 — 함께 세면 <b>미리보기 몇 번으로 작품을 못 만들게 된다.</b>
 	 * 제출을 지난 작품만 상한의 대상이다.
+	 *
+	 * <p><b>지운 작품도 세지 않는다</b> (§13-58). 지우고도 자리가 비지 않으면 작성자는 상한에
+	 * 닿은 뒤 <b>아무것도 할 수 없다</b> — 지우는 것이 유일하게 남은 선택지인데 그것이 아무것도
+	 * 바꾸지 않기 때문이다. 상한은 <b>지금 갖고 있는 작품</b>을 세는 규칙이다 (R8.12).
 	 */
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public long countSubmittedStoriesOf(UUID authorRef) {
 		return this.jdbc.sql("""
 						SELECT COUNT(*) FROM story
-						WHERE author_type = ? AND author_ref = ? AND review_status <> ?
+						WHERE author_type = ? AND author_ref = ? AND review_status NOT IN (?, ?)
 						""")
-				.params(USER_AUTHOR_TYPE, authorRef, DRAFT_REVIEW_STATUS)
+				.params(USER_AUTHOR_TYPE, authorRef, DRAFT_REVIEW_STATUS, DELETED_STATUS)
 				.query(Long.class).single();
 	}
 
@@ -246,6 +299,9 @@ public class StoryPublisher {
 	 * <p>샘플링은 <b>승인 상태 그대로</b> 큐에 올린다 (§13-42) — 그래서 상태로 찾을 수 없고,
 	 * 무엇을 올릴지는 {@code authoring} 의 검수 이력이 정한다. 여기는 <b>그 id 들의 제목</b>을
 	 * 답할 뿐이다.
+	 *
+	 * <p><b>지워진 작품은 큐에 남지 않는다</b> (§13-58). 표본으로 뽑힌 뒤 작성자가 지운 작품을
+	 * 계속 보여 주면 검수자가 <b>아무에게도 보이지 않는 작품</b>을 읽는 데 시간을 쓴다.
 	 */
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public List<AwaitingReview> storiesByIds(Collection<UUID> storyIds) {
@@ -254,9 +310,10 @@ public class StoryPublisher {
 		}
 		return this.jdbc.sql("""
 						SELECT id, title, author_ref, visibility, review_status, created_at
-						FROM story WHERE id IN (:ids) ORDER BY created_at
+						FROM story WHERE id IN (:ids) AND review_status <> :deleted ORDER BY created_at
 						""")
 				.param("ids", storyIds)
+				.param("deleted", DELETED_STATUS)
 				.query((rs, rowNum) -> new AwaitingReview(rs.getObject("id", UUID.class),
 						rs.getString("title"), rs.getObject("author_ref", UUID.class),
 						rs.getString("visibility"), rs.getString("review_status"),
@@ -277,9 +334,11 @@ public class StoryPublisher {
 	 */
 	@Transactional("catalogTransactionManager")
 	public boolean suspend(UUID storyId) {
+		// §13-58 — 지워진 작품은 내릴 것이 없다. 신고 누적은 조회가 아니라 카운트에서 오므로
+		// statusOf 가 가려도 여기까지 닿을 수 있다.
 		return this.jdbc
-				.sql("UPDATE story SET review_status = ? WHERE id = ? AND review_status <> ?")
-				.params(SUSPENDED_STATUS, storyId, SUSPENDED_STATUS).update() > 0;
+				.sql("UPDATE story SET review_status = ? WHERE id = ? AND review_status NOT IN (?, ?)")
+				.params(SUSPENDED_STATUS, storyId, SUSPENDED_STATUS, DELETED_STATUS).update() > 0;
 	}
 
 	/**
