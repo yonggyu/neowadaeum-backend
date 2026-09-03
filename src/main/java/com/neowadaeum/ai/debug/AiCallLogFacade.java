@@ -57,7 +57,7 @@ public class AiCallLogFacade {
 	private static AiCallView viewOf(AiCallLog row) {
 		return new AiCallView(row.getId(), row.getPurpose(), row.getProviderId(), row.getModelId(),
 				row.getFallbackFrom(), row.getRequestRaw(), row.getResponseRaw(), row.getInputTokens(),
-				row.getOutputTokens(), row.getLatencyMs(), row.getCostMicro(), row.getSafetyFlags(),
+				row.getOutputTokens(), row.getLatencyMs(), row.getCostMicroKrw(), row.getSafetyFlags(),
 				row.getAttemptNo(), row.getCreatedAt());
 	}
 }

@@ -15,7 +15,9 @@ import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.SummaryRequest;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
@@ -81,7 +83,7 @@ class AnthropicStoryProviderContractTests {
 		this.server.start();
 
 		AnthropicProperties properties = new AnthropicProperties("test-key", turnModel("claude-opus-5"),
-				"http://localhost:" + this.server.port(), 4096);
+				"http://localhost:" + this.server.port(), 4096, null);
 
 		this.provider = new AnthropicStoryProvider(
 				RestClient.builder()
@@ -102,6 +104,32 @@ class AnthropicStoryProviderContractTests {
 
 	private static TurnRequest request() {
 		return TurnRequest.opening(STORY_VERSION, GenerationContexts.populated());
+	}
+
+	/** 단가만 다른 어댑터. 나머지 배선은 {@link #startServer()} 와 같다. */
+	private AnthropicStoryProvider providerWith(Map<String, AnthropicProperties.ModelPrice> pricing) {
+		AnthropicProperties properties = new AnthropicProperties("test-key", turnModel("claude-opus-5"),
+				"http://localhost:" + this.server.port(), 4096, pricing);
+		return new AnthropicStoryProvider(
+				RestClient.builder()
+						.baseUrl(properties.baseUrl())
+						.defaultHeader("x-api-key", properties.apiKey())
+						.defaultHeader("anthropic-version", "2023-06-01")
+						.build(),
+				properties,
+				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
+				new TurnOutputParser(),
+				this.recorded::add);
+	}
+
+	/** {@code usage} 까지 실어 준다 — 비용은 그 값이 있어야만 계산된다 (#311). */
+	private void respondWithUsage(String responseText, int inputTokens, int outputTokens) {
+		this.server.stubFor(post(urlEqualTo("/v1/messages")).willReturn(aResponse()
+				.withStatus(200)
+				.withHeader("content-type", "application/json")
+				.withBody(("{\"content\":[{\"type\":\"text\",\"text\":%s}],"
+						+ "\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d}}")
+						.formatted(JSON.writeValueAsString(responseText), inputTokens, outputTokens))));
 	}
 
 	private void respondWith(String responseText) {
@@ -202,7 +230,7 @@ class AnthropicStoryProviderContractTests {
 	void R3_6_the_turn_call_uses_the_turn_model_not_another_purpose() {
 		AnthropicProperties perPurpose = new AnthropicProperties("test-key",
 				new AnthropicProperties.Models("claude-opus-5", "summary-model", "safety-model", "outline-model"),
-				"http://localhost:" + this.server.port(), 4096);
+				"http://localhost:" + this.server.port(), 4096, null);
 
 		AnthropicStoryProvider provider = new AnthropicStoryProvider(
 				AnthropicProviderConfiguration.restClient(perPurpose, new ProviderProperties(null, null)),
@@ -357,18 +385,57 @@ class AnthropicStoryProviderContractTests {
 	}
 
 	/**
-	 * <b>{@code cost_micro} 를 채우지 않는다</b> (B-25 결정).
+	 * <b>단가가 없으면 비용도 없다</b> (#311, §13-53).
 	 *
-	 * <p>단가는 벤더·모델별로 다르고 시간에 따라 바뀐다. 코드에 박으면 <b>틀린 순간부터 조용히
-	 * 틀린 값이 쌓이고</b>, 그 값으로 예산을 판단하게 된다. 비어 있는 것이 <b>틀린 값보다 낫다.</b>
+	 * <p>B-25 가 비워 둔 이유가 그대로 유효하다 — 단가는 벤더·모델별로 다르고 시간에 따라
+	 * 바뀌므로 코드에 박지 않는다. 달라진 것은 <b>박는 대신 설정에서 받는다</b>는 것뿐이며,
+	 * 설정이 없으면 여전히 {@code null} 이다. <b>지어낸 0 을 넣지 않는다</b> — 0 은 "공짜로
+	 * 돌았다"는 사실 진술이고, 그것으로 만든 합계는 조용히 낮다.
 	 */
 	@Test
-	void B25_cost_is_left_empty_until_a_price_table_exists() {
-		respondWith(VALID_TURN);
+	void S13_53_cost_is_null_when_the_model_has_no_configured_price() {
+		respondWithUsage(VALID_TURN, 1_000, 500);
 
 		this.provider.generateTurn(request());
 
-		assertThat(this.recorded.getFirst().costMicro()).isNull();
+		assertThat(this.recorded.getFirst().costMicroKrw()).isNull();
+	}
+
+	/**
+	 * <b>단가가 있으면 원(KRW)의 백만분의 1로 기록된다</b> (#311, §13-53).
+	 *
+	 * <p><b>서버에 환율이 없다.</b> 설정에 들어오는 단가가 이미 KRW 이며, 환산은 그 값을 넣는
+	 * 사람이 한다 — 서버가 환율을 들면 그 값이 낡는 순간부터 조용히 틀린 수가 쌓인다.
+	 *
+	 * <p>100만 토큰당 원을 단위로 고른 덕에 마이크로 환산이 <b>토큰 수 × 단가</b> 다.
+	 * 입력 1,000토큰 × 3,000원/100만 = 3,000,000마이크로, 출력 500 × 15,000 = 7,500,000마이크로.
+	 * (테스트용 숫자다 — 실제 단가는 레포에 두지 않는다.)
+	 */
+	@Test
+	void S13_53_cost_is_recorded_in_micro_krw_when_a_price_is_configured() {
+		AnthropicStoryProvider priced = providerWith(Map.of("claude-opus-5",
+				new AnthropicProperties.ModelPrice(new BigDecimal("3000"), new BigDecimal("15000"))));
+		respondWithUsage(VALID_TURN, 1_000, 500);
+
+		priced.generateTurn(request());
+
+		assertThat(this.recorded.getFirst().costMicroKrw()).isEqualTo(10_500_000L);
+	}
+
+	/**
+	 * <b>토큰 사용량이 없으면 비용도 없다</b> (#311). 단가를 알아도 곱할 수가 없다 — 한쪽만으로
+	 * 만든 수는 비용이 아니라 비용의 일부이고, 그것을 비용 칸에 넣으면 틀린 줄 모르는 채 작은
+	 * 값이 쌓인다.
+	 */
+	@Test
+	void S13_53_cost_is_null_when_the_provider_reports_no_usage() {
+		AnthropicStoryProvider priced = providerWith(Map.of("claude-opus-5",
+				new AnthropicProperties.ModelPrice(new BigDecimal("3000"), new BigDecimal("15000"))));
+		respondWith(VALID_TURN);
+
+		priced.generateTurn(request());
+
+		assertThat(this.recorded.getFirst().costMicroKrw()).isNull();
 	}
 
 	/**

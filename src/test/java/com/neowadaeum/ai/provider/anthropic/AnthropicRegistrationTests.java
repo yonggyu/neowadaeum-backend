@@ -200,7 +200,7 @@ class AnthropicRegistrationTests {
 	/** 기본값은 코드가 갖는다 — 배포마다 정할 값이 아니다. */
 	@Test
 	void B22_base_url_and_max_tokens_have_code_defaults() {
-		AnthropicProperties properties = new AnthropicProperties("key", turnModel("model"), null, null);
+		AnthropicProperties properties = new AnthropicProperties("key", turnModel("model"), null, null, null);
 
 		assertThat(properties.baseUrl()).isEqualTo("https://api.anthropic.com");
 		assertThat(properties.maxTokens()).isEqualTo(4096);

@@ -32,7 +32,11 @@ public class MeteredAiCallRecorder implements AiCallRecorder {
 
 	private static final String TOKENS = "ai.call.tokens";
 
-	private static final String COST = "ai.call.cost.micro";
+	/**
+	 * <b>이름이 통화를 든다</b> (#311, §13-53). 예전 이름 {@code ai.call.cost.micro} 는 배율만
+	 * 말했고, 그 카운터를 더하는 대시보드는 무엇을 더하는지 몰랐다.
+	 */
+	private static final String COST = "ai.call.cost.micro.krw";
 
 	private static final String FALLBACK = "ai.call.fallback";
 
@@ -91,12 +95,14 @@ public class MeteredAiCallRecorder implements AiCallRecorder {
 		countTokens(draft, "input", draft.inputTokens());
 		countTokens(draft, "output", draft.outputTokens());
 
-		if (draft.costMicro() != null) {
+		// 단가 설정이 없으면 비용이 null 이고, 그러면 세지 않는다 — 0 을 더하면 "공짜로 돌았다" 가
+		// 되고, 그 합계는 조용히 낮다 (#311).
+		if (draft.costMicroKrw() != null) {
 			Counter.builder(COST)
 					.tag("provider", draft.providerId())
 					.tag("model", draft.modelId())
 					.register(this.registry)
-					.increment(draft.costMicro());
+					.increment(draft.costMicroKrw());
 		}
 	}
 

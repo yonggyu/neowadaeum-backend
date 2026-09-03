@@ -151,6 +151,7 @@ backend  →  dev  →  main(릴리스 후보)  →  staging 검증  →  produc
 | 값 | 어디에 | 상태 |
 |---|---|---|
 | 블록리스트 항목 | `blocklist_entry` (DB) | **마이그레이션에 넣지 않는다** (S-11 — 공개 레포에 적힌 블록리스트는 그대로 우회 목록이다). 운영에서 넣는다 |
+| `ai.providers.<이름>.pricing.<모델 ID>` | 설정 | **비어 있으면 비용이 기록되지 않는다** — `ai_call_log.cost_micro_krw` 가 `null` 이고 `ai.call.cost.micro.krw` 카운터도 오르지 않는다 (#311, §13-53). 부팅은 막지 않는다. 지어낸 0 을 넣지 않는다 — 0 은 "공짜로 돌았다"는 사실 진술이라 예산 알람이 영영 울리지 않는다. **단가는 KRW 다. 서버에 환율이 없으므로 환산은 넣는 사람이 한다** |
 | `ugc.review.sampling_rate` | `service_config` | 코드에 기본값이 있다. 운영 값으로 덮는다 |
 | `ugc.report.suspend_threshold` | `service_config` | 위와 같다 |
 

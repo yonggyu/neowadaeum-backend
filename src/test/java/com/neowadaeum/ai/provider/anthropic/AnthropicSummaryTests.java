@@ -58,7 +58,7 @@ class AnthropicSummaryTests {
 
 	private AnthropicStoryProvider adapter(AnthropicProperties.Models models) {
 		AnthropicProperties properties = new AnthropicProperties("test-key", models,
-				"http://localhost:" + this.server.port(), 4096);
+				"http://localhost:" + this.server.port(), 4096, null);
 		return new AnthropicStoryProvider(
 				RestClient.builder().baseUrl(properties.baseUrl()).defaultHeader("x-api-key", "test-key").build(),
 				properties,
