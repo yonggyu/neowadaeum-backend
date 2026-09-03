@@ -115,6 +115,38 @@ public class TestcontainersConfiguration {
 	}
 
 	/**
+	 * 이미지 객체 저장소 (#315, §13-65).
+	 *
+	 * <p><b>실제 저장소를 부르지 않는다.</b> 고정 응답 서버 하나를 띄우고 엔드포인트를 그쪽으로
+	 * 돌린다 — {@code DraftImageStore} 는 인터페이스를 갖지 않으므로, 경계는 여기 <b>설정</b>에
+	 * 있고 그것이 그 설계가 테스트 가능하다는 근거다.
+	 *
+	 * <p><b>여기 있는 이유는 컨텍스트 1벌 규칙이다</b>({@link ContainerTestBase}). 이미지 테스트만
+	 * {@code @DynamicPropertySource} 를 따로 붙이면 컨텍스트가 한 벌 더 뜬다.
+	 *
+	 * <p><b>자격증명은 가짜다.</b> 서명은 계산이므로 상대가 검증하지 않아도 만들어진다.
+	 */
+	public static final com.github.tomakehurst.wiremock.WireMockServer IMAGE_STORAGE =
+			new com.github.tomakehurst.wiremock.WireMockServer(
+					com.github.tomakehurst.wiremock.core.WireMockConfiguration.options()
+							.dynamicPort().http2PlainDisabled(true));
+
+	static {
+		IMAGE_STORAGE.start();
+	}
+
+	@Bean
+	DynamicPropertyRegistrar imageStorageRegistrar() {
+		return registry -> {
+			registry.add("app.image-storage.endpoint", () -> "http://localhost:" + IMAGE_STORAGE.port());
+			registry.add("app.image-storage.region", () -> "us-east-1");
+			registry.add("app.image-storage.bucket", () -> "test-only-bucket");
+			registry.add("app.image-storage.access-key", () -> "test-only-access-key");
+			registry.add("app.image-storage.secret-key", () -> "test-only-secret-key");
+		};
+	}
+
+	/**
 	 * {@code auth.refresh-cookie.secure} 도 런타임 전용이다 (ADR-0008, #278).
 	 * {@code ${REFRESH_COOKIE_SECURE}} 는 테스트에 {@code .env} 가 없어 플레이스홀더 문자열
 	 * 그대로 남고, 그것은 {@code Boolean} 으로 변환되지 않아 <b>부팅이 실패한다</b> —

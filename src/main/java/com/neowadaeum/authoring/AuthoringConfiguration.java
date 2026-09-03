@@ -1,5 +1,6 @@
 package com.neowadaeum.authoring;
 
+import com.neowadaeum.authoring.image.ImageStorageProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -11,6 +12,6 @@ import org.springframework.context.annotation.Configuration;
  * {@code ai/gateway} 와 {@code identity/auth} 도 자기 설정을 자기가 연다.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(UgcLimitProperties.class)
+@EnableConfigurationProperties({ UgcLimitProperties.class, ImageStorageProperties.class })
 public class AuthoringConfiguration {
 }
