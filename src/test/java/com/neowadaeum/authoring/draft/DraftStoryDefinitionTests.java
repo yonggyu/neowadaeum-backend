@@ -25,7 +25,7 @@ class DraftStoryDefinitionTests {
 	/** 번호는 서버가 붙인다 — 원고에 없는 값이다. */
 	@Test
 	void B53_chapters_are_numbered_by_the_server() {
-		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD);
+		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD).definition();
 
 		assertThat(definition.chapters()).extracting(StoryDefinition.Chapter::chapterNo)
 				.containsExactly(1, 2);
@@ -39,7 +39,7 @@ class DraftStoryDefinitionTests {
 	 */
 	@Test
 	void S13_37_a_default_ending_is_added_rather_than_repurposed() {
-		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD);
+		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD).definition();
 
 		assertThat(definition.endings()).hasSize(2);
 		assertThat(definition.endings().get(0).label()).isEqualTo("좋은 끝");
@@ -53,7 +53,7 @@ class DraftStoryDefinitionTests {
 		String payload = PAYLOAD.replace(
 				"\"endings\":[{\"label\":\"좋은 끝\",\"epilogueText\":\"잘 끝났다.\"}]", "\"endings\":[]");
 
-		assertThat(DraftStoryDefinition.from(UUID.randomUUID(), payload).endings())
+		assertThat(DraftStoryDefinition.from(UUID.randomUUID(), payload).definition().endings())
 				.singleElement().extracting(StoryDefinition.Ending::isDefault).isEqualTo(true);
 	}
 
@@ -90,7 +90,7 @@ class DraftStoryDefinitionTests {
 	/** 챕터에는 조건이 붙지 않는다 (R7.16) — 조건은 템플릿에서 고르며 미리보기는 그 전이다. */
 	@Test
 	void R7_16_no_chapter_condition_is_invented() {
-		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD);
+		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD).definition();
 
 		assertThat(definition.chapters()).allSatisfy(
 				chapter -> assertThat(chapter.entryConditionJson()).isNull());
@@ -107,7 +107,7 @@ class DraftStoryDefinitionTests {
 	 */
 	@Test
 	void S13_16_a_normal_ending_gets_an_unreachable_condition() {
-		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD);
+		StoryDefinition definition = DraftStoryDefinition.from(UUID.randomUUID(), PAYLOAD).definition();
 
 		assertThat(definition.endings().get(0).conditionJson()).isNotNull();
 		assertThat(definition.endings().getLast().conditionJson()).isNull();

@@ -39,9 +39,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class SubmissionService {
 
-	/** 상태 스키마. 작성자가 고른 템플릿이 채우기 전까지는 비어 있다 (R4.4). */
-	private static final String STATE_SCHEMA = "{\"flags\":[]}";
-
 	private static final tools.jackson.databind.json.JsonMapper JSON =
 			tools.jackson.databind.json.JsonMapper.builder().build();
 
@@ -83,7 +80,11 @@ public class SubmissionService {
 	 */
 	public SubmissionOutcome submit(UUID authorRef, UUID draftId, Visibility visibility) {
 		StoryDraft draft = this.drafts.read(authorRef, draftId);
-		StoryDefinition definition = DraftStoryDefinition.from(authorRef, draft.getPayload());
+		// #326 — 작품 정의와 상태 스키마가 함께 나온다. 조건이 보는 이름과 화이트리스트에
+		// 선언되는 이름은 같은 목록이어야 한다.
+		DraftStoryDefinition.Publishable publishable = DraftStoryDefinition.from(authorRef,
+				draft.getPayload());
+		StoryDefinition definition = publishable.definition();
 
 		PrecheckScreen.Result screened = this.screen.screen(fieldsOf(definition));
 		if (screened.state() == com.neowadaeum.authoring.draft.DraftSafetyState.BLOCKED) {
@@ -105,7 +106,8 @@ public class SubmissionService {
 		}
 
 		// R8.8 — 재제출은 같은 작품에 새 버전을 얹는다. 원고가 자기 작품을 기억한다 (B-56).
-		SubmissionOutcome outcome = approve(existingStoryId, definition, visibility);
+		SubmissionOutcome outcome = approve(existingStoryId, definition, publishable.stateSchema(),
+				visibility);
 		this.drafts.linkStory(authorRef, draftId, outcome.storyId());
 		return outcome;
 	}
@@ -219,15 +221,15 @@ public class SubmissionService {
 	 * 되지 않고, 현재가 된 뒤에도 이미 고정된 세션은 옛 버전을 계속 본다 (I-4).
 	 */
 	private SubmissionOutcome approve(UUID existingStoryId, StoryDefinition definition,
-			Visibility visibility) {
+			String stateSchema, Visibility visibility) {
 		boolean needsHuman = visibility == Visibility.PUBLIC;
 		ReviewStatus status = needsHuman ? ReviewStatus.IN_REVIEW : ReviewStatus.APPROVED;
 
 		return this.transactions.execute(status2 -> {
 			Visibility effective = needsHuman ? keptVisibilityOf(existingStoryId) : visibility;
 			StoryPublisher.PublishedVersion published = (existingStoryId == null)
-					? this.publisher.publishNew(definition, STATE_SCHEMA)
-					: this.publisher.publishRevision(existingStoryId, definition, STATE_SCHEMA);
+					? this.publisher.publishNew(definition, stateSchema)
+					: this.publisher.publishRevision(existingStoryId, definition, stateSchema);
 			this.publisher.applyReview(published.storyId(), status.columnValue(),
 					effective.columnValue());
 			if (!needsHuman) {

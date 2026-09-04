@@ -70,8 +70,14 @@ public class DraftService {
 	 *
 	 * <p><b>{@code blocked} 면 앞으로 가지 못한다</b> (R8.3) — 서버가 거부한다. 다만 <b>뒤로는
 	 * 갈 수 있다</b>: 걸린 것을 고치러 돌아가는 길까지 막으면 그 원고는 영원히 갇힌다.
+	 *
+	 * <p><b>{@code payload} 를 통째로 해석하지는 않는다</b> (B-51). 보는 것은 <b>고른 조건</b>
+	 * 하나뿐이며 (#326), 나머지는 아직 채우지 않아도 되는 것들이다.
 	 */
 	public StoryDraft save(UUID authorRef, UUID draftId, int step, String payload) {
+		// #326 — 고른 조건이 원고에 없는 이름을 가리키면 여기서 막는다. 발행까지 미루면
+		// 작성자는 **왜 그 엔딩이 안 나오는지**를 끝내 알지 못한다.
+		DraftStoryDefinition.validateConditions(payload);
 		return this.transactions.execute(status -> {
 			StoryDraft draft = requireOwned(authorRef, draftId);
 			if (draft.getSafetyState() == DraftSafetyState.BLOCKED && step > draft.getStep()) {
@@ -124,6 +130,17 @@ public class DraftService {
 	}
 
 	/** 원고가 만든 작품을 가리키게 한다 (B-54). */
+	/**
+	 * 마지막 미리보기를 원고에 붙인다 (#332).
+	 *
+	 * <p><b>붙이지 않으면 그 작품과 세션은 고아가 된다</b> — 작품 id 로도 원고에서도 갈 수 없고,
+	 * 검수자는 <b>프롬프트만 읽고</b> 판정하게 된다.
+	 */
+	public void linkPreview(UUID authorRef, UUID draftId, UUID previewStoryId, UUID previewSessionId) {
+		this.transactions.executeWithoutResult(status -> requireOwned(authorRef, draftId)
+				.linkPreview(previewStoryId, previewSessionId, Instant.now(this.clock)));
+	}
+
 	public void linkStory(UUID authorRef, UUID draftId, UUID storyId) {
 		this.transactions.executeWithoutResult(status -> requireOwned(authorRef, draftId)
 				.linkStory(storyId, Instant.now(this.clock)));

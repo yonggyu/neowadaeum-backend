@@ -48,6 +48,10 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	@Autowired
 	private com.neowadaeum.common.spi.StoryReviewTimesQuery reviewTimes;
 
+	/** #340 — 원고 id 도 같은 이유로 authoring 이 소유한 표에서 온다. */
+	@Autowired
+	private com.neowadaeum.common.spi.StoryDraftLinkQuery draftLinks;
+
 	private final List<UUID> created = new java.util.ArrayList<>();
 
 	private final List<UUID> createdProfiles = new java.util.ArrayList<>();
@@ -278,7 +282,7 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 
 		AtomicInteger statements = new AtomicInteger();
 		StoryCatalogFacade counted = new StoryCatalogFacade(countingDataSource(statements), this.clock,
-				this.reviewTimes);
+				this.reviewTimes, this.draftLinks);
 
 		statements.set(0);
 		counted.cards(section("community"), null, 2);

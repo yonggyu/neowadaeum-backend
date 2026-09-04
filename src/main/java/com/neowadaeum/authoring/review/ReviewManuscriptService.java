@@ -4,10 +4,13 @@ import com.neowadaeum.catalog.publish.StoryPublisher;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.catalog.query.StoryVersionView;
 import com.neowadaeum.common.error.ApiException;
+import com.neowadaeum.authoring.draft.StoryDraft;
+import com.neowadaeum.authoring.draft.StoryDraftRepository;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.common.spi.AccessAuditRecorder;
 import com.neowadaeum.common.spi.AuditedResource;
 import com.neowadaeum.common.spi.AuthorDisplayNameQuery;
+import com.neowadaeum.common.spi.PreviewTurnsQuery;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -48,14 +51,22 @@ public class ReviewManuscriptService {
 
 	private final AccessAuditRecorder access;
 
+	/** 미리보기 세션을 기억하는 것은 원고다 (#332). 작품에서 그 세션으로 가는 길이 이것뿐이다. */
+	private final StoryDraftRepository drafts;
+
+	private final PreviewTurnsQuery previewTurns;
+
 	public ReviewManuscriptService(StoryPublisher publisher, StoryVersionFacade versions,
 			StoryReviewRepository reviews, AuthorDisplayNameQuery authors,
-			AccessAuditRecorder access) {
+			AccessAuditRecorder access, StoryDraftRepository drafts,
+			PreviewTurnsQuery previewTurns) {
 		this.publisher = publisher;
 		this.versions = versions;
 		this.reviews = reviews;
 		this.authors = authors;
 		this.access = access;
+		this.drafts = drafts;
+		this.previewTurns = previewTurns;
 	}
 
 	/**
@@ -78,10 +89,29 @@ public class ReviewManuscriptService {
 
 		StoryVersionView version = this.versions.findByVersionId(versionId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		Optional<StoryDraft> draft = this.drafts.findFirstByStoryIdOrderByUpdatedAtDesc(storyId);
 		return new ReviewManuscript(storyId, header.title(), header.shortDesc(), header.worldIntro(),
 				header.reviewStatus(), header.visibility(), header.createdAt(),
 				displayNameOf(header.authorRef()), version.worldPrompt(), charactersOf(version),
-				chaptersOf(version), endingsOf(versionId, version), autoCheckOf(storyId));
+				chaptersOf(version), endingsOf(versionId, version), autoCheckOf(storyId),
+				draft.map(StoryDraft::getPreviewedAt).orElse(null), previewTurnsOf(draft));
+	}
+
+	/**
+	 * 미리보기가 실제로 내놓은 문장 (#332, §13-68).
+	 *
+	 * <p><b>비어 있는 것이 실패가 아니다.</b> 미리보기를 돌리지 않았거나 그것이 보관 기간을
+	 * 넘겨 파기되었다 (§13-37) — 어느 쪽이든 없다는 것이 사실이고, 여기서 404 를 내면
+	 * <b>검수 상세 전체가 열리지 않는다.</b>
+	 */
+	private List<ReviewManuscript.PreviewTurn> previewTurnsOf(Optional<StoryDraft> draft) {
+		UUID sessionId = draft.map(StoryDraft::getPreviewSessionId).orElse(null);
+		List<ReviewManuscript.PreviewTurn> turns = new ArrayList<>();
+		for (PreviewTurnsQuery.PreviewTurn turn : this.previewTurns.findBySession(sessionId)) {
+			turns.add(new ReviewManuscript.PreviewTurn(turn.turnNo(), turn.chapterNo(),
+					turn.speakerName(), turn.paragraphs(), turn.choices(), turn.createdAt()));
+		}
+		return turns;
 	}
 
 	/** <b>표시명만이다</b> (§13-7, I-3). 설정하지 않은 작성자는 이름이 없는 것이 사실이다. */

@@ -33,6 +33,14 @@ public interface TurnRepository extends JpaRepository<Turn, UUID> {
 	List<Turn> findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(UUID sessionId, Limit limit);
 
 	/**
+	 * 미리보기 세션의 턴 전부, <b>이야기 순서로</b> (#332).
+	 *
+	 * <p>상한을 두지 않는 것은 미리보기가 3턴이기 때문이다 (R8.13) — 세션에 박힌 상한이
+	 * 여기서 다시 필요하지 않다.
+	 */
+	List<Turn> findBySessionIdAndDeletedAtIsNullOrderByTurnNoAsc(UUID sessionId);
+
+	/**
 	 * 기록의 한 쪽 (§13.6, B-35).
 	 *
 	 * <p><b>역순이다.</b> 화면이 "위로 스크롤해 더 읽기"이므로 커서도 <b>지금 보고 있는 것보다

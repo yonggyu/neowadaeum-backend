@@ -63,14 +63,21 @@ public final class MyStoriesView {
 	 * 1~3일"이라는 안내는 <b>언제부터 세는지</b>를 알아야 뜻을 갖고, 신청한 날과 승인된 날은
 	 * 서로 다른 사실이다. 두 시각은 검수 이력에서 온다 (§13-57).
 	 *
+	 * <p><b>{@code draftId} 없이는 이 목록이 막다른 길이다</b> (#340). "이어서 작성"도
+	 * 반려 사유 자세히 보기({@code GET /authoring/drafts/{draftId}/review})도 원고 id 를
+	 * 요구하는데, 화면이 제목 같은 것으로 짝지으면 <b>같은 제목의 원고가 둘일 때 남의
+	 * 것으로 보낸다</b> — 작품과 원고를 잇는 규칙은 서버가 갖는다.
+	 *
+	 * @param draftId       이 작품을 발행한 원고. <b>{@code null} 일 수 있다</b> — 미리보기가
+	 *                      만든 임시 작품은 원고와 연결되지 않는다 (§13-5)
 	 * @param rejectReasons <b>카테고리만</b> (R8.7)
 	 * @param playCount     플레이된 횟수. play 스토어에서 온다 (§5.3)
 	 * @param submittedAt   검수를 요청한 시각. 요청한 적이 없으면 {@code null}
 	 * @param reviewedAt    그 회차에서 사람이 마지막으로 판정한 시각. 아직 없으면 {@code null}
 	 */
-	public record StoryItem(UUID storyId, String title, String coverImage, String visibility,
-			String reviewStatus, List<String> rejectReasons, long playCount, Instant updatedAt,
-			Instant submittedAt, Instant reviewedAt) {
+	public record StoryItem(UUID storyId, UUID draftId, String title, String coverImage,
+			String visibility, String reviewStatus, List<String> rejectReasons, long playCount,
+			Instant updatedAt, Instant submittedAt, Instant reviewedAt) {
 
 		public StoryItem {
 			rejectReasons = List.copyOf(rejectReasons == null ? List.of() : rejectReasons);

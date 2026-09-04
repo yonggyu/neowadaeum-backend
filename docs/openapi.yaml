@@ -784,6 +784,23 @@ paths:
       description: |
         5단계 입력이다 (§8.1). `safetyState` 가 `blocked` 이면 **서버가 다음 단계 진행을 거부한다** (R8.3).
         클라이언트 검증에만 의존하지 않는다.
+
+        **고른 조건이 여기로 저장된다** (#326, §13-69). `payload` 의 `chapters[]` · `endings[]`
+        각 항목이 `condition: {templateKey, params}` 를 실을 수 있다 — 형태는
+        `ConditionSelection` 이고, 템플릿 목록과 각 템플릿이 요구하는 입력은
+        `getAuthoringMetadata` 가 선언한다 (§13-56).
+
+        **조건식 JSON 을 보내지 않는다.** 서버가 템플릿과 값으로 조립한다 — 클라이언트가 만든
+        구조를 그대로 평가기에 먹이면 그것이 곧 DSL 입력면이 되고, R7.16 이 정한 것은 *템플릿
+        선택만* 이다 (I-1 이 `choiceId` 에 대해 세운 것과 같은 이유).
+
+        **이름은 이 원고가 선언한 것이어야 한다.** `payload` 의 `characters[].name` 과 `flags[]`
+        가 그 목록이며, 거기 없는 이름을 가리키면 `400` 이다 — 없는 인물을 가리키는 조건은
+        평가기에서 조용히 거짓이 되고 그 챕터·엔딩은 **영원히 도달되지 않는다.** 발행까지
+        미루면 작성자는 *왜 그 엔딩이 안 나오는지* 를 끝내 알지 못한다.
+
+        같은 목록이 `story_version.state_schema` 로 발행된다 (R4.1) — 조건이 보는 이름과
+        화이트리스트에 선언되는 이름이 갈라지면 검증을 통과한 조건이 런타임에 거짓이 된다.
       x-implemented-by: B-51
       parameters:
         - $ref: '#/components/parameters/DraftId'
@@ -1267,6 +1284,60 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
   # ── §14 Admin — 역할·IP·2FA 를 모두 통과해야 한다 (S-4) ──────
+  /api/v1/admin/sessions:
+    get:
+      tags: [admin]
+      operationId: listAdminSessions
+      summary: 세션 찾기
+      description: |
+        Debug 콘솔에 들어가는 문이다 (#339). `getSessionDebug` 는 **`sessionId` 를 이미 아는
+        사람만** 부를 수 있어, 콘솔은 URL 로 직접 열어야 들어갔다.
+
+        **디버그와 다른 층이다 — 그 차이가 이 경로의 존재 이유다.** 디버그는 원문(게임 상태
+        JSON · 본문 · 프롬프트 · 응답)을 열고, **읽을 때마다 `access_audit_log` 에 한 줄을
+        남긴다** (R12.3, S-5). 목록이 그 층에 있으면 **열어 본 적 없는 세션이 열람 기록에
+        남고**, 목록을 그린 것만으로 스무 줄이 생기면 그 로그는 더 이상 *"이 관리자가 이
+        세션을 봤다"* 를 말하지 않는다.
+
+        그래서 이 경로가 주는 것은 **식별자와 메타데이터뿐**이다. 원문은 하나도 없고,
+        **열람 감사를 남기지 않는다.** 관리자 행위 기록(`admin_audit_log`, R14.5)은 남는다 —
+        다른 표, 다른 뜻이다.
+
+        **세 조건은 여기서도 AND 다** (S-4).
+
+        지운 세션도 보인다 — `deletedAt` 이 그 사실을 말한다. 미리보기 세션도 보인다
+        (`testSession`) — 목록에서 실제 플레이와 섞으면 그것을 사용자 행동으로 읽게 된다.
+
+        `playerRef` 는 응답에 없다 (I-3).
+      x-implemented-by: B-41
+      parameters:
+        - $ref: '#/components/parameters/AdminStepUp'
+        - name: storyId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: 작품으로 좁힌다. 콘솔에서 가장 자주 하는 일이다
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 직전 응답의 `nextCursor`. 없으면 최신부터.
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 세션 한 쪽. 최근에 움직인 것부터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/admin/sessions/{sessionId}/debug:
     get:
       tags: [admin]
@@ -1593,9 +1664,12 @@ paths:
 
         **작성자는 표시명으로만 온다** (§13-7, I-3). `player_ref` 는 이 응답에 나가지 않는다.
 
-        **미리보기 3턴은 담기지 않는다.** 미리보기는 임시 `draft` · `private` 작품과 그 세션을
-        따로 만들고 (§13-5), 제출은 그것과 **별개의 작품**을 발행한다 — 검수 대상 작품에서 그
-        턴으로 가는 길이 없다. 있는 척하는 필드를 두는 대신 비워 두고 §13-61 에 적었다.
+        **미리보기 3턴을 담는다** (#332, §13-68). 미리보기는 여전히 임시 `draft` · `private`
+        작품과 그 세션을 따로 만들지만 (§13-5), 이제 **원고가 그 세션을 기억하므로** 원고를
+        거쳐 갈 수 있다 — 검수자가 *"이 작품이 실제로 어떤 문장을 내놓는가"* 를 보는 자리다.
+
+        **비어 있을 수 있다.** 작성자가 미리보기를 돌리지 않았거나, 돌린 것이 보관 기간을
+        넘겨 파기되었다 (§13-37). `previewedAt` 이 얼마나 오래된 미리보기인지를 말한다.
 
         **가장 마지막 버전을 본다** (R8.8). 승인이 현재로 만드는 것이 그 버전이므로, 판정과
         열람이 다른 버전을 보면 승인된 적 없는 원고가 열린다.
@@ -2886,12 +2960,24 @@ components:
 
     MyStoryItem:
       type: object
-      required: [storyId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount, updatedAt,
-                 submittedAt, reviewedAt]
+      required: [storyId, draftId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount,
+                 updatedAt, submittedAt, reviewedAt]
       properties:
         storyId:
           type: string
           format: uuid
+        draftId:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            이 작품을 발행한 **원고** (#340). `/authoring/drafts/{draftId}` 로 이어서 쓰고,
+            `GET /authoring/drafts/{draftId}/review` 로 반려 사유를 자세히 본다.
+
+            **작품과 원고를 잇는 규칙은 서버가 갖는다.** 화면이 제목 같은 것으로 짝지으면
+            같은 제목의 원고가 둘일 때 조용히 남의 것으로 보낸다 — 제목은 식별자가 아니다.
+
+            **`null`** — 원고 없이 존재하는 작품이다. 미리보기가 만든 임시 작품이 그렇다
+            (§13-5) — 그 작품은 원고와 연결되지 않은 채 파기를 기다린다 (§13-37).
         title:
           type: string
         coverImage:
@@ -2961,6 +3047,37 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    ConditionSelection:
+      type: object
+      description: |
+        작성자가 고른 조건 하나 (R7.16, §13-56, §13-69).
+
+        **조건식 JSON 이 아니다.** 오는 것은 *고른 것* 이고 조립은 서버가 한다 — 클라이언트가
+        만든 구조를 그대로 조건 평가기에 먹이면 그것이 곧 DSL 입력면이 되고, 쓸 수 있는 사람이
+        평가기의 미정의 동작을 찾아낸다 (I-1 이 `choiceId` 에 대해 세운 것과 같은 이유).
+
+        `payload` 의 `chapters[].condition` · `endings[].condition` 자리에 온다. **조건 없음은
+        오류가 아니다** — 챕터는 조건 없이 이어질 수 있고, 기본 엔딩은 조건이 없어야 한다
+        (§13-16).
+      required: [templateKey, params]
+      properties:
+        templateKey:
+          type: string
+          enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
+          description: |
+            `getAuthoringMetadata` 가 선언한 키 (§13-56). **목록에 없는 키는 `400` 이다** —
+            받아 두면 조용히 거짓이 되는 조건이 발행된다.
+        params:
+          type: object
+          additionalProperties: true
+          description: |
+            그 템플릿이 요구하는 값들. 이름과 형은 `getAuthoringMetadata` 의
+            `parameters[]` 가 선언한다.
+
+            - `character` — `payload.characters[].name` 중 하나
+            - `flag` — `payload.flags[]` 중 하나
+            - `threshold` — 정수. **문자열로 온 숫자를 받지 않는다** (형이 둘이 된다)
 
     DraftPatchRequest:
       type: object
@@ -3219,6 +3336,9 @@ components:
             선언한다** (#282, §13-56). 예를 들어 `affinity_at_least` 는 대상 인물과 임계값
             둘을 더 요구하며, 그 둘은 이 키 안에 접혀 있지 않다.
 
+            **AI 초안은 조건을 고르지 않는다** — 이 값은 초안 응답에서 늘 `null` 이다. 고른
+            조건은 `patchDraft` 의 `payload` 에 `ConditionSelection` 으로 저장된다 (#326).
+
     OutlineEnding:
       type: object
       required: [endingNo, label, isDefault]
@@ -3371,6 +3491,60 @@ components:
           type: [string, 'null']
 
     # ── §14 Admin ────────────────────────────────────────────
+    AdminSessionListResponse:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
+      type: object
+      description: |
+        세션 목록 한 쪽 (#339). 봉투는 다른 목록과 같다.
+      required: [items, nextCursor, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminSessionListItem'
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
+
+    AdminSessionListItem:
+      type: object
+      description: |
+        **식별자와 메타데이터뿐이다.** 원문(게임 상태 · 본문 · 선택지 · 프롬프트)은 하나도 없다 —
+        그것을 여는 것은 `getSessionDebug` 이고, 그 경로는 읽을 때마다 감사를 남긴다 (R12.3).
+
+        **`playerRef` 가 없다** (I-3).
+      required: [sessionId, storyId, storyVersionId, storyTitle, status, turnNo, chapterNo,
+                 testSession, deletedAt, createdAt, updatedAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        storyId: { type: string, format: uuid }
+        storyVersionId:
+          type: string
+          format: uuid
+          description: 세션이 고정한 버전 (I-4). 작품 이름은 **이 값으로** 찾는다
+        storyTitle:
+          type: [string, 'null']
+          description: |
+            **`null`** — 지워진 작품의 세션이다 (§13-58). 세션은 남고 작품이 없어진 것이므로
+            이름을 지어내지 않는다.
+        status:
+          type: string
+          enum: [active, completed, abandoned, expired]
+        turnNo: { type: integer }
+        chapterNo: { type: integer }
+        testSession:
+          type: boolean
+          description: |
+            미리보기 세션인가 (I-18). 목록에서 실제 플레이와 섞이면 그것을 사용자 행동으로
+            읽게 된다.
+        deletedAt:
+          type: [string, 'null']
+          format: date-time
+          description: 지워진 세션이면 그 시각. 디버그는 **지워졌다는 사실**도 본다
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
     AdminSessionDebugResponse:
       x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
@@ -3699,10 +3873,11 @@ components:
 
         **`playerRef` 가 없다.** 작성자는 표시명으로만 온다 (§13-7, I-3).
 
-        **미리보기 3턴이 없다.** 미리보기는 다른 작품을 만들고 (§13-5) 검수 대상 작품에서
-        그 턴으로 가는 길이 없다.
+        **미리보기 3턴을 담는다** (#332, §13-68). 원고가 마지막 미리보기 세션을 기억하므로
+        원고를 거쳐 그 턴에 닿는다. 없으면 빈 배열이다 — 지어내지 않는다.
       required: [storyId, title, shortDesc, worldIntro, reviewStatus, visibility, submittedAt,
-                 authorDisplayName, worldPrompt, characters, chapters, endings, autoCheck]
+                 authorDisplayName, worldPrompt, characters, chapters, endings, autoCheck,
+                 previewedAt, previewTurns]
       properties:
         storyId: { type: string, format: uuid }
         title: { type: string }
@@ -3738,6 +3913,24 @@ components:
             - $ref: '#/components/schemas/AutoCheckSummary'
             - type: 'null'
           description: 자동 검수 기록이 없으면 `null`
+        previewedAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            마지막 미리보기 시각 (#332). **`null`** — 미리보기를 돌린 적이 없거나 그 기록이
+            파기되었다.
+
+            오래된 미리보기는 **지금 원고와 다른 문장**을 보여 줄 수 있다. 검수자가 그것을
+            알아야 하므로 시각을 함께 준다.
+        previewTurns:
+          type: array
+          description: |
+            그 미리보기가 실제로 내놓은 턴 (#332, R8.13 — 최대 3턴). 이야기 순서다.
+
+            **빈 배열이 실패가 아니다** — 미리보기를 돌리지 않았거나 보관 기간을 넘겨
+            파기되었다 (§13-37).
+          items:
+            $ref: '#/components/schemas/ManuscriptPreviewTurn'
 
     ManuscriptCharacter:
       type: object
@@ -3748,6 +3941,26 @@ components:
       properties:
         name: { type: string }
         persona: { type: string }
+
+    ManuscriptPreviewTurn:
+      type: object
+      description: |
+        미리보기가 실제로 내놓은 턴 (#332).
+
+        **가공하지 않는다.** `paragraphs` 와 `choices` 는 저장된 JSON 원문 그대로다 — 검수는
+        *독자가 볼 것*을 보는 자리이고, 다시 만들면 그것이 실제로 나간 문장인지 알 수 없게 된다.
+      required: [turnNo, chapterNo, speakerName, paragraphs, choices, createdAt]
+      properties:
+        turnNo: { type: integer }
+        chapterNo: { type: integer }
+        speakerName: { type: [string, 'null'] }
+        paragraphs:
+          type: string
+          description: 문단 배열의 JSON 원문 (R5.1)
+        choices:
+          type: string
+          description: 그 턴이 발급한 선택지 배열의 JSON 원문. `choiceId` 는 서버가 발급한 값이다 (I-1)
+        createdAt: { type: string, format: date-time }
 
     ManuscriptChapter:
       type: object

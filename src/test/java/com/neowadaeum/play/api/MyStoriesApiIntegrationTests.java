@@ -64,6 +64,8 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 
 	private final List<UUID> createdStories = new ArrayList<>();
 
+	private final List<UUID> createdDrafts = new ArrayList<>();
+
 	@BeforeEach
 	void clearPlayHistory() {
 		this.snapshots.deleteAll();
@@ -74,6 +76,14 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 	@AfterEach
 	void removeCreated() throws SQLException {
 		try (Connection connection = this.catalog.getConnection()) {
+			// 원고가 작품을 가리키므로 원고를 먼저 지운다.
+			for (UUID id : this.createdDrafts) {
+				try (PreparedStatement statement = connection
+						.prepareStatement("DELETE FROM story_draft WHERE id = ?")) {
+					statement.setObject(1, id);
+					statement.executeUpdate();
+				}
+			}
 			for (UUID id : this.createdStories) {
 				try (PreparedStatement statement = connection
 						.prepareStatement("DELETE FROM story WHERE id = ?")) {
@@ -82,6 +92,7 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 				}
 			}
 		}
+		this.createdDrafts.clear();
 		this.createdStories.clear();
 	}
 
@@ -227,6 +238,33 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 		assertThat(item.path("playCount").asLong()).isEqualTo(1);
 	}
 
+	/**
+	 * <b>#340 — 작품에서 원고로 가는 길은 서버가 준다.</b>
+	 *
+	 * <p>이 값이 없으면 "이어서 작성"도 {@code getDraftReview} 도 부를 수 없고, 화면이 제목
+	 * 같은 것으로 짝지으면 같은 제목의 원고가 둘일 때 <b>조용히 남의 것으로 보낸다.</b>
+	 */
+	@Test
+	void S340_my_story_carries_the_draft_that_published_it() throws Exception {
+		UUID storyId = insertStory(TEST_PLAYER_REF, "private", "rejected");
+		UUID draftId = insertDraft(TEST_PLAYER_REF, storyId);
+
+		assertThat(itemOf(storyId).path("draftId").asString()).isEqualTo(draftId.toString());
+	}
+
+	/**
+	 * <b>#340 · §13-5 — 원고 없이 존재하는 작품이 있다.</b>
+	 *
+	 * <p>미리보기는 임시 작품을 발행하고 원고와 잇지 않는다. 그런 줄에 아무 원고나 붙이면
+	 * 화면은 <b>남의 원고를 열게</b> 된다 — 없다고 말하는 편이 사실이다.
+	 */
+	@Test
+	void S13_5_a_story_without_a_draft_reports_null() throws Exception {
+		UUID storyId = insertStory(TEST_PLAYER_REF, "private", "draft");
+
+		assertThat(itemOf(storyId).path("draftId").isNull()).isTrue();
+	}
+
 	/** 토큰 없이는 401 이다. */
 	@Test
 	void S34_both_tabs_require_a_token() throws Exception {
@@ -300,6 +338,33 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 		assertThat(result.getResponse().getStatus()).isEqualTo(201);
 		return UUID.fromString(JSON.readTree(result.getResponse().getContentAsString())
 				.path("sessionId").asString());
+	}
+
+	private JsonNode itemOf(UUID storyId) throws Exception {
+		return myStories().path("items").valueStream()
+				.filter(node -> storyId.toString().equals(node.path("storyId").asString()))
+				.findFirst()
+				.orElseThrow();
+	}
+
+	/** 제출이 만드는 연결({@code DraftService.linkStory})을 그대로 흉내 낸다. */
+	private UUID insertDraft(UUID authorRef, UUID storyId) {
+		UUID id = UUID.randomUUID();
+		try (Connection connection = this.catalog.getConnection();
+				PreparedStatement statement = connection.prepareStatement("""
+						INSERT INTO story_draft (id, author_ref, story_id, step, payload)
+						VALUES (?, ?, ?, 5, '{}'::JSONB)
+						""")) {
+			statement.setObject(1, id);
+			statement.setObject(2, authorRef);
+			statement.setObject(3, storyId);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
+		this.createdDrafts.add(id);
+		return id;
 	}
 
 	private UUID insertStory(UUID authorRef) {
