@@ -784,6 +784,23 @@ paths:
       description: |
         5단계 입력이다 (§8.1). `safetyState` 가 `blocked` 이면 **서버가 다음 단계 진행을 거부한다** (R8.3).
         클라이언트 검증에만 의존하지 않는다.
+
+        **고른 조건이 여기로 저장된다** (#326, §13-69). `payload` 의 `chapters[]` · `endings[]`
+        각 항목이 `condition: {templateKey, params}` 를 실을 수 있다 — 형태는
+        `ConditionSelection` 이고, 템플릿 목록과 각 템플릿이 요구하는 입력은
+        `getAuthoringMetadata` 가 선언한다 (§13-56).
+
+        **조건식 JSON 을 보내지 않는다.** 서버가 템플릿과 값으로 조립한다 — 클라이언트가 만든
+        구조를 그대로 평가기에 먹이면 그것이 곧 DSL 입력면이 되고, R7.16 이 정한 것은 *템플릿
+        선택만* 이다 (I-1 이 `choiceId` 에 대해 세운 것과 같은 이유).
+
+        **이름은 이 원고가 선언한 것이어야 한다.** `payload` 의 `characters[].name` 과 `flags[]`
+        가 그 목록이며, 거기 없는 이름을 가리키면 `400` 이다 — 없는 인물을 가리키는 조건은
+        평가기에서 조용히 거짓이 되고 그 챕터·엔딩은 **영원히 도달되지 않는다.** 발행까지
+        미루면 작성자는 *왜 그 엔딩이 안 나오는지* 를 끝내 알지 못한다.
+
+        같은 목록이 `story_version.state_schema` 로 발행된다 (R4.1) — 조건이 보는 이름과
+        화이트리스트에 선언되는 이름이 갈라지면 검증을 통과한 조건이 런타임에 거짓이 된다.
       x-implemented-by: B-51
       parameters:
         - $ref: '#/components/parameters/DraftId'
@@ -3031,6 +3048,37 @@ components:
           type: string
           format: date-time
 
+    ConditionSelection:
+      type: object
+      description: |
+        작성자가 고른 조건 하나 (R7.16, §13-56, §13-69).
+
+        **조건식 JSON 이 아니다.** 오는 것은 *고른 것* 이고 조립은 서버가 한다 — 클라이언트가
+        만든 구조를 그대로 조건 평가기에 먹이면 그것이 곧 DSL 입력면이 되고, 쓸 수 있는 사람이
+        평가기의 미정의 동작을 찾아낸다 (I-1 이 `choiceId` 에 대해 세운 것과 같은 이유).
+
+        `payload` 의 `chapters[].condition` · `endings[].condition` 자리에 온다. **조건 없음은
+        오류가 아니다** — 챕터는 조건 없이 이어질 수 있고, 기본 엔딩은 조건이 없어야 한다
+        (§13-16).
+      required: [templateKey, params]
+      properties:
+        templateKey:
+          type: string
+          enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
+          description: |
+            `getAuthoringMetadata` 가 선언한 키 (§13-56). **목록에 없는 키는 `400` 이다** —
+            받아 두면 조용히 거짓이 되는 조건이 발행된다.
+        params:
+          type: object
+          additionalProperties: true
+          description: |
+            그 템플릿이 요구하는 값들. 이름과 형은 `getAuthoringMetadata` 의
+            `parameters[]` 가 선언한다.
+
+            - `character` — `payload.characters[].name` 중 하나
+            - `flag` — `payload.flags[]` 중 하나
+            - `threshold` — 정수. **문자열로 온 숫자를 받지 않는다** (형이 둘이 된다)
+
     DraftPatchRequest:
       type: object
       required: [step, payload]
@@ -3287,6 +3335,9 @@ components:
             **키만으로는 조건이 완성되지 않는다 — 필요한 입력은 `getAuthoringMetadata` 가
             선언한다** (#282, §13-56). 예를 들어 `affinity_at_least` 는 대상 인물과 임계값
             둘을 더 요구하며, 그 둘은 이 키 안에 접혀 있지 않다.
+
+            **AI 초안은 조건을 고르지 않는다** — 이 값은 초안 응답에서 늘 `null` 이다. 고른
+            조건은 `patchDraft` 의 `payload` 에 `ConditionSelection` 으로 저장된다 (#326).
 
     OutlineEnding:
       type: object
