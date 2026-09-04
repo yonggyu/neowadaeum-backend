@@ -22,6 +22,13 @@ import tools.jackson.databind.json.JsonMapper;
  * <b>같은 목록</b>이어야 하며, 두 자리에서 따로 읽으면 <b>검증을 통과한 조건이 런타임에
  * 거짓</b>이 된다 ({@link DraftStateSchema}).
  *
+ * <p><b>이름은 계약이 정한다</b> (#354). 그 전까지 {@code payload} 는 계약에서
+ * {@code additionalProperties: true} 였고 <b>아무도 필드 이름을 정해 주지 않았다</b> — 그래서
+ * 화면과 발행이 각자 정했고 갈라졌다. 지금 읽는 이름은 <b>발행물 계약이 이미 쓰는 이름</b>이다
+ * ({@code shortDescription} 은 {@code StoryDetail} 의 것, {@code oneLine} · {@code portraitImage}
+ * 는 {@code CharacterCard} 의 것) — 원고와 발행물이 같은 말을 쓰면 게시 시점에 옮겨 적을 것이
+ * 없고, <b>옮김이 없으면 빠뜨릴 것도 없다.</b>
+ *
  * <p><b>모자란 것은 채우지 않고 거절한다.</b> 빠진 챕터를 지어내면 작성자는 자기가 쓰지 않은
  * 작품을 미리 보게 된다.
  */
@@ -62,7 +69,10 @@ public final class DraftStoryDefinition {
 	public static Publishable from(UUID authorRef, String payload) {
 		JsonNode root = parse(payload);
 		String title = text(root, "title");
-		String worldPrompt = text(root, "worldPrompt");
+		// 매 턴 모델에게 들어가는 문장이다. 화면은 이것을 **설정 상세**라고 부르고
+		// (와이어프레임 3d), 발행물은 `worldPrompt` 라고 부른다 — 이름이 다른 것은
+		// 독자에게 보이는 값이 아니기 때문이며, 옮기는 자리는 여기 하나다 (#354).
+		String worldPrompt = text(root, "settingDetail");
 		DraftStateSchema schema = DraftStateSchema.from(root);
 
 		List<StoryDefinition.Chapter> chapters = new ArrayList<>();
@@ -77,8 +87,9 @@ public final class DraftStoryDefinition {
 		}
 
 		StoryDefinition definition = new StoryDefinition(authorRef, title,
-				root.path("shortDesc").asString(null), root.path("worldIntro").asString(null),
-				worldPrompt, "affinity", chapters, endingsOf(root, schema));
+				root.path("shortDescription").asString(null), root.path("worldIntro").asString(null),
+				worldPrompt, "affinity", chapters, endingsOf(root, schema), charactersOf(root),
+				genreKeysOf(root), root.path("coverImage").asString(null));
 		return new Publishable(definition, schema.toJson());
 	}
 
@@ -100,13 +111,63 @@ public final class DraftStoryDefinition {
 	}
 
 	/**
+	 * 작성자가 고른 장르의 키.
+	 *
+	 * <p><b>목록의 정본은 {@code genre} 표다</b> (§13-56) — 화면이 고른 것은 라벨이 아니라 키이고,
+	 * 표에 없는 키는 발행이 거절한다. 조용히 빼면 <b>작성자가 고른 장르가 사라진 채</b> 발행되고,
+	 * 그 작품은 자기가 뜬다고 생각한 섹션에 뜨지 않는다.
+	 */
+	private static List<String> genreKeysOf(JsonNode root) {
+		List<String> keys = new ArrayList<>();
+		for (JsonNode genre : root.path("genres")) {
+			String key = genre.asString(null);
+			if (key != null && !key.isBlank()) {
+				keys.add(key);
+			}
+		}
+		return keys;
+	}
+
+	/**
+	 * 등장인물 (#350).
+	 *
+	 * <p><b>이름이 빈 항목은 인물이 아니다.</b> 화면이 "인물 추가"를 누르면 빈 줄이 먼저
+	 * 생기므로(프론트 {@code emptyCharacter}), 그것을 그대로 발행하면 <b>이름 없는 인물</b>이
+	 * 카탈로그에 남는다.
+	 *
+	 * <p><b>페르소나가 비어 있으면 한 줄 소개가 대신 간다</b> (소유자 결정). 그 자리는
+	 * {@code NOT NULL} 이고 매 턴 모델에게 들어가는 문장이다 — <b>서버가 문장을 지어내지는
+	 * 않는다</b>: 작성자가 쓴 것 중 가장 가까운 것을 쓸 뿐이고, 둘 다 비어 있으면 빈 채로 간다.
+	 * 그것이 사실이며, 검수자가 그 상태를 보고 판정한다.
+	 *
+	 * <p><b>{@code visibleInDetail} 은 참이다.</b> 숨은 인물을 고르는 자리가 아직 화면에 없다 —
+	 * 없는 선택을 서버가 대신 하지 않는다. 필요가 생기면 그때 원고가 그 값을 싣는다.
+	 */
+	private static List<StoryDefinition.Character> charactersOf(JsonNode root) {
+		List<StoryDefinition.Character> characters = new ArrayList<>();
+		int displayOrder = 1;
+		for (JsonNode character : root.path("characters")) {
+			String name = character.path("name").asString(null);
+			if (name == null || name.isBlank()) {
+				continue;
+			}
+			String oneLine = character.path("oneLine").asString("");
+			String persona = character.path("persona").asString("");
+			characters.add(new StoryDefinition.Character(displayOrder++, name, oneLine,
+					persona.isBlank() ? oneLine : persona,
+					character.path("portraitImage").asString(null), true));
+		}
+		return characters;
+	}
+
+	/**
 	 * <b>조건은 템플릿에서 고른 것이다</b> (R7.16, #326). 조립은 서버가 한다 — 작성자가 보낸
 	 * 구조를 그대로 평가기에 먹이면 그것이 곧 DSL 입력면이 된다 (I-1 과 같은 이유).
 	 *
 	 * <p><b>고르지 않았으면 {@code null} 이다.</b> 챕터는 조건 없이 이어질 수 있다.
 	 */
 	private static String conditionOf(JsonNode node, DraftStateSchema schema) {
-		return ConditionSelection.read(node.path("condition"))
+		return ConditionSelection.read(node)
 				.map(selection -> ConditionAssembler.assemble(selection, schema.characters(),
 						schema.flags()))
 				.orElse(null);
