@@ -124,6 +124,17 @@ public class DraftService {
 	}
 
 	/** 원고가 만든 작품을 가리키게 한다 (B-54). */
+	/**
+	 * 마지막 미리보기를 원고에 붙인다 (#332).
+	 *
+	 * <p><b>붙이지 않으면 그 작품과 세션은 고아가 된다</b> — 작품 id 로도 원고에서도 갈 수 없고,
+	 * 검수자는 <b>프롬프트만 읽고</b> 판정하게 된다.
+	 */
+	public void linkPreview(UUID authorRef, UUID draftId, UUID previewStoryId, UUID previewSessionId) {
+		this.transactions.executeWithoutResult(status -> requireOwned(authorRef, draftId)
+				.linkPreview(previewStoryId, previewSessionId, Instant.now(this.clock)));
+	}
+
 	public void linkStory(UUID authorRef, UUID draftId, UUID storyId) {
 		this.transactions.executeWithoutResult(status -> requireOwned(authorRef, draftId)
 				.linkStory(storyId, Instant.now(this.clock)));

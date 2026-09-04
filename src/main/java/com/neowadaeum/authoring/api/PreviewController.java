@@ -31,6 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
  * <b>현재</b>가 아니다 — {@code markCurrent} 는 게시(B-56)가 부른다.
  *
  * <p><b>3턴이다</b> (R8.13). 상한은 세션에 박히고 서버가 막는다.
+ *
+ * <p><b>만든 것을 원고에 붙인다</b> (#332). 붙이지 않으면 임시 작품과 세션은 어디에도 연결되지
+ * 않은 채 파기를 기다리고, 검수자는 <b>프롬프트만 읽고</b> 판정하게 된다.
  */
 @RestController
 @RequestMapping("/api/v1/authoring/drafts/{draftId}/preview")
@@ -80,6 +83,10 @@ public class PreviewController {
 
 		TestSessionStarter.TestSession session = this.sessions.start(authorRef, published.storyId(),
 				published.versionId(), PREVIEW_TURN_LIMIT);
+
+		// #332 — 붙이지 않으면 이 작품과 세션은 **어디에도 연결되지 않은 채** 파기를 기다린다.
+		// 검수자가 "이 작품이 실제로 어떤 문장을 내놓는가" 를 볼 유일한 길이 이 한 줄이다.
+		this.drafts.linkPreview(authorRef, draftId, published.storyId(), session.sessionId());
 		return new PreviewResponse(session.sessionId(), session.turnNo(), PREVIEW_TURN_LIMIT);
 	}
 

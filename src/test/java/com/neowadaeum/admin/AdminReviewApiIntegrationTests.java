@@ -17,6 +17,9 @@ import com.neowadaeum.authoring.report.ReportReason;
 import com.neowadaeum.authoring.report.ReportTarget;
 import com.neowadaeum.authoring.review.StoryReviewRepository;
 import com.neowadaeum.identity.access.AdminAccessGuard;
+import com.neowadaeum.play.domain.PlaySession;
+import com.neowadaeum.play.domain.SafetyVerdict;
+import com.neowadaeum.play.domain.Turn;
 import com.neowadaeum.identity.domain.User;
 import com.neowadaeum.identity.repository.UserRepository;
 import java.time.Instant;
@@ -32,6 +35,7 @@ import org.springframework.data.domain.Limit;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -65,6 +69,13 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	@Autowired
 	private StoryDraftRepository drafts;
 
+	/** #332 — 미리보기 턴은 play 스토어의 것이다. 검수 상세가 원고를 거쳐 그것에 닿는다. */
+	@Autowired
+	private com.neowadaeum.play.repository.PlaySessionRepository playSessions;
+
+	@Autowired
+	private com.neowadaeum.play.repository.TurnRepository turns;
+
 	@Autowired
 	private StoryReviewRepository reviews;
 
@@ -85,8 +96,16 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	@Qualifier("catalogDataSource")
 	private DataSource catalog;
 
+	/** #332 — 미리보기 세션은 play 스토어에 있다. 뒷정리도 그쪽에서 한다. */
+	private final java.util.List<UUID> createdPreviewSessions = new java.util.ArrayList<>();
+
 	@AfterEach
 	void clear() {
+		this.createdPreviewSessions.forEach(sessionId -> {
+			this.turns.deleteAll(this.turns.findBySessionIdAndDeletedAtIsNullOrderByTurnNoAsc(sessionId));
+			this.playSessions.deleteById(sessionId);
+		});
+		this.createdPreviewSessions.clear();
 		JdbcClient jdbc = JdbcClient.create(this.catalog);
 		this.reviews.findAll().forEach(review -> {
 			UUID storyId = review.getStoryId();
@@ -470,6 +489,78 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	}
 
 	/** 작성자가 {@code public} 으로 제출한다 — 그것이 큐에 들어오는 유일한 길이다 (R8.6). */
+	/**
+	 * <b>#332 · §13-68 — 검수자가 미리보기 턴을 본다.</b>
+	 *
+	 * <p>미리보기는 여전히 다른 작품을 만들지만 (§13-5) 원고가 그 세션을 기억하므로 원고를
+	 * 거쳐 갈 수 있다. 이것 없이 내리는 승인은 <b>프롬프트만 읽고 내린 승인</b>이다.
+	 */
+	@Test
+	void S13_68_the_manuscript_carries_the_preview_turns() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		givenPreviewOn(storyId);
+
+		JsonNode body = JSON.readTree(this.mvc
+				.perform(get("/api/v1/admin/reviews/%s".formatted(storyId))
+						.with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUpToken()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+
+		assertThat(body.path("previewTurns")).hasSize(1);
+		assertThat(body.path("previewTurns").get(0).path("paragraphs").asString())
+				.contains("미리보기 본문");
+		assertThat(body.path("previewedAt").isNull()).isFalse();
+	}
+
+	/**
+	 * <b>비어 있는 것이 실패가 아니다</b> (#332).
+	 *
+	 * <p>미리보기를 돌리지 않았거나 그것이 보관 기간을 넘겨 파기되었다 (§13-37). 여기서 404 를
+	 * 내면 <b>검수 상세 전체가 열리지 않는다.</b>
+	 */
+	@Test
+	void S13_68_a_manuscript_without_a_preview_opens_anyway() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+
+		JsonNode body = JSON.readTree(this.mvc
+				.perform(get("/api/v1/admin/reviews/%s".formatted(storyId))
+						.with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUpToken()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+
+		assertThat(body.path("previewTurns")).isEmpty();
+		assertThat(body.path("previewedAt").isNull()).isTrue();
+	}
+
+	/**
+	 * 미리보기가 만든 것을 원고에 붙인다 — {@code PreviewController} 가 하는 일을 그대로
+	 * 흉내 낸다. API 로 돌리면 시나리오 Provider 와 일일 상한이 이 테스트에 딸려 온다.
+	 */
+	private void givenPreviewOn(UUID storyId) {
+		UUID previewSessionId = givenPreviewSession();
+		JdbcClient.create(this.catalog).sql("""
+						UPDATE story_draft SET preview_story_id = ?, preview_session_id = ?,
+						                       previewed_at = NOW()
+						WHERE story_id = ?
+						""")
+				.params(UUID.randomUUID(), previewSessionId, storyId).update();
+	}
+
+	private UUID givenPreviewSession() {
+		Instant now = Instant.now();
+		PlaySession session = this.playSessions.save(PlaySession.start(UUID.randomUUID(),
+				UUID.randomUUID(), UUID.randomUUID(), "fixed", "scenario", true, now));
+		session.recordTurn(1, 1, now);
+		this.turns.save(Turn.create(new Turn.TurnDraft(session.getId(), 1, 1,
+				"[\"미리보기 본문\"]", "[]", null, false, false, null, SafetyVerdict.PASS, true, false),
+				now));
+		this.playSessions.saveAndFlush(session);
+		this.createdPreviewSessions.add(session.getId());
+		return session.getId();
+	}
+
 	private UUID givenPublicSubmission() throws Exception {
 		return givenPublicSubmission(UUID.randomUUID());
 	}

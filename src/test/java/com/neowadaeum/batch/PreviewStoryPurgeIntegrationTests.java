@@ -41,6 +41,10 @@ class PreviewStoryPurgeIntegrationTests extends ContainerTestBase {
 	@Autowired
 	private PreviewSessionPurge previewSessions;
 
+	/** §13-68 (#332) — 검수를 기다리는 원고가 가리키는 미리보기는 이번 회차에서 빠진다. */
+	@Autowired
+	private com.neowadaeum.common.spi.PreviewRetentionHold hold;
+
 	@Autowired
 	private RetentionProperties retention;
 
@@ -62,11 +66,17 @@ class PreviewStoryPurgeIntegrationTests extends ContainerTestBase {
 
 	private final List<UUID> createdSessions = new java.util.ArrayList<>();
 
+	private final List<UUID> createdDrafts = new java.util.ArrayList<>();
+
 	/** <b>내가 만든 것만 치운다.</b> 컨테이너는 한 벌이고 시드 작품이 그 안에 있다. */
 	@AfterEach
 	void clear() {
 		this.createdSessions.forEach(this::deleteSession);
 		this.createdSessions.clear();
+		// 원고가 작품을 가리키므로 원고를 먼저 지운다.
+		this.createdDrafts.forEach(id -> catalogJdbc()
+				.sql("DELETE FROM story_draft WHERE id = ?").param(id).update());
+		this.createdDrafts.clear();
 		this.createdStories.forEach(this::deleteStory);
 		this.createdStories.clear();
 	}
@@ -159,6 +169,72 @@ class PreviewStoryPurgeIntegrationTests extends ContainerTestBase {
 	 * <b>실제 발행 경로로 만든다.</b> 미리보기가 만드는 모양을 손으로 흉내 내면, 그 모양이
 	 * 바뀌었을 때 이 테스트만 통과하고 파기는 실패한다.
 	 */
+	/**
+	 * <b>§13-68 (#332) — 검수를 기다리는 미리보기는 남는다.</b>
+	 *
+	 * <p>30일은 <i>"원고가 남아 있으니 다시 부르면 된다"</i> 를 근거로 정해졌다. 검수자가 그
+	 * 턴을 본다면 그 근거는 성립하지 않는다 — 지우고 나면 검수 상세는 조용히 빈 자리를 그리고,
+	 * 그 침묵은 <i>이 작품은 아무 문장도 내놓지 않았다</i> 로 읽힌다.
+	 */
+	@Test
+	void S13_68_a_preview_awaiting_a_verdict_is_kept() {
+		UUID previewStory = givenPreviewStory(expired());
+		givenDraftPointing(previewStory, givenSubmittedStory("in_review"));
+
+		assertThat(this.hold.heldPreviewStories(this.previewStories.expiredPreviewStories()))
+				.contains(previewStory);
+	}
+
+	/**
+	 * <b>유예는 영구가 아니다</b> (§13-68).
+	 *
+	 * <p>판정이 나면 검수자가 볼 일이 끝났고, 작성자는 언제든 다시 부를 수 있다.
+	 */
+	@Test
+	void S13_68_once_the_verdict_lands_the_preview_is_purgeable_again() {
+		UUID previewStory = givenPreviewStory(expired());
+		givenDraftPointing(previewStory, givenSubmittedStory("approved"));
+
+		assertThat(this.hold.heldPreviewStories(this.previewStories.expiredPreviewStories()))
+				.doesNotContain(previewStory);
+	}
+
+	/**
+	 * <b>낸 적 없는 원고의 미리보기는 유예하지 않는다</b> (§13-68).
+	 *
+	 * <p>검수자가 볼 일이 없고, 30일을 정한 근거가 그대로 성립한다 (§13-37).
+	 */
+	@Test
+	void S13_68_a_preview_of_a_draft_never_submitted_is_not_held() {
+		UUID previewStory = givenPreviewStory(expired());
+		givenDraftPointing(previewStory, null);
+
+		assertThat(this.hold.heldPreviewStories(this.previewStories.expiredPreviewStories()))
+				.doesNotContain(previewStory);
+	}
+
+	private Instant expired() {
+		return Instant.now().minus(this.retention.previewStoryRetention()).minus(1, ChronoUnit.DAYS);
+	}
+
+	/** 제출된 작품 — 미리보기와 <b>별개의 작품</b>이다 (§13-5). */
+	private UUID givenSubmittedStory(String reviewStatus) {
+		UUID storyId = givenPreviewStory(Instant.now());
+		catalogJdbc().sql("UPDATE story SET review_status = ?, visibility = 'unlisted' WHERE id = ?")
+				.params(reviewStatus, storyId).update();
+		return storyId;
+	}
+
+	private void givenDraftPointing(UUID previewStoryId, UUID submittedStoryId) {
+		UUID draftId = UUID.randomUUID();
+		catalogJdbc().sql("""
+						INSERT INTO story_draft (id, author_ref, story_id, preview_story_id, step, payload)
+						VALUES (?, ?, ?, ?, 5, '{}'::JSONB)
+						""")
+				.params(draftId, UUID.randomUUID(), submittedStoryId, previewStoryId).update();
+		this.createdDrafts.add(draftId);
+	}
+
 	private UUID givenPreviewStory(Instant createdAt) {
 		StoryPublisher.PublishedVersion published = this.publisher.publishNew(
 				new StoryDefinition(UUID.randomUUID(), "미리보기 " + UUID.randomUUID(), "요약",
