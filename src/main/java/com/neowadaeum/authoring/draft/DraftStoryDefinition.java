@@ -88,7 +88,7 @@ public final class DraftStoryDefinition {
 
 		StoryDefinition definition = new StoryDefinition(authorRef, title,
 				root.path("shortDescription").asString(null), root.path("worldIntro").asString(null),
-				worldPrompt, "affinity", chapters, endingsOf(root, schema));
+				worldPrompt, "affinity", chapters, endingsOf(root, schema), charactersOf(root));
 		return new Publishable(definition, schema.toJson());
 	}
 
@@ -107,6 +107,38 @@ public final class DraftStoryDefinition {
 		DraftStateSchema schema = DraftStateSchema.from(root);
 		root.path("chapters").forEach(chapter -> conditionOf(chapter, schema));
 		root.path("endings").forEach(ending -> conditionOf(ending, schema));
+	}
+
+	/**
+	 * 등장인물 (#350).
+	 *
+	 * <p><b>이름이 빈 항목은 인물이 아니다.</b> 화면이 "인물 추가"를 누르면 빈 줄이 먼저
+	 * 생기므로(프론트 {@code emptyCharacter}), 그것을 그대로 발행하면 <b>이름 없는 인물</b>이
+	 * 카탈로그에 남는다.
+	 *
+	 * <p><b>페르소나가 비어 있으면 한 줄 소개가 대신 간다</b> (소유자 결정). 그 자리는
+	 * {@code NOT NULL} 이고 매 턴 모델에게 들어가는 문장이다 — <b>서버가 문장을 지어내지는
+	 * 않는다</b>: 작성자가 쓴 것 중 가장 가까운 것을 쓸 뿐이고, 둘 다 비어 있으면 빈 채로 간다.
+	 * 그것이 사실이며, 검수자가 그 상태를 보고 판정한다.
+	 *
+	 * <p><b>{@code visibleInDetail} 은 참이다.</b> 숨은 인물을 고르는 자리가 아직 화면에 없다 —
+	 * 없는 선택을 서버가 대신 하지 않는다. 필요가 생기면 그때 원고가 그 값을 싣는다.
+	 */
+	private static List<StoryDefinition.Character> charactersOf(JsonNode root) {
+		List<StoryDefinition.Character> characters = new ArrayList<>();
+		int displayOrder = 1;
+		for (JsonNode character : root.path("characters")) {
+			String name = character.path("name").asString(null);
+			if (name == null || name.isBlank()) {
+				continue;
+			}
+			String oneLine = character.path("oneLine").asString("");
+			String persona = character.path("persona").asString("");
+			characters.add(new StoryDefinition.Character(displayOrder++, name, oneLine,
+					persona.isBlank() ? oneLine : persona,
+					character.path("portraitImage").asString(null), true));
+		}
+		return characters;
 	}
 
 	/**

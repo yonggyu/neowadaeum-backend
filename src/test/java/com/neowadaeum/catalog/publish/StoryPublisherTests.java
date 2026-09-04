@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
+import com.neowadaeum.catalog.query.StoryVersionView;
 import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -44,7 +45,8 @@ class StoryPublisherTests extends ContainerTestBase {
 	void clear() {
 		JdbcClient jdbc = JdbcClient.create(this.catalog);
 		for (UUID storyId : this.published) {
-			// FK 순서대로 지운다 — 버전이 챕터·엔딩을 잡고 있고 작품이 버전을 잡고 있다.
+			// FK 순서대로 지운다 — 버전이 챕터·엔딩·인물을 잡고 있고 작품이 버전을 잡고 있다.
+			jdbc.sql("DELETE FROM character WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("UPDATE story SET current_version_id = NULL WHERE id = ?").param(storyId).update();
@@ -52,6 +54,43 @@ class StoryPublisherTests extends ContainerTestBase {
 			jdbc.sql("DELETE FROM story WHERE id = ?").param(storyId).update();
 		}
 		this.published.clear();
+	}
+
+	/**
+	 * <b>#350 — 인물이 버전과 함께 발행된다.</b>
+	 *
+	 * <p>그 전까지 UGC 작품은 인물 없이 발행됐고, 그래서 <b>페르소나 프롬프트가 매 턴 어디에도
+	 * 쓰이지 않았다</b> — 계약이 그 값을 요구하고 있는데도 그랬다. 예외가 나지 않으므로 아무도
+	 * 알아채지 못한다.
+	 */
+	@Test
+	void S350_characters_are_published_with_the_version() {
+		var published = publish(definition());
+
+		assertThat(this.versions.findByVersionId(published.versionId())).get().satisfies(view ->
+				assertThat(view.characters())
+						.extracting(StoryVersionView.CharacterView::name,
+								StoryVersionView.CharacterView::persona)
+						.containsExactly(org.assertj.core.api.Assertions.tuple("유나", "페르소나")));
+	}
+
+	/**
+	 * <b>#350 · §13-1 — 인물도 버전에 묶인다.</b>
+	 *
+	 * <p>재발행이 인물을 복제하지 않으면 <b>새 버전의 세션에 인물이 사라진다.</b> 챕터·엔딩이
+	 * 복제되는 것과 같은 이유이고, 같은 자리에서 함께 일어나야 그 규칙이 하나로 남는다.
+	 */
+	@Test
+	void S13_1_a_revision_carries_its_own_characters() {
+		var first = publish(definition());
+		var second = this.publisher.publishRevision(first.storyId(), definition(), STATE_SCHEMA);
+
+		assertThat(second.versionId()).isNotEqualTo(first.versionId());
+		assertThat(this.versions.findByVersionId(second.versionId())).get()
+				.satisfies(view -> assertThat(view.characters()).hasSize(1));
+		// 옛 버전은 그대로다 — 진행 중 세션이 그것을 본다 (I-4).
+		assertThat(this.versions.findByVersionId(first.versionId())).get()
+				.satisfies(view -> assertThat(view.characters()).hasSize(1));
 	}
 
 	/** 발행하고 <b>치울 목록에 적어 둔다.</b> */
@@ -131,7 +170,7 @@ class StoryPublisherTests extends ContainerTestBase {
 	@Test
 	void S2_3_a_story_needs_at_least_one_chapter() {
 		assertThatThrownBy(() -> new StoryDefinition(UUID.randomUUID(), "제목", null, null, "세계관",
-				"affinity", List.of(), defaultEndings()))
+				"affinity", List.of(), defaultEndings(), List.of()))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 
@@ -162,7 +201,9 @@ class StoryPublisherTests extends ContainerTestBase {
 				"봄의 학교에서 시작한다.", "affinity",
 				List.of(new StoryDefinition.Chapter(1, "1장", "시작", null, 1, 10),
 						new StoryDefinition.Chapter(2, "2장", "전개", null, 1, 10)),
-				endings);
+				endings,
+				// #350 — 인물도 버전에 묶인다. 없으면 없는 것이 사실이다.
+				List.of(new StoryDefinition.Character(1, "유나", "한 줄", "페르소나", null, true)));
 	}
 
 	private static List<StoryDefinition.Ending> defaultEndings() {
