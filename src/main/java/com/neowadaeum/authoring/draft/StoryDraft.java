@@ -36,6 +36,23 @@ public class StoryDraft {
 	@Column(name = "story_id")
 	private UUID storyId;
 
+	/**
+	 * 마지막 미리보기가 발행한 임시 작품 (#332).
+	 *
+	 * <p>{@link #storyId} 와 <b>다른 자리다</b> — 그쪽은 제출된 작품이고 이쪽은 파기를 기다리는
+	 * 사본이다 (§13-5).
+	 */
+	@Column(name = "preview_story_id")
+	private UUID previewStoryId;
+
+	/** 그 작품 위에서 돈 테스트 세션 (#332). 검수 상세가 이 세션의 턴을 읽는다. */
+	@Column(name = "preview_session_id")
+	private UUID previewSessionId;
+
+	/** 마지막 미리보기 시각 (#332). 검수자는 <b>얼마나 오래된 미리보기인지</b> 알아야 한다. */
+	@Column(name = "previewed_at")
+	private Instant previewedAt;
+
 	@Column(name = "step", nullable = false)
 	private int step;
 
@@ -92,6 +109,23 @@ public class StoryDraft {
 	}
 
 	/**
+	 * 마지막 미리보기가 만든 것을 가리키게 한다 (#332, §13-5).
+	 *
+	 * <p><b>{@code storyId} 와 다른 자리다.</b> 그 컬럼은 <b>제출된 작품</b> 하나를 가리키며
+	 * 재제출이 같은 작품에 버전을 얹는다 (R8.8) — 미리보기 작품을 거기 넣으면 제출이 그것을
+	 * 덮어쓰거나 재제출이 미리보기 작품에 버전을 얹는다.
+	 *
+	 * <p><b>마지막 것만 남는다.</b> 여러 번 돌리면 이전 미리보기는 연결이 끊겨 보관 기간 뒤에
+	 * 파기된다 (§13-37) — 검수자가 보는 것은 <b>작성자가 마지막으로 확인한 것</b>이다.
+	 */
+	public void linkPreview(UUID previewStoryId, UUID previewSessionId, Instant now) {
+		this.previewStoryId = previewStoryId;
+		this.previewSessionId = previewSessionId;
+		this.previewedAt = now;
+		this.updatedAt = now;
+	}
+
+	/**
 	 * 이 원고가 만든 작품을 가리키게 한다 (B-54).
 	 *
 	 * <p><b>재제출은 같은 작품에 새 버전을 얹는다</b> (R8.8) — 원고마다 작품이 새로 생기면
@@ -100,6 +134,18 @@ public class StoryDraft {
 	public void linkStory(UUID storyId, Instant now) {
 		this.storyId = storyId;
 		this.updatedAt = now;
+	}
+
+	public UUID getPreviewStoryId() {
+		return this.previewStoryId;
+	}
+
+	public UUID getPreviewSessionId() {
+		return this.previewSessionId;
+	}
+
+	public Instant getPreviewedAt() {
+		return this.previewedAt;
 	}
 
 	public boolean isOwnedBy(UUID playerRef) {

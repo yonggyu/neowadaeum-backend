@@ -2,6 +2,7 @@ package com.neowadaeum.batch;
 
 import com.neowadaeum.common.spi.LogRetentionPurge;
 import com.neowadaeum.common.spi.PlayerDataPurge;
+import com.neowadaeum.common.spi.PreviewRetentionHold;
 import com.neowadaeum.common.spi.PreviewSessionPurge;
 import com.neowadaeum.common.spi.PreviewStoryPurge;
 import com.neowadaeum.common.spi.SessionExpiry;
@@ -9,6 +10,7 @@ import com.neowadaeum.common.spi.WithdrawnAccounts;
 import com.neowadaeum.common.spi.WithdrawnAuthorContent;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,12 +60,15 @@ public class RetentionBatch {
 
 	private final PreviewSessionPurge previewSessions;
 
+	/** §13-68 (#332) — 검수를 기다리는 원고가 가리키는 미리보기는 이번 회차에서 뺀다. */
+	private final PreviewRetentionHold previewHold;
+
 	private final StringRedisTemplate redis;
 
 	public RetentionBatch(LogRetentionPurge logs, SessionExpiry sessions, WithdrawnAccounts accounts,
 			PlayerDataPurge playerData, WithdrawnAuthorContent authorContent,
 			PreviewStoryPurge previewStories, PreviewSessionPurge previewSessions,
-			StringRedisTemplate redis) {
+			PreviewRetentionHold previewHold, StringRedisTemplate redis) {
 		this.logs = logs;
 		this.sessions = sessions;
 		this.accounts = accounts;
@@ -71,6 +76,7 @@ public class RetentionBatch {
 		this.authorContent = authorContent;
 		this.previewStories = previewStories;
 		this.previewSessions = previewSessions;
+		this.previewHold = previewHold;
 		this.redis = redis;
 	}
 
@@ -158,6 +164,9 @@ public class RetentionBatch {
 	/**
 	 * 미리보기가 쌓아 둔 작품 파기 (§13-37).
 	 *
+	 * <p><b>검수를 기다리는 미리보기는 남긴다</b> (§13-68, #332). 지우고 나면 검수 상세는 조용히
+	 * 빈 자리를 그리고, 그 침묵은 <i>이 작품은 아무 문장도 내놓지 않았다</i> 로 읽힌다.
+	 *
 	 * <p><b>세션이 먼저다.</b> 작품을 먼저 지우면 그 위의 세션은 <b>읽을 수 없는 기록</b>이 되고,
 	 * 그 세션을 찾을 근거도 함께 사라진다. 탈퇴 파기와 같은 이유로 순서가 곧 안전장치다 —
 	 * 중간에 실패하면 그 작품은 다음 회차에 다시 대상이 된다.
@@ -168,8 +177,16 @@ public class RetentionBatch {
 			if (expired.isEmpty()) {
 				return 0;
 			}
-			this.previewSessions.purgeByStories(expired);
-			return this.previewStories.purge(expired);
+			// §13-68 (#332) — 검수를 기다리는 원고가 가리키는 미리보기는 남긴다. 30일은
+			// "원고가 남아 있으니 다시 부르면 된다" 를 근거로 정해졌고, 그 근거는 검수자가
+			// 그 턴을 보는 동안에는 성립하지 않는다.
+			Set<UUID> held = this.previewHold.heldPreviewStories(expired);
+			List<UUID> targets = expired.stream().filter(id -> !held.contains(id)).toList();
+			if (targets.isEmpty()) {
+				return 0;
+			}
+			this.previewSessions.purgeByStories(targets);
+			return this.previewStories.purge(targets);
 		}
 		catch (RuntimeException ex) {
 			log.error("batch.retention.previews.failed reason={}", ex.getClass().getSimpleName(), ex);
