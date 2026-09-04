@@ -240,7 +240,8 @@ class PreviewStoryPurgeIntegrationTests extends ContainerTestBase {
 				new StoryDefinition(UUID.randomUUID(), "미리보기 " + UUID.randomUUID(), "요약",
 						"세계관", "world prompt", "flag",
 						List.of(new StoryDefinition.Chapter(1, "1장", null, null, 1, 3)),
-						List.of(new StoryDefinition.Ending(1, "기본 엔딩", "끝", null, true, false))),
+						List.of(new StoryDefinition.Ending(1, "기본 엔딩", "끝", null, true, false)),
+						List.of(), List.of(), null),
 				STATE_SCHEMA);
 		UUID storyId = published.storyId();
 		this.createdStories.add(storyId);
