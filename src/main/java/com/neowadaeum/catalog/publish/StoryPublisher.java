@@ -99,8 +99,9 @@ public class StoryPublisher {
 						PRIVATE_VISIBILITY, DRAFT_REVIEW_STATUS, at(now))
 				.update();
 
-		insertGenres(storyId, definition.genreKeys());
 		UUID versionId = insertVersion(storyId, 1, definition, stateSchemaJson, now);
+		// 장르의 정본도 버전이다 (#358). 첫 발행은 작품 행과 버전이 같은 값을 갖는다.
+		syncStoryGenres(storyId, versionId);
 		return new PublishedVersion(storyId, versionId);
 	}
 
@@ -133,6 +134,52 @@ public class StoryPublisher {
 		requireDefaultEnding(versionId);
 		this.jdbc.sql("UPDATE story SET current_version_id = ?, published_at = ? WHERE id = ?")
 				.params(versionId, at(Instant.now(this.clock)), storyId).update();
+		promoteStoryFields(storyId, versionId);
+	}
+
+	/**
+	 * 그 버전이 든 작품 수준 값을 <b>작품 행으로 옮긴다</b> (#358, §13-74).
+	 *
+	 * <p><b>이 자리인 이유.</b> 독자가 보는 것이 바뀌는 순간은 여기 하나다 —
+	 * {@code publishRevision} 은 검수 통과 <b>전에</b> 불리므로(R8.8) 거기서 바꾸면 <b>검수
+	 * 중인 값이 라이브러리에 먼저 뜬다.</b> 버전을 나눈 이유가 그것이다 (I-8).
+	 *
+	 * <p><b>통째로 옮기거나 아무것도 하지 않는다.</b> 발행 경로 밖에서 만들어진 버전 행(공식
+	 * 시드)은 스냅샷을 갖지 않으며, 그것은 결손이 아니라 <b>그 버전이 작품 수준 값을 정한 적이
+	 * 없다</b>는 사실이다. 필드마다 {@code COALESCE} 로 섞으면 <b>작성자가 비운 것</b>과
+	 * <b>버전이 말한 적 없는 것</b>이 같아져, 한 번 올린 커버를 영영 내릴 수 없게 된다.
+	 *
+	 * <p>스냅샷의 유무는 {@code title} 이 답한다 — 발행 경로는 그것을 반드시 쓴다.
+	 */
+	private void promoteStoryFields(UUID storyId, UUID versionId) {
+		if (versionStoryFieldsOf(versionId).map(fields -> fields.title() == null).orElse(true)) {
+			return;
+		}
+		this.jdbc.sql("""
+						UPDATE story s
+						SET title = v.title, short_desc = v.short_desc,
+								world_intro = v.world_intro, cover_url = v.cover_url
+						FROM story_version v
+						WHERE v.id = ? AND s.id = ?
+						""")
+				.params(versionId, storyId).update();
+		syncStoryGenres(storyId, versionId);
+	}
+
+	/**
+	 * 작품의 장르를 <b>그 버전이 든 것으로 맞춘다</b> (#358).
+	 *
+	 * <p><b>더하지 않고 맞춘다.</b> 작성자가 뺀 장르는 빠져야 한다 — 더하기만 하면 한 번 고른
+	 * 장르는 영영 남고, 그 작품은 <b>작성자가 지운 섹션에 계속 뜬다.</b>
+	 */
+	private void syncStoryGenres(UUID storyId, UUID versionId) {
+		this.jdbc.sql("DELETE FROM story_genre WHERE story_id = ?").param(storyId).update();
+		this.jdbc.sql("""
+						INSERT INTO story_genre (story_id, genre_id)
+						SELECT ?, genre_id FROM story_version_genre WHERE story_version_id = ?
+						ON CONFLICT DO NOTHING
+						""")
+				.params(storyId, versionId).update();
 	}
 
 	/**
@@ -350,6 +397,28 @@ public class StoryPublisher {
 	}
 
 	/**
+	 * 그 버전이 <b>심사받은</b> 작품 수준 값 (#358, §13-74).
+	 *
+	 * <p><b>작품 행이 아니라 버전을 읽는 이유.</b> 작품 행은 승인 전까지 <b>옛 버전의 값</b>을
+	 * 들고 있다 (그것이 버전을 나눈 이유다). 검수자가 작품 행을 읽으면 <b>옛 제목으로 새
+	 * 챕터를 판정</b>하게 되고, 승인은 그 사람이 보지 않은 제목을 게시한다.
+	 *
+	 * @return 스냅샷이 없는 버전(공식 시드)이면 비어 있다
+	 */
+	public Optional<VersionStoryFields> versionStoryFieldsOf(UUID versionId) {
+		return this.jdbc
+				.sql("SELECT title, short_desc, world_intro FROM story_version WHERE id = ?")
+				.param(versionId)
+				.query((rs, rowNum) -> new VersionStoryFields(rs.getString("title"),
+						rs.getString("short_desc"), rs.getString("world_intro")))
+				.optional();
+	}
+
+	/** 버전이 든 작품 수준 값 (#358). {@code title} 은 스냅샷 없는 버전에서 {@code null} 이다. */
+	public record VersionStoryFields(String title, String shortDesc, String worldIntro) {
+	}
+
+	/**
 	 * 엔딩의 에필로그 원문 (#316, §13-61).
 	 *
 	 * <p><b>턴 파이프라인이 읽는 한 벌에는 없는 값이다.</b> {@code StoryVersionView.EndingView}
@@ -438,14 +507,22 @@ public class StoryPublisher {
 	private UUID insertVersion(UUID storyId, int versionNo, StoryDefinition definition,
 			String stateSchemaJson, Instant now) {
 		UUID versionId = UUID.randomUUID();
+		// #358 — 작품 수준 값도 버전이 든다. 버전은 **무엇이 심사받았는가**의 기록이고,
+		// 승인은 나중에 다른 사람이 한다 — 그때 원고를 다시 읽으면 그 사이 작성자가 고친
+		// 값이 게시된다 (I-8).
 		this.jdbc.sql("""
 						INSERT INTO story_version (id, story_id, version_no, world_prompt, choice_policy,
-								state_schema, state_template_key, published_at)
-						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)
+								state_schema, state_template_key, published_at,
+								title, short_desc, world_intro, cover_url)
+						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(versionId, storyId, versionNo, definition.worldPrompt(), CHOICE_POLICY,
-						stateSchemaJson, definition.stateTemplateKey(), at(now))
+						stateSchemaJson, definition.stateTemplateKey(), at(now), definition.title(),
+						trimmedShortDesc(definition.shortDesc()), definition.worldIntro(),
+						definition.coverImageKey())
 				.update();
+
+		insertVersionGenres(versionId, definition.genreKeys());
 
 		for (StoryDefinition.Chapter chapter : definition.chapters()) {
 			this.jdbc.sql("""
@@ -507,7 +584,7 @@ public class StoryPublisher {
 
 	/** §2.3 — 넘치면 자른다. 저장에서 거절하면 작성자는 <b>왜 실패했는지</b> 알기 어렵다. */
 	/**
-	 * 작성자가 고른 장르를 작품에 붙인다.
+	 * 작성자가 고른 장르를 <b>버전에</b> 붙인다 (#358).
 	 *
 	 * <p><b>정본은 {@code genre} 표다</b> (§13-56). 화면이 고른 것은 키이고, 그 키가 표에 없으면
 	 * <b>거절한다</b> — 목록을 준 것도 서버이므로 없는 키가 온 것은 화면이 낡았거나 손댄 것이다.
@@ -516,7 +593,7 @@ public class StoryPublisher {
 	 *
 	 * <p><b>한 번에 묻는다</b> (§15). 장르마다 물으면 다섯 개가 여섯 번의 조회가 된다.
 	 */
-	private void insertGenres(UUID storyId, List<String> genreKeys) {
+	private void insertVersionGenres(UUID versionId, List<String> genreKeys) {
 		if (genreKeys.isEmpty()) {
 			return;
 		}
@@ -531,10 +608,10 @@ public class StoryPublisher {
 				throw new ApiException(ErrorCode.VALIDATION_ERROR);
 			}
 			this.jdbc.sql("""
-							INSERT INTO story_genre (story_id, genre_id) VALUES (?, ?)
+							INSERT INTO story_version_genre (story_version_id, genre_id) VALUES (?, ?)
 							ON CONFLICT DO NOTHING
 							""")
-					.params(storyId, genreId).update();
+					.params(versionId, genreId).update();
 		}
 	}
 

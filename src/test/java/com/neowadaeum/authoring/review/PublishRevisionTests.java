@@ -38,6 +38,14 @@ class PublishRevisionTests extends ContainerTestBase {
 			 "endings":[{"label":"좋은 끝","epilogueText":"잘 끝났다."}]}
 			""";
 
+	/** 같은 원고를 고쳐 다시 낸 모양 — 작품 수준 값이 전부 바뀐다 (#358). */
+	private static final String REVISED_PAYLOAD = """
+			{"title":"여름의 학교","shortDescription":"바뀐 소개","worldIntro":"바뀐 세계관",
+			 "settingDetail":"여름의 학교에서 시작한다.","genres":["fantasy"],
+			 "chapters":[{"title":"1장","summarySeed":"시작"}],
+			 "endings":[{"label":"좋은 끝","epilogueText":"잘 끝났다."}]}
+			""";
+
 	@Autowired
 	private SubmissionService submissions;
 
@@ -70,6 +78,11 @@ class PublishRevisionTests extends ContainerTestBase {
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("UPDATE story SET current_version_id = NULL WHERE id = ?").param(storyId).update();
+			jdbc.sql("""
+							DELETE FROM story_version_genre WHERE story_version_id IN
+									(SELECT id FROM story_version WHERE story_id = ?)
+							""").param(storyId).update();
+			jdbc.sql("DELETE FROM story_genre WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM story_version WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM story WHERE id = ?").param(storyId).update();
 		}
@@ -198,6 +211,138 @@ class PublishRevisionTests extends ContainerTestBase {
 				"{\"title\":\"봄의 학교\",\"settingDetail\":\"봄의 학교에서 시작한다.\"}");
 
 		assertThat(this.draftRows.findById(draftId)).isPresent();
+	}
+
+	/**
+	 * <b>승인이 작품 수준 값을 함께 옮긴다</b> (#358, §13-74).
+	 *
+	 * <p>지금까지 {@code publishRevision} 은 새 버전만 얹고 {@code story} 행을 건드리지 않았다 —
+	 * 작성자가 제목을 바꿔 재제출해도 <b>카탈로그는 첫 발행의 값을 계속 보여 줬다.</b>
+	 */
+	@Test
+	void S13_74_approving_a_revision_carries_the_story_level_fields() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		UUID storyId = submitted(authorRef, draftId, Visibility.UNLISTED);
+		assertThat(storyFieldsOf(storyId)).containsExactly("봄의 학교", "짧은 소개", "소개");
+
+		this.drafts.save(authorRef, draftId, 5, REVISED_PAYLOAD);
+		submitted(authorRef, draftId, Visibility.UNLISTED);
+
+		assertThat(storyFieldsOf(storyId)).containsExactly("여름의 학교", "바뀐 소개", "바뀐 세계관");
+	}
+
+	/**
+	 * <b>검수 중인 값이 라이브러리에 먼저 뜨지 않는다</b> (R8.8, I-8).
+	 *
+	 * <p>이것이 갱신을 {@code publishRevision} 이 아니라 {@code markCurrent} 에 둔 이유다 —
+	 * 버전을 나눈 목적이 그것이고, 여기서 옮기면 <b>승인 없이 노출된 UGC</b> 가 된다.
+	 */
+	@Test
+	void I8_a_revision_awaiting_human_review_does_not_change_the_story_row() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		UUID storyId = submitted(authorRef, draftId, Visibility.UNLISTED);
+
+		this.drafts.save(authorRef, draftId, 5, REVISED_PAYLOAD);
+		submitted(authorRef, draftId, Visibility.PUBLIC);
+
+		assertThat(storyFieldsOf(storyId)).containsExactly("봄의 학교", "짧은 소개", "소개");
+	}
+
+	/** 사람이 통과시킨 그 순간에 옮겨진다 (#358). */
+	@Test
+	void S13_74_human_approval_promotes_the_story_level_fields() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		UUID storyId = submitted(authorRef, draftId, Visibility.UNLISTED);
+		this.drafts.save(authorRef, draftId, 5, REVISED_PAYLOAD);
+		submitted(authorRef, draftId, Visibility.PUBLIC);
+
+		this.queue.decide(UUID.randomUUID(), storyId, ReviewVerdict.PASS, List.of(), null);
+
+		assertThat(storyFieldsOf(storyId)).containsExactly("여름의 학교", "바뀐 소개", "바뀐 세계관");
+	}
+
+	/**
+	 * <b>장르는 더해지지 않고 맞춰진다</b> (#358).
+	 *
+	 * <p>더하기만 하면 한 번 고른 장르가 영영 남고, 그 작품은 <b>작성자가 지운 섹션에 계속
+	 * 뜬다</b> — 작성자는 남의 눈으로 라이브러리를 봐야 그것을 안다 (§13-72 와 같은 자리).
+	 */
+	@Test
+	void S13_74_genres_are_replaced_not_accumulated() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		this.drafts.save(authorRef, draftId, 5, PAYLOAD.replace("\"chapters\"",
+				"\"genres\":[\"romance\"],\"chapters\""));
+		UUID storyId = submitted(authorRef, draftId, Visibility.UNLISTED);
+		assertThat(genreKeysOf(storyId)).containsExactly("romance");
+
+		this.drafts.save(authorRef, draftId, 5, REVISED_PAYLOAD);
+		submitted(authorRef, draftId, Visibility.UNLISTED);
+
+		assertThat(genreKeysOf(storyId)).containsExactly("fantasy");
+	}
+
+	/**
+	 * <b>제목은 지워지지 않는다.</b> {@code story.title} 은 NOT NULL 이고, 발행 경로 밖에서
+	 * 만들어진 버전(공식 시드)은 작품 수준 스냅샷을 갖지 않는다 — 그 버전이 현재가 되어도
+	 * 작품의 이름은 남는다.
+	 */
+	@Test
+	void S13_74_a_version_without_a_snapshot_does_not_erase_the_title() {
+		UUID draftId = givenDraft();
+		UUID storyId = submitted(authorOf(draftId), draftId, Visibility.UNLISTED);
+		UUID bare = givenVersionWithoutStoryFields(storyId);
+
+		this.publisher.markCurrent(storyId, bare);
+
+		assertThat(storyFieldsOf(storyId).getFirst()).isEqualTo("봄의 학교");
+	}
+
+	/**
+	 * 작품 수준 스냅샷이 없는 버전 — 공식 작품 시드(V3)가 이 모양이다.
+	 *
+	 * <p>기본 엔딩을 갖추므로 {@code markCurrent} 를 통과한다. 확인하려는 것은 <b>그 통과가
+	 * 이름을 지우지 않는가</b> 다.
+	 */
+	private UUID givenVersionWithoutStoryFields(UUID storyId) {
+		JdbcClient jdbc = JdbcClient.create(this.catalog);
+		UUID versionId = UUID.randomUUID();
+		OffsetDateTime now = Instant.now().atOffset(ZoneOffset.UTC);
+		jdbc.sql("""
+						INSERT INTO story_version (id, story_id, version_no, world_prompt, choice_policy,
+								state_schema, state_template_key, published_at)
+						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)
+						""")
+				.params(versionId, storyId, 98, "봄의 학교에서 시작한다.",
+						"{\"min\":1,\"max\":4,\"preferred\":3}", "{\"flags\":[]}", "affinity", now)
+				.update();
+		jdbc.sql("""
+						INSERT INTO ending_def (id, story_version_id, story_id, ending_no, label,
+								epilogue_text, condition, is_default, is_secret)
+						VALUES (?, ?, ?, ?, ?, ?, NULL, true, false)
+						""")
+				.params(UUID.randomUUID(), versionId, storyId, 1, "이야기의 끝", "")
+				.update();
+		return versionId;
+	}
+
+	/** 작품 행이 지금 들고 있는 것 — 독자가 보는 값이다. */
+	private List<String> storyFieldsOf(UUID storyId) {
+		return JdbcClient.create(this.catalog)
+				.sql("SELECT title, short_desc, world_intro FROM story WHERE id = ?").param(storyId)
+				.query((rs, rowNum) -> List.of(rs.getString("title"), rs.getString("short_desc"),
+						rs.getString("world_intro")))
+				.single();
+	}
+
+	private List<String> genreKeysOf(UUID storyId) {
+		return JdbcClient.create(this.catalog).sql("""
+						SELECT g.key FROM story_genre sg JOIN genre g ON g.id = sg.genre_id
+						WHERE sg.story_id = ? ORDER BY g.key
+						""").param(storyId).query(String.class).list();
 	}
 
 	private UUID submitted(UUID authorRef, UUID draftId, Visibility visibility) {
