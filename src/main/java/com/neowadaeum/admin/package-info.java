@@ -7,9 +7,14 @@
  *
  * <p>§5.2 패키지 구조 / §5.4 모듈 간 의존 규칙. 허용 의존은 이 애노테이션이 유일한 진실의 원천이며,
  * 위반은 {@code ApplicationModules.verify()}가 빌드에서 잡는다.
+ *
+ * <p><b>{@code catalog :: query} 를 더했다</b> (#339). 세션 목록이 작품 이름을 함께 보여야
+ * 하는데 그 값은 catalog 의 것이고, admin 은 어느 스토어에도 직접 닿지 않는다 — 파사드로만
+ * 묻는다 (§5.4).
  */
 @ApplicationModule(allowedDependencies = { "common", "identity :: access", "play :: debug",
-		"ai :: debug", "authoring :: blocklist", "authoring :: report", "authoring :: review" })
+		"ai :: debug", "authoring :: blocklist", "authoring :: report", "authoring :: review",
+		"catalog :: query" })
 package com.neowadaeum.admin;
 
 import org.springframework.modulith.ApplicationModule;

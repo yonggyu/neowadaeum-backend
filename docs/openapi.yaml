@@ -1267,6 +1267,60 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
 
   # ── §14 Admin — 역할·IP·2FA 를 모두 통과해야 한다 (S-4) ──────
+  /api/v1/admin/sessions:
+    get:
+      tags: [admin]
+      operationId: listAdminSessions
+      summary: 세션 찾기
+      description: |
+        Debug 콘솔에 들어가는 문이다 (#339). `getSessionDebug` 는 **`sessionId` 를 이미 아는
+        사람만** 부를 수 있어, 콘솔은 URL 로 직접 열어야 들어갔다.
+
+        **디버그와 다른 층이다 — 그 차이가 이 경로의 존재 이유다.** 디버그는 원문(게임 상태
+        JSON · 본문 · 프롬프트 · 응답)을 열고, **읽을 때마다 `access_audit_log` 에 한 줄을
+        남긴다** (R12.3, S-5). 목록이 그 층에 있으면 **열어 본 적 없는 세션이 열람 기록에
+        남고**, 목록을 그린 것만으로 스무 줄이 생기면 그 로그는 더 이상 *"이 관리자가 이
+        세션을 봤다"* 를 말하지 않는다.
+
+        그래서 이 경로가 주는 것은 **식별자와 메타데이터뿐**이다. 원문은 하나도 없고,
+        **열람 감사를 남기지 않는다.** 관리자 행위 기록(`admin_audit_log`, R14.5)은 남는다 —
+        다른 표, 다른 뜻이다.
+
+        **세 조건은 여기서도 AND 다** (S-4).
+
+        지운 세션도 보인다 — `deletedAt` 이 그 사실을 말한다. 미리보기 세션도 보인다
+        (`testSession`) — 목록에서 실제 플레이와 섞으면 그것을 사용자 행동으로 읽게 된다.
+
+        `playerRef` 는 응답에 없다 (I-3).
+      x-implemented-by: B-41
+      parameters:
+        - $ref: '#/components/parameters/AdminStepUp'
+        - name: storyId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: 작품으로 좁힌다. 콘솔에서 가장 자주 하는 일이다
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 직전 응답의 `nextCursor`. 없으면 최신부터.
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 세션 한 쪽. 최근에 움직인 것부터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSessionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/admin/sessions/{sessionId}/debug:
     get:
       tags: [admin]
@@ -3383,6 +3437,60 @@ components:
           type: [string, 'null']
 
     # ── §14 Admin ────────────────────────────────────────────
+    AdminSessionListResponse:
+      x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
+      type: object
+      description: |
+        세션 목록 한 쪽 (#339). 봉투는 다른 목록과 같다.
+      required: [items, nextCursor, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminSessionListItem'
+        nextCursor:
+          type: [string, 'null']
+        hasMore:
+          type: boolean
+
+    AdminSessionListItem:
+      type: object
+      description: |
+        **식별자와 메타데이터뿐이다.** 원문(게임 상태 · 본문 · 선택지 · 프롬프트)은 하나도 없다 —
+        그것을 여는 것은 `getSessionDebug` 이고, 그 경로는 읽을 때마다 감사를 남긴다 (R12.3).
+
+        **`playerRef` 가 없다** (I-3).
+      required: [sessionId, storyId, storyVersionId, storyTitle, status, turnNo, chapterNo,
+                 testSession, deletedAt, createdAt, updatedAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        storyId: { type: string, format: uuid }
+        storyVersionId:
+          type: string
+          format: uuid
+          description: 세션이 고정한 버전 (I-4). 작품 이름은 **이 값으로** 찾는다
+        storyTitle:
+          type: [string, 'null']
+          description: |
+            **`null`** — 지워진 작품의 세션이다 (§13-58). 세션은 남고 작품이 없어진 것이므로
+            이름을 지어내지 않는다.
+        status:
+          type: string
+          enum: [active, completed, abandoned, expired]
+        turnNo: { type: integer }
+        chapterNo: { type: integer }
+        testSession:
+          type: boolean
+          description: |
+            미리보기 세션인가 (I-18). 목록에서 실제 플레이와 섞이면 그것을 사용자 행동으로
+            읽게 된다.
+        deletedAt:
+          type: [string, 'null']
+          format: date-time
+          description: 지워진 세션이면 그 시각. 디버그는 **지워졌다는 사실**도 본다
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
     AdminSessionDebugResponse:
       x-notice-exempt: '관리자 화면이며 사용자에게 보이지 않는다 (§14). 사전 고지는 사용자에게 하는 것이다'
       type: object
