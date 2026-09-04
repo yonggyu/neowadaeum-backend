@@ -32,7 +32,7 @@ class DraftConditionTests {
 
 	private static String payload(String chapterCondition, String endingCondition) {
 		return """
-				{"title":"봄의 학교","worldPrompt":"봄의 학교에서 시작한다.",
+				{"title":"봄의 학교","settingDetail":"봄의 학교에서 시작한다.",
 				 "characters":[{"name":"yuna"}],
 				 "flags":["met_yuna"],
 				 "chapters":[{"title":"1장"%s}],
@@ -40,8 +40,10 @@ class DraftConditionTests {
 				""".formatted(chapterCondition, endingCondition);
 	}
 
+	/** 형제 필드다 — 초안 응답이 키를 그 높이에 돌려주므로 저장도 접지 않는다 (#354). */
 	private static String condition(String templateKey, String params) {
-		return ",\"condition\":{\"templateKey\":\"%s\",\"params\":%s}".formatted(templateKey, params);
+		return ",\"conditionTemplateKey\":\"%s\",\"conditionParams\":%s"
+				.formatted(templateKey, params);
 	}
 
 	/**
@@ -168,11 +170,11 @@ class DraftConditionTests {
 	@Test
 	void S13_69_a_name_with_quotes_still_assembles_into_valid_json() {
 		String payload = """
-				{"title":"봄의 학교","worldPrompt":"시작한다.",
+				{"title":"봄의 학교","settingDetail":"시작한다.",
 				 "characters":[{"name":"유나\\"나쁜놈"}],
 				 "flags":[],
-				 "chapters":[{"title":"1장","condition":{"templateKey":"affinity_at_least",
-				              "params":{"character":"유나\\"나쁜놈","threshold":50}}}],
+				 "chapters":[{"title":"1장","conditionTemplateKey":"affinity_at_least",
+				              "conditionParams":{"character":"유나\\"나쁜놈","threshold":50}}],
 				 "endings":[{"label":"좋은 끝"}]}
 				""";
 

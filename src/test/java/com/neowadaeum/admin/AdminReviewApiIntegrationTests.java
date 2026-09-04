@@ -55,8 +55,10 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	/** 신고자가 쓴 자유 문장. <b>응답에 나가지 않는 것</b>을 확인하는 데 쓴다 (I-3, §13-62). */
 	private static final String REPORT_DETAIL = "신고자가 쓴 문장이다";
 
-	private static final String PAYLOAD = "{\"title\":\"봄의 학교\",\"shortDesc\":\"소개\","
-			+ "\"worldIntro\":\"소개\",\"worldPrompt\":\"봄의 학교에서 시작한다.\","
+	private static final String PAYLOAD = "{\"title\":\"봄의 학교\",\"shortDescription\":\"소개\","
+			+ "\"worldIntro\":\"소개\",\"settingDetail\":\"봄의 학교에서 시작한다.\","
+			+ "\"characters\":[{\"name\":\"유나\",\"oneLine\":\"전학 온 나를 처음 부른 사람\"},"
+			+ "{\"name\":\"\",\"oneLine\":\"\"}],"
 			+ "\"chapters\":[{\"title\":\"1장\",\"summarySeed\":\"시작\"}],"
 			+ "\"endings\":[{\"label\":\"좋은 끝\",\"epilogueText\":\"잘 끝났다.\"}]}";
 
@@ -109,6 +111,7 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 		JdbcClient jdbc = JdbcClient.create(this.catalog);
 		this.reviews.findAll().forEach(review -> {
 			UUID storyId = review.getStoryId();
+			jdbc.sql("DELETE FROM character WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("UPDATE story SET current_version_id = NULL WHERE id = ?").param(storyId).update();
@@ -489,6 +492,31 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	}
 
 	/** 작성자가 {@code public} 으로 제출한다 — 그것이 큐에 들어오는 유일한 길이다 (R8.6). */
+	/**
+	 * <b>#350 — 검수자가 인물을 본다.</b>
+	 *
+	 * <p>계약은 <i>"페르소나 프롬프트야말로 매 턴 모델에게 들어가는 문장이고, 그것을 보지 않은
+	 * 승인은 작품의 절반만 본 승인"</i> 이라고 적어 두었는데, <b>그 값이 UGC 작품에는 없었다</b> —
+	 * 발행이 인물을 넣지 않았기 때문이다. 빈 배열은 예외를 내지 않으므로 아무도 알아채지 못한다.
+	 */
+	@Test
+	void S350_the_manuscript_shows_the_characters() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+
+		JsonNode body = JSON.readTree(this.mvc
+				.perform(get("/api/v1/admin/reviews/%s".formatted(storyId))
+						.with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUpToken()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+
+		assertThat(body.path("characters")).hasSize(1);
+		assertThat(body.path("characters").get(0).path("name").asString()).isEqualTo("유나");
+		// 페르소나를 비워 두었으므로 한 줄 소개가 대신 간다 (#350) — 서버가 지어내지 않는다.
+		assertThat(body.path("characters").get(0).path("persona").asString())
+				.isEqualTo("전학 온 나를 처음 부른 사람");
+	}
+
 	/**
 	 * <b>#332 · §13-68 — 검수자가 미리보기 턴을 본다.</b>
 	 *
