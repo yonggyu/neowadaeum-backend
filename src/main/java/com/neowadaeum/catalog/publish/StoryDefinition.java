@@ -17,12 +17,17 @@ import java.util.UUID;
  * 저장하지 않는다.
  *
  * @param stateTemplateKey 작성자가 고른 상태 템플릿 (R4.4, §13-9). 자유 정의가 아니다
+ * @param genreKeys 작성자가 고른 장르의 {@code key} 들. <b>정본은 {@code genre} 표</b>이므로
+ *     여기 오는 것은 이름이 아니라 키다 (§13-56)
+ * @param coverImageKey 커버 이미지의 <b>객체 키</b> (#315). URL 이 아니다 — 버킷이 비공개이며
+ *     읽기 URL 은 서버가 그때그때 서명한다 (I-8)
  */
 public record StoryDefinition(UUID authorRef, String title, String shortDesc, String worldIntro,
 		String worldPrompt, String stateTemplateKey, List<Chapter> chapters, List<Ending> endings,
-		List<Character> characters) {
+		List<Character> characters, List<String> genreKeys, String coverImageKey) {
 
 	public StoryDefinition {
+		genreKeys = List.copyOf(genreKeys == null ? List.of() : genreKeys);
 		chapters = List.copyOf(chapters == null ? List.of() : chapters);
 		endings = List.copyOf(endings == null ? List.of() : endings);
 		characters = List.copyOf(characters == null ? List.of() : characters);
