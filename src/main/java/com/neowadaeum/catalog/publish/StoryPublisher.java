@@ -384,13 +384,14 @@ public class StoryPublisher {
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public Optional<StoryHeader> headerOf(UUID storyId) {
 		return this.jdbc.sql("""
-						SELECT title, short_desc, world_intro, author_ref, review_status, visibility,
-								created_at
+						SELECT title, short_desc, world_intro, cover_url, author_ref, review_status,
+								visibility, created_at
 						FROM story WHERE id = ?
 						""")
 				.param(storyId)
 				.query((rs, rowNum) -> new StoryHeader(rs.getString("title"), rs.getString("short_desc"),
-						rs.getString("world_intro"), rs.getObject("author_ref", UUID.class),
+						rs.getString("world_intro"), rs.getString("cover_url"),
+						rs.getObject("author_ref", UUID.class),
 						rs.getString("review_status"), rs.getString("visibility"),
 						rs.getTimestamp("created_at").toInstant()))
 				.optional();
@@ -407,15 +408,72 @@ public class StoryPublisher {
 	 */
 	public Optional<VersionStoryFields> versionStoryFieldsOf(UUID versionId) {
 		return this.jdbc
-				.sql("SELECT title, short_desc, world_intro FROM story_version WHERE id = ?")
+				.sql("SELECT title, short_desc, world_intro, cover_url FROM story_version WHERE id = ?")
 				.param(versionId)
 				.query((rs, rowNum) -> new VersionStoryFields(rs.getString("title"),
-						rs.getString("short_desc"), rs.getString("world_intro")))
+						rs.getString("short_desc"), rs.getString("world_intro"),
+						rs.getString("cover_url")))
 				.optional();
 	}
 
-	/** 버전이 든 작품 수준 값 (#358). {@code title} 은 스냅샷 없는 버전에서 {@code null} 이다. */
-	public record VersionStoryFields(String title, String shortDesc, String worldIntro) {
+	/**
+	 * 버전이 든 작품 수준 값 (#358). {@code title} 은 스냅샷 없는 버전에서 {@code null} 이다.
+	 *
+	 * @param coverImageKey 커버의 <b>객체 키</b>이며 URL 이 아니다 (#315, §13-72)
+	 */
+	public record VersionStoryFields(String title, String shortDesc, String worldIntro,
+			String coverImageKey) {
+	}
+
+	/**
+	 * 그 버전이 <b>심사받은</b> 장르 (#368, §13-77).
+	 *
+	 * <p><b>작품 행이 아니라 버전을 읽는 이유는 제목과 같다.</b> 승인이 작품 행의 장르를 이
+	 * 버전의 것으로 맞추므로 ({@code syncStoryGenres}), 검수자가 작품 행을 읽으면 <b>자기가
+	 * 승인하는 것과 다른 섹션</b>을 보고 판정한다.
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public List<GenreLabel> versionGenresOf(UUID versionId) {
+		return genresBy("""
+						SELECT g.key, g.label
+						FROM story_version_genre svg JOIN genre g ON g.id = svg.genre_id
+						WHERE svg.story_version_id = ?
+						ORDER BY g.display_order
+						""", versionId);
+	}
+
+	/**
+	 * 작품 행에 붙어 있는 장르 (#368).
+	 *
+	 * <p><b>스냅샷 없는 버전에서만 쓴다.</b> 그때는 작품 행이 유일한 사실이며, 그것은
+	 * {@link VersionStoryFields} 가 작품 행으로 돌아가는 것과 <b>같은 하나의 판단</b>이다 —
+	 * 스냅샷은 통째로 있거나 통째로 없다 (§13-74).
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public List<GenreLabel> storyGenresOf(UUID storyId) {
+		return genresBy("""
+						SELECT g.key, g.label
+						FROM story_genre sg JOIN genre g ON g.id = sg.genre_id
+						WHERE sg.story_id = ?
+						ORDER BY g.display_order
+						""", storyId);
+	}
+
+	/** 순서는 {@code display_order} 다 — 라이브러리가 장르를 늘어놓는 순서와 같아야 한다. */
+	private List<GenreLabel> genresBy(String sql, UUID id) {
+		return this.jdbc.sql(sql).param(id)
+				.query((rs, rowNum) -> new GenreLabel(rs.getString("key"), rs.getString("label")))
+				.list();
+	}
+
+	/**
+	 * 장르 하나 (#368).
+	 *
+	 * @param key   API 표기. 라이브러리 섹션 키 {@code genre:<key>} 가 쓰는 값과 같다
+	 * @param label 화면 문구. <b>정본은 {@code genre} 표다</b> (§13-56) — 프론트가 키를 옮기기
+	 *     시작하면 표시 문구의 정본이 하나 더 생긴다
+	 */
+	public record GenreLabel(String key, String label) {
 	}
 
 	/**
@@ -486,10 +544,12 @@ public class StoryPublisher {
 	/**
 	 * 검수 화면이 여는 작품의 머리말 (#316, §13-61).
 	 *
+	 * @param coverImageKey 커버의 <b>객체 키</b>. 컬럼 이름은 {@code cover_url} 이지만 URL 이
+	 *     아니다 (#315, §13-72) — 버킷이 비공개라 이 값만으로는 아무도 이미지를 열지 못한다
 	 * @param authorRef 작성자의 {@code player_ref}. <b>표시명으로 바꿔 내보낸다</b> (§13-7, I-3)
 	 */
-	public record StoryHeader(String title, String shortDesc, String worldIntro, UUID authorRef,
-			String reviewStatus, String visibility, Instant createdAt) {
+	public record StoryHeader(String title, String shortDesc, String worldIntro, String coverImageKey,
+			UUID authorRef, String reviewStatus, String visibility, Instant createdAt) {
 	}
 
 	/** 작품의 상태 한 벌. */
