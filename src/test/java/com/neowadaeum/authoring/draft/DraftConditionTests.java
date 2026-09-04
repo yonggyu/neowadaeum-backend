@@ -158,6 +158,60 @@ class DraftConditionTests {
 		assertThat(definition.endings().getLast().conditionJson()).isNull();
 	}
 
+	/**
+	 * <b>이름에 따옴표가 섞여도 조건식이 깨지지 않는다</b> (#326).
+	 *
+	 * <p>조립은 문자열 붙이기다 — 이스케이프를 손으로 하는 자리이므로 <b>영숫자 이름만
+	 * 시험하면 지켜지지 않는 것을 지키는 척</b>하게 된다. 깨지면 조건식이 파싱되지 않아
+	 * 그 챕터·엔딩은 영원히 도달되지 않고, 그 실패는 <b>아무 예외도 내지 않는다.</b>
+	 */
+	@Test
+	void S13_69_a_name_with_quotes_still_assembles_into_valid_json() {
+		String payload = """
+				{"title":"봄의 학교","worldPrompt":"시작한다.",
+				 "characters":[{"name":"유나\\"나쁜놈"}],
+				 "flags":[],
+				 "chapters":[{"title":"1장","condition":{"templateKey":"affinity_at_least",
+				              "params":{"character":"유나\\"나쁜놈","threshold":50}}}],
+				 "endings":[{"label":"좋은 끝"}]}
+				""";
+
+		String condition = DraftStoryDefinition.from(UUID.randomUUID(), payload).definition()
+				.chapters().getFirst().entryConditionJson();
+
+		GameState state = new GameState(1, 1, null, null,
+				Map.of("affinity.유나\"나쁜놈", 60), Set.of(), List.of());
+		assertThat(evaluate(condition, state)).isTrue();
+	}
+
+	/**
+	 * <b>작성 중인 원고는 아직 아무것도 없다</b> (R8.3, #326).
+	 *
+	 * <p>1단계 저장은 제목 하나뿐일 수 있다. 조건 검증이 그것을 막으면 <b>작성을 시작할 수
+	 * 없다.</b>
+	 */
+	@Test
+	void R8_3_a_payload_with_nothing_in_it_yet_still_saves() {
+		assertThatCode(() -> DraftStoryDefinition.validateConditions("{}"))
+				.doesNotThrowAnyException();
+		assertThatCode(() -> DraftStoryDefinition.validateConditions("{\"title\":\"봄의 학교\"}"))
+				.doesNotThrowAnyException();
+	}
+
+	/**
+	 * <b>읽을 수 없는 payload 는 400 이다</b> (#326).
+	 *
+	 * <p>그대로 던지면 500 이 되고, 그러면 작성자는 <b>서버가 고장 났다</b>고 읽는다 — 보낸
+	 * 것이 JSON 이 아닌 것은 요청의 문제다.
+	 */
+	@Test
+	void S9_1_an_unreadable_payload_is_a_validation_error() {
+		assertThatThrownBy(() -> DraftStoryDefinition.validateConditions("이건 JSON 이 아니다"))
+				.isInstanceOf(ApiException.class);
+		assertThatThrownBy(() -> DraftStoryDefinition.validateConditions("[1,2,3]"))
+				.isInstanceOf(ApiException.class);
+	}
+
 	private String assembled(String templateKey, String params) {
 		return DraftStoryDefinition
 				.from(UUID.randomUUID(), payload(condition(templateKey, params), ""))

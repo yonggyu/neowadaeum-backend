@@ -60,7 +60,7 @@ public final class DraftStoryDefinition {
 	 *     원고에 선언되지 않은 이름을 가리킨다. 어느 단계가 남았는지는 작성자가 화면에서 안다
 	 */
 	public static Publishable from(UUID authorRef, String payload) {
-		JsonNode root = JSON.readTree(payload);
+		JsonNode root = parse(payload);
 		String title = text(root, "title");
 		String worldPrompt = text(root, "worldPrompt");
 		DraftStateSchema schema = DraftStateSchema.from(root);
@@ -93,7 +93,7 @@ public final class DraftStoryDefinition {
 	 * (5단계 저장, R8.3), 제목이 없다고 저장을 막으면 <b>작성 중인 원고를 저장할 수 없다.</b>
 	 */
 	public static void validateConditions(String payload) {
-		JsonNode root = JSON.readTree(payload);
+		JsonNode root = parse(payload);
 		DraftStateSchema schema = DraftStateSchema.from(root);
 		root.path("chapters").forEach(chapter -> conditionOf(chapter, schema));
 		root.path("endings").forEach(ending -> conditionOf(ending, schema));
@@ -137,6 +137,26 @@ public final class DraftStoryDefinition {
 		}
 		endings.add(new StoryDefinition.Ending(endingNo, "이야기의 끝", null, null, true, false));
 		return endings;
+	}
+
+	/**
+	 * <b>읽을 수 없는 payload 는 400 이다.</b> 그대로 던지면 500 이 되고, 그러면 작성자는
+	 * <b>서버가 고장 났다</b>고 읽는다 — 보낸 것이 JSON 이 아닌 것은 요청의 문제다.
+	 */
+	private static JsonNode parse(String payload) {
+		try {
+			JsonNode root = JSON.readTree(payload);
+			if (!root.isObject()) {
+				throw new ApiException(ErrorCode.VALIDATION_ERROR);
+			}
+			return root;
+		}
+		catch (RuntimeException ex) {
+			if (ex instanceof ApiException apiException) {
+				throw apiException;
+			}
+			throw new ApiException(ErrorCode.VALIDATION_ERROR);
+		}
 	}
 
 	private static String text(JsonNode node, String field) {
