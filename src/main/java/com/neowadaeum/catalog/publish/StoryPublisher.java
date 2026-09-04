@@ -469,6 +469,21 @@ public class StoryPublisher {
 							ending.isSecret())
 					.update();
 		}
+		// #350 — 인물도 **버전에 묶인다** (§13-1 정정). 여기 넣지 않으면 재발행 때 복제될
+		// 것도 없고, 페르소나 프롬프트는 매 턴 어디에도 쓰이지 않는다.
+		for (StoryDefinition.Character character : definition.characters()) {
+			this.jdbc.sql("""
+							INSERT INTO character (id, story_version_id, story_id, name, role,
+									portrait_url, one_line, persona_prompt, display_order,
+									is_visible_in_detail)
+							VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							""")
+					// role 은 아직 작성자가 정하지 않는다 — 지어내지 않고 비운다.
+					.params(UUID.randomUUID(), versionId, storyId, character.name(), null,
+							character.portraitUrl(), character.oneLine(), character.personaPrompt(),
+							character.displayOrder(), character.visibleInDetail())
+					.update();
+		}
 		return versionId;
 	}
 
