@@ -41,6 +41,44 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 			SessionStatus status, Limit limit);
 
 	/**
+	 * <b>관리자가 세션을 찾는 목록</b> (§14 Debug, #339). 최근에 움직인 것이 위로 온다.
+	 *
+	 * <p><b>지운 세션도 들어 있다.</b> 디버그가 보는 것은 <b>무슨 일이 있었는가</b>이고
+	 * 지워졌다는 사실도 그 일부다 — {@link SessionDebugFacade} 와 같은 판단이다.
+	 *
+	 * <p><b>{@code playerRef} 로 거르지 않는다.</b> 관리자 화면은 남의 세션을 보는 것이
+	 * 목적이며, 그 문 앞에 S-4 의 세 조건이 서 있다.
+	 */
+	List<PlaySession> findAllByOrderByUpdatedAtDescIdDesc(Limit limit);
+
+	/** 커서 이후 (#339). {@code (updatedAt, id)} 키셋이며 파라미터에 {@code null} 이 없다. */
+	@Query("""
+			SELECT s FROM PlaySession s
+			WHERE (s.updatedAt < :cursorAt OR (s.updatedAt = :cursorAt AND s.id < :cursorId))
+			ORDER BY s.updatedAt DESC, s.id DESC
+			""")
+	List<PlaySession> findAllAfter(@Param("cursorAt") Instant cursorAt, @Param("cursorId") UUID cursorId,
+			Limit limit);
+
+	/**
+	 * 한 작품의 세션만 (#339).
+	 *
+	 * <p>작품으로 좁히는 것이 콘솔에서 가장 자주 하는 일이다 — <b>이 작품이 이상한 문장을
+	 * 냈다</b>가 대개 출발점이기 때문이다.
+	 */
+	List<PlaySession> findByStoryIdOrderByUpdatedAtDescIdDesc(UUID storyId, Limit limit);
+
+	/** 작품으로 좁힌 뒤의 커서 (#339). */
+	@Query("""
+			SELECT s FROM PlaySession s
+			WHERE s.storyId = :storyId
+			  AND (s.updatedAt < :cursorAt OR (s.updatedAt = :cursorAt AND s.id < :cursorId))
+			ORDER BY s.updatedAt DESC, s.id DESC
+			""")
+	List<PlaySession> findByStoryAfter(@Param("storyId") UUID storyId, @Param("cursorAt") Instant cursorAt,
+			@Param("cursorId") UUID cursorId, Limit limit);
+
+	/**
 	 * 작품별 플레이 횟수 (§13.7, R13.4).
 	 *
 	 * <p>지운 세션은 세지 않는다 — 사용자가 없앤 것을 작성자의 지표로 삼지 않는다.
