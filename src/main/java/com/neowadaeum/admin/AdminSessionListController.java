@@ -69,10 +69,23 @@ public class AdminSessionListController {
 		UUID adminUserId = this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
 
 		SessionListPage page = this.sessions.list(storyId, cursor, limit);
-		this.guard.recordAction(adminUserId, "admin.session.list", "session", storyId,
-				Map.of("count", page.sessions().size()), request);
+		// 목록은 **특정 세션을 가리키지 않는다.** 자리를 채우려고 필터로 쓴 작품 id 를 넣으면
+		// 감사 로그에 "session" 타입인데 작품 id 인 줄이 남아, 나중에 읽는 사람이 그것을
+		// 세션 id 로 읽는다. 좁힌 축은 대상이 아니라 **이번 조회의 사실**이다.
+		this.guard.recordAction(adminUserId, "admin.session.list", "session", null,
+				details(storyId, page), request);
 		return new AdminSessionListResponse(withStoryTitles(page.sessions()), page.nextCursor(),
 				page.hasMore());
+	}
+
+	/** 이번 조회가 무엇을 물었고 몇 줄을 받았는가. <b>대상이 아니라 사실이다.</b> */
+	private static Map<String, Object> details(UUID storyId, SessionListPage page) {
+		Map<String, Object> details = new java.util.HashMap<>();
+		details.put("count", page.sessions().size());
+		if (storyId != null) {
+			details.put("storyIdFilter", storyId.toString());
+		}
+		return details;
 	}
 
 	/**
