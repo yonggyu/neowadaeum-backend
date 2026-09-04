@@ -239,6 +239,27 @@ class MyStoriesApiIntegrationTests extends ContainerTestBase {
 	}
 
 	/**
+	 * <b>쪽 전체가 한 번에 세어진다</b> (#351, §15).
+	 *
+	 * <p>줄마다 물으면 20줄짜리 목록이 <b>조회 21번</b>이 된다. 같은 목록의 검수 시각(#290)과
+	 * 원고 id(#340)는 이미 쪽 단위였고 <b>이 값만 규칙이 달랐다.</b>
+	 *
+	 * <p>확인하는 것은 쿼리 개수가 아니라 <b>세는 방식을 바꾸고도 값이 같은가</b> 다 — 묶어서
+	 * 물으면 세션이 없는 줄은 결과에 아예 나오지 않으므로, 그 자리가 <b>0 으로 채워지는지</b>가
+	 * 바뀐 부분이다.
+	 */
+	@Test
+	void S351_play_counts_are_counted_per_page_not_per_row() throws Exception {
+		UUID played = insertStory(TEST_PLAYER_REF, "public", "approved");
+		UUID untouched = insertStory(TEST_PLAYER_REF, "public", "approved");
+		startSessionFor(played);
+
+		assertThat(itemOf(played).path("playCount").asLong()).isEqualTo(1);
+		// 아직 아무도 플레이하지 않은 작품은 묶음 조회의 결과에 없다 — 그것이 0 이다.
+		assertThat(itemOf(untouched).path("playCount").asLong()).isZero();
+	}
+
+	/**
 	 * <b>#340 — 작품에서 원고로 가는 길은 서버가 준다.</b>
 	 *
 	 * <p>이 값이 없으면 "이어서 작성"도 {@code getDraftReview} 도 부를 수 없고, 화면이 제목
