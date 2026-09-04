@@ -140,7 +140,8 @@ class DraftConditionTests {
 	 */
 	@Test
 	void R4_1_the_state_schema_declares_what_the_draft_declared() {
-		String schema = DraftStoryDefinition.from(UUID.randomUUID(), payload("", "")).stateSchema();
+		String schema = DraftStoryDefinition.from(UUID.randomUUID(), payload("", "")).stateSchema()
+				.toJson();
 
 		var root = JSON.readTree(schema);
 		assertThat(root.path("affinity").has("yuna")).isTrue();

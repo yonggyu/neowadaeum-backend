@@ -86,7 +86,8 @@ public class SubmissionService {
 				draft.getPayload());
 		StoryDefinition definition = publishable.definition();
 
-		PrecheckScreen.Result screened = this.screen.screen(fieldsOf(definition));
+		PrecheckScreen.Result screened = this.screen
+				.screen(fieldsOf(definition, publishable.stateSchema().flags()));
 		if (screened.state() == com.neowadaeum.authoring.draft.DraftSafetyState.BLOCKED) {
 			return rejected(screened.findings());
 		}
@@ -106,8 +107,8 @@ public class SubmissionService {
 		}
 
 		// R8.8 — 재제출은 같은 작품에 새 버전을 얹는다. 원고가 자기 작품을 기억한다 (B-56).
-		SubmissionOutcome outcome = approve(existingStoryId, definition, publishable.stateSchema(),
-				visibility);
+		SubmissionOutcome outcome = approve(existingStoryId, definition,
+				publishable.stateSchema().toJson(), visibility);
 		this.drafts.linkStory(authorRef, draftId, outcome.storyId());
 		return outcome;
 	}
@@ -172,8 +173,23 @@ public class SubmissionService {
 	 * <b>전 필드와 챕터·엔딩을 함께 본다</b> (R8.5).
 	 *
 	 * <p>미리보기 3턴 출력은 여기서 다시 보지 않는다 (§13-38) — 그것은 이미 L2 를 지났다.
+	 *
+	 * <p><b>서버가 스스로 목록을 만드는 자리는 여기뿐이다</b> (§13-75). L0 는 <b>화면이 넘긴
+	 * 필드 지도</b>를 검사하므로 화면이 안 넘긴 칸은 L0 도 지나지 않는다 — R8.3 이 <i>클라이언트
+	 * 검증에만 의존하지 않는다</i> 를 세운 이유가 그것이다.
+	 *
+	 * <p><b>목록은 손으로 적는다</b> (§13-75). 프롬프트 레이어에서 파생시키지 않는 것은 검수
+	 * 대상이 레이어보다 넓기 때문이다 — 소개글은 모델에게 가지 않지만 <b>타인에게 보인다</b>.
+	 * 대신 새 값이 조용히 빠지지 못하게 {@code SubmissionFieldCoverageTests} 가 정의의 텍스트
+	 * 성분을 전부 세고, 여기 걸리지도 제외되지도 않은 것을 <b>실패</b>로 만든다.
+	 *
+	 * <p><b>경로는 작성 화면의 이름이다</b> ({@code characters[0].persona}) — 밑줄을 그을 자리를
+	 * 가리키는 값이므로 발행물의 이름({@code personaPrompt})이 아니라 원고 계약의 이름을 쓴다.
+	 *
+	 * @param flags 원고가 선언한 플래그 이름 (#362). <b>정의에는 없고 원고에만 있다</b> —
+	 *     화이트리스트로 발행될 뿐이지만 매 턴 {@code GAME_STATE} 로 나가는 작성자 입력이다
 	 */
-	private static Map<String, String> fieldsOf(StoryDefinition definition) {
+	static Map<String, String> fieldsOf(StoryDefinition definition, Set<String> flags) {
 		Map<String, String> fields = new LinkedHashMap<>();
 		fields.put("title", definition.title());
 		fields.put("shortDesc", definition.shortDesc());
@@ -189,8 +205,41 @@ public class SubmissionService {
 			fields.put("endings[%d].epilogueText".formatted(ending.endingNo()),
 					ending.epilogueText());
 		});
+		putCharacters(fields, definition.characters());
+		// 플래그는 이름뿐이고 문장이 아니다. 짧다는 이유로 다르게 보지 않는다 (§13-75) —
+		// 판정이 둘이 되면 무른 쪽이 곧 길이 된다.
+		int flagIndex = 0;
+		for (String flag : flags) {
+			fields.put("flags[%d]".formatted(flagIndex++), flag);
+		}
 		fields.values().removeIf(java.util.Objects::isNull);
 		return fields;
+	}
+
+	/**
+	 * 인물도 작성자가 쓴 값이다 (R8.5, §13-75).
+	 *
+	 * <p><b>{@code persona} 는 매 턴 모델에게 들어간다</b> ({@code PromptAssembler} 의 인물
+	 * 레이어), {@code name} 과 {@code oneLine} 은 <b>타인의 상세 화면에 뜬다</b> (I-8). 셋 다
+	 * 검수 없이 나갈 자리가 아니다.
+	 *
+	 * <p><b>자리는 배열의 순서다</b> — 화면이 그 순서로 줄을 그리고 계약도 그 표기로 답한다
+	 * ({@code characters[0].name}). 이름이 빈 줄은 인물이 아니므로 (§13-71) 발행 목록의 자리를
+	 * 쓴다.
+	 *
+	 * <p><b>페르소나가 비어 있으면 한 줄 소개가 그 자리에 발행된다</b> (§13-71). 그때 같은
+	 * 문장을 두 자리에 걸지 않는다 — 작성자가 <b>비어 있는 칸</b>에 밑줄을 보게 된다.
+	 */
+	private static void putCharacters(Map<String, String> fields,
+			List<StoryDefinition.Character> characters) {
+		for (int index = 0; index < characters.size(); index++) {
+			StoryDefinition.Character character = characters.get(index);
+			fields.put("characters[%d].name".formatted(index), character.name());
+			fields.put("characters[%d].oneLine".formatted(index), character.oneLine());
+			if (!java.util.Objects.equals(character.personaPrompt(), character.oneLine())) {
+				fields.put("characters[%d].persona".formatted(index), character.personaPrompt());
+			}
+		}
 	}
 
 	/** <b>반려된 원고는 작품을 만들지 않는다.</b> 아무도 볼 수 없더라도 그것은 쌓인다. */
