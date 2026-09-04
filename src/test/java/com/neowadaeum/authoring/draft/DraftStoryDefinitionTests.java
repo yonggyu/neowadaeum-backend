@@ -16,8 +16,8 @@ import org.junit.jupiter.api.Test;
 class DraftStoryDefinitionTests {
 
 	private static final String PAYLOAD = """
-			{"title":"봄의 학교","shortDesc":"짧은 소개","worldIntro":"소개",
-			 "worldPrompt":"봄의 학교에서 시작한다.",
+			{"title":"봄의 학교","shortDescription":"짧은 소개","worldIntro":"소개",
+			 "settingDetail":"봄의 학교에서 시작한다.",
 			 "chapters":[{"title":"1장","summarySeed":"시작"},{"title":"2장","summarySeed":"전개"}],
 			 "endings":[{"label":"좋은 끝","epilogueText":"잘 끝났다."}]}
 			""";
@@ -60,8 +60,8 @@ class DraftStoryDefinitionTests {
 	/** <b>모자란 것은 채우지 않고 거절한다</b> — 지어내면 쓰지 않은 작품을 미리 보게 된다. */
 	@Test
 	void B53_a_draft_without_a_world_prompt_is_refused() {
-		String payload = PAYLOAD.replace("\"worldPrompt\":\"봄의 학교에서 시작한다.\"",
-				"\"worldPrompt\":\"\"");
+		String payload = PAYLOAD.replace("\"settingDetail\":\"봄의 학교에서 시작한다.\"",
+				"\"settingDetail\":\"\"");
 
 		assertThatThrownBy(() -> DraftStoryDefinition.from(UUID.randomUUID(), payload))
 				.isInstanceOf(ApiException.class);

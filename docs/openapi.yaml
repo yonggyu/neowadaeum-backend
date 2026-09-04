@@ -785,10 +785,15 @@ paths:
         5단계 입력이다 (§8.1). `safetyState` 가 `blocked` 이면 **서버가 다음 단계 진행을 거부한다** (R8.3).
         클라이언트 검증에만 의존하지 않는다.
 
-        **고른 조건이 여기로 저장된다** (#326, §13-69). `payload` 의 `chapters[]` · `endings[]`
-        각 항목이 `condition: {templateKey, params}` 를 실을 수 있다 — 형태는
-        `ConditionSelection` 이고, 템플릿 목록과 각 템플릿이 요구하는 입력은
-        `getAuthoringMetadata` 가 선언한다 (§13-56).
+        **`payload` 의 필드 이름은 `DraftPayload` 가 정한다** (#354). 그 전까지 계약이
+        `additionalProperties` 만 열어 두어 화면과 발행이 각자 이름을 정했고, 갈라진 채로
+        제출이 `400` 이었다.
+
+        **고른 조건이 여기로 저장된다** (#326, §13-69). `chapters[]` · `endings[]` 각 항목이
+        `conditionTemplateKey` 와 `conditionParams` 를 **형제 필드로** 싣는다 — 초안 응답이
+        키를 그 높이에 돌려주므로 저장이 한 겹 접으면 화면은 받은 모양과 보내는 모양이
+        달라진다. 템플릿 목록과 각 템플릿이 요구하는 입력은 `getAuthoringMetadata` 가
+        선언한다 (§13-56).
 
         **조건식 JSON 을 보내지 않는다.** 서버가 템플릿과 값으로 조립한다 — 클라이언트가 만든
         구조를 그대로 평가기에 먹이면 그것이 곧 DSL 입력면이 되고, R7.16 이 정한 것은 *템플릿
@@ -3035,9 +3040,7 @@ components:
           minimum: 1
           maximum: 5
         payload:
-          type: object
-          additionalProperties: true
-          description: 단계별 입력 원문 (§8.1)
+          $ref: '#/components/schemas/DraftPayload'
         safetyState:
           $ref: '#/components/schemas/SafetyState'
         findings:
@@ -3048,36 +3051,167 @@ components:
           type: string
           format: date-time
 
-    ConditionSelection:
+    DraftPayload:
       type: object
+      additionalProperties: true
       description: |
-        작성자가 고른 조건 하나 (R7.16, §13-56, §13-69).
+        원고의 단계별 입력 원문 (§8.1, #354).
 
-        **조건식 JSON 이 아니다.** 오는 것은 *고른 것* 이고 조립은 서버가 한다 — 클라이언트가
-        만든 구조를 그대로 조건 평가기에 먹이면 그것이 곧 DSL 입력면이 되고, 쓸 수 있는 사람이
-        평가기의 미정의 동작을 찾아낸다 (I-1 이 `choiceId` 에 대해 세운 것과 같은 이유).
+        **이 스키마가 생기기 전까지 필드 이름을 아무도 정하지 않았다.** `additionalProperties`
+        만 열려 있었고, 그래서 화면과 발행이 각자 이름을 정했다가 갈라졌다 — 실제 마법사로는
+        제출이 `400` 이었다. **이름의 정본은 여기다.**
 
-        `payload` 의 `chapters[].condition` · `endings[].condition` 자리에 온다. **조건 없음은
-        오류가 아니다** — 챕터는 조건 없이 이어질 수 있고, 기본 엔딩은 조건이 없어야 한다
-        (§13-16).
-      required: [templateKey, params]
+        **이름은 발행물의 것을 그대로 쓴다.** `shortDescription` 은 `StoryDetail` 의 것이고
+        `oneLine` · `portraitImage` 는 `CharacterCard` 의 것이다. 원고와 발행물이 같은 말을
+        쓰면 게시 시점에 옮겨 적을 것이 없고, **옮김이 없으면 빠뜨릴 것도 없다.**
+
+        **`additionalProperties` 는 열어 둔다.** `PATCH` 가 payload 를 통째로 받으므로,
+        아직 붙지 않은 단계의 값을 화면이 그대로 실어 보낼 수 있어야 한다 — 아는 키만 남기면
+        **다음 단계가 붙일 값을 이전 단계 화면이 매번 지운다.**
+
+        **필수 필드를 두지 않는다.** 원고는 첫 글자를 치기 전에 이미 만들어져 있고(`createDraft`
+        는 본문이 없다) 그 상태가 예외가 아니라 기본값이다. 무엇이 있어야 발행되는지는
+        `submitDraft` 가 판정한다.
       properties:
-        templateKey:
+        title:
           type: string
-          enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least]
+          description: 작품 제목. 발행 시 필수다
+        genres:
+          type: array
+          description: '`getAuthoringMetadata` 가 준 `AuthoringGenre.key` 들 (§13-56)'
+          items:
+            type: string
+        shortDescription:
+          type: string
+          description: 한 줄 소개. `StoryDetail.shortDescription` 과 같은 값이다
+        coverImage:
+          type: [string, 'null']
           description: |
-            `getAuthoringMetadata` 가 선언한 키 (§13-56). **목록에 없는 키는 `400` 이다** —
-            받아 두면 조용히 거짓이 되는 조건이 발행된다.
-        params:
-          type: object
-          additionalProperties: true
+            `commitDraftImage` 가 확정한 **객체 키** (#315). URL 이 아니다 — 버킷은 비공개이며
+            읽기 URL 은 서버가 그때그때 서명한다 (I-8).
+        worldIntro:
+          type: string
+          description: 독자에게 보이는 세계관 소개. `StoryDetail.worldIntro` 와 같은 값이다
+        settingDetail:
+          type: string
           description: |
-            그 템플릿이 요구하는 값들. 이름과 형은 `getAuthoringMetadata` 의
-            `parameters[]` 가 선언한다.
+            **매 턴 모델에게 들어가는 문장** — 발행물은 이것을 `worldPrompt` 라고 부른다
+            (`ReviewManuscript.worldPrompt`). 화면의 라벨이 *설정 상세*인 것은 독자에게 보이는
+            값이 아니기 때문이며, **발행 시 필수다.**
+        characters:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftCharacter'
+        chapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftChapter'
+        endings:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftEnding'
 
-            - `character` — `payload.characters[].name` 중 하나
-            - `flag` — `payload.flags[]` 중 하나
-            - `threshold` — 정수. **문자열로 온 숫자를 받지 않는다** (형이 둘이 된다)
+    DraftCharacter:
+      type: object
+      additionalProperties: true
+      description: |
+        등장인물 하나 (#354). 필드 경로는 `characters[0].name` 형식이며 `precheck` 도 그 표기로
+        답한다.
+      properties:
+        name:
+          type: string
+          description: 인물 이름. **조건의 `character` 파라미터가 가리키는 값이다** (§13-69)
+        oneLine:
+          type: string
+          description: 한 줄 소개. `CharacterCard.oneLine` 과 같은 값이다
+        persona:
+          type: string
+          description: |
+            **매 턴 모델에게 들어가는 인물 문장.** 검수가 보는 것도 이것이다
+            (`ReviewManuscript` 의 `characters[].persona`).
+
+            **비어 있으면 `oneLine` 이 대신 발행된다** (#350). 서버가 문장을 지어내지는
+            않는다 — 작성자가 쓴 것 중 가장 가까운 것을 쓸 뿐이며, 그 사실이 여기 적혀 있다.
+        portraitImage:
+          type: [string, 'null']
+          description: '`commitDraftImage` 가 확정한 객체 키 (#315). `coverImage` 와 같다'
+
+    DraftChapter:
+      type: object
+      additionalProperties: true
+      description: 챕터 하나 (#354). 번호는 배열의 자리에서 나온다
+      properties:
+        chapterNo:
+          type: integer
+          description: '**서버가 다시 매긴다** — 배열의 순서가 진실이다'
+        title:
+          type: string
+        summarySeed:
+          type: [string, 'null']
+        conditionTemplateKey:
+          $ref: '#/components/schemas/ConditionTemplateKey'
+        conditionParams:
+          $ref: '#/components/schemas/ConditionParams'
+
+    DraftEnding:
+      type: object
+      additionalProperties: true
+      description: |
+        엔딩 하나 (#354).
+
+        **`isDefault` 를 서버가 받아들이지 않는다** (§13-16, I-10). 기본 엔딩은 서버가 따로
+        하나를 더해 만든다 — 작성자가 쓴 엔딩을 조건 없는 폴백으로 바꾸면 그 엔딩이 **아무
+        조건에서나** 나온다.
+      properties:
+        endingNo:
+          type: integer
+          description: '**서버가 다시 매긴다** — 배열의 순서가 진실이다'
+        label:
+          type: string
+        epilogueText:
+          type: [string, 'null']
+        isDefault:
+          type: boolean
+          description: '**참고만 한다** (§13-16). 판정은 서버가 갖는다'
+        conditionTemplateKey:
+          $ref: '#/components/schemas/ConditionTemplateKey'
+        conditionParams:
+          $ref: '#/components/schemas/ConditionParams'
+
+    ConditionTemplateKey:
+      type: [string, 'null']
+      enum: [affinity_at_least, has_flag, lacks_flag, turn_at_least, null]
+      description: |
+        작성자가 고른 조건 템플릿 (R7.16, §13-56, §13-69).
+
+        **조건식 JSON 을 보내지 않는다.** 오는 것은 *고른 것* 이고 조립은 서버가 한다 —
+        클라이언트가 만든 구조를 그대로 조건 평가기에 먹이면 그것이 곧 DSL 입력면이 되고,
+        쓸 수 있는 사람이 평가기의 미정의 동작을 찾아낸다 (I-1 이 `choiceId` 에 대해 세운
+        것과 같은 이유).
+
+        **`null` 은 오류가 아니다** — 챕터는 조건 없이 이어질 수 있고, 기본 엔딩은 조건이
+        없어야 한다 (§13-16). **목록에 없는 키는 `400` 이다**: 받아 두면 조용히 거짓이 되는
+        조건이 발행된다.
+
+        `getAuthoringMetadata` 가 목록과 **각 템플릿이 요구하는 입력**을 선언한다 (§13-56) —
+        이 키 안에 대상도 임계도 접혀 있지 않다.
+
+    ConditionParams:
+      type: object
+      additionalProperties: true
+      description: |
+        고른 템플릿이 요구하는 값들 (#282, §13-69). **`conditionTemplateKey` 의 형제 필드다** —
+        초안 응답이 키를 그 높이에 돌려주므로, 저장이 한 겹 접으면 화면은 받은 모양과 보내는
+        모양이 달라진다.
+
+        이름과 형은 `getAuthoringMetadata` 의 `parameters[]` 가 선언한다.
+
+        - `character` — 이 원고의 `characters[].name` 중 하나여야 한다
+        - `flag` — 이 원고의 `flags[]` 중 하나여야 한다
+        - `threshold` — 정수. **문자열로 온 숫자를 받지 않는다** (형이 둘이 된다)
+
+        **원고에 없는 이름을 가리키면 `400` 이다** — 그런 조건은 평가기에서 조용히 거짓이
+        되고 그 챕터·엔딩은 영원히 도달되지 않는다.
 
     DraftPatchRequest:
       type: object
@@ -3088,8 +3222,7 @@ components:
           minimum: 1
           maximum: 5
         payload:
-          type: object
-          additionalProperties: true
+          $ref: '#/components/schemas/DraftPayload'
 
     ImageUploadRequest:
       type: object

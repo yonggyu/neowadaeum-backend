@@ -22,6 +22,13 @@ import tools.jackson.databind.json.JsonMapper;
  * <b>같은 목록</b>이어야 하며, 두 자리에서 따로 읽으면 <b>검증을 통과한 조건이 런타임에
  * 거짓</b>이 된다 ({@link DraftStateSchema}).
  *
+ * <p><b>이름은 계약이 정한다</b> (#354). 그 전까지 {@code payload} 는 계약에서
+ * {@code additionalProperties: true} 였고 <b>아무도 필드 이름을 정해 주지 않았다</b> — 그래서
+ * 화면과 발행이 각자 정했고 갈라졌다. 지금 읽는 이름은 <b>발행물 계약이 이미 쓰는 이름</b>이다
+ * ({@code shortDescription} 은 {@code StoryDetail} 의 것, {@code oneLine} · {@code portraitImage}
+ * 는 {@code CharacterCard} 의 것) — 원고와 발행물이 같은 말을 쓰면 게시 시점에 옮겨 적을 것이
+ * 없고, <b>옮김이 없으면 빠뜨릴 것도 없다.</b>
+ *
  * <p><b>모자란 것은 채우지 않고 거절한다.</b> 빠진 챕터를 지어내면 작성자는 자기가 쓰지 않은
  * 작품을 미리 보게 된다.
  */
@@ -62,7 +69,10 @@ public final class DraftStoryDefinition {
 	public static Publishable from(UUID authorRef, String payload) {
 		JsonNode root = parse(payload);
 		String title = text(root, "title");
-		String worldPrompt = text(root, "worldPrompt");
+		// 매 턴 모델에게 들어가는 문장이다. 화면은 이것을 **설정 상세**라고 부르고
+		// (와이어프레임 3d), 발행물은 `worldPrompt` 라고 부른다 — 이름이 다른 것은
+		// 독자에게 보이는 값이 아니기 때문이며, 옮기는 자리는 여기 하나다 (#354).
+		String worldPrompt = text(root, "settingDetail");
 		DraftStateSchema schema = DraftStateSchema.from(root);
 
 		List<StoryDefinition.Chapter> chapters = new ArrayList<>();
@@ -77,7 +87,7 @@ public final class DraftStoryDefinition {
 		}
 
 		StoryDefinition definition = new StoryDefinition(authorRef, title,
-				root.path("shortDesc").asString(null), root.path("worldIntro").asString(null),
+				root.path("shortDescription").asString(null), root.path("worldIntro").asString(null),
 				worldPrompt, "affinity", chapters, endingsOf(root, schema));
 		return new Publishable(definition, schema.toJson());
 	}
@@ -106,7 +116,7 @@ public final class DraftStoryDefinition {
 	 * <p><b>고르지 않았으면 {@code null} 이다.</b> 챕터는 조건 없이 이어질 수 있다.
 	 */
 	private static String conditionOf(JsonNode node, DraftStateSchema schema) {
-		return ConditionSelection.read(node.path("condition"))
+		return ConditionSelection.read(node)
 				.map(selection -> ConditionAssembler.assemble(selection, schema.characters(),
 						schema.flags()))
 				.orElse(null);
