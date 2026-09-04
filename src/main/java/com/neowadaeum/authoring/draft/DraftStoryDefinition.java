@@ -107,12 +107,18 @@ public final class DraftStoryDefinition {
 	 *
 	 * <p><b>여기서 나머지를 보지 않는다.</b> 아직 채우지 않은 단계가 있는 것은 정상이며
 	 * (5단계 저장, R8.3), 제목이 없다고 저장을 막으면 <b>작성 중인 원고를 저장할 수 없다.</b>
+	 *
+	 * <p><b>읽은 선언을 돌려준다</b> (§13-76). 저장 시점의 게이트가 둘이고 둘 다 같은 목록을
+	 * 본다 — 다시 파싱하면 <b>두 게이트가 서로 다른 것을 볼 수 있는 자리</b>가 생긴다.
+	 *
+	 * @return 이 원고가 선언한 이름. {@link DraftVocabularyGate} 가 이어서 본다
 	 */
-	public static void validateConditions(String payload) {
+	public static DraftStateSchema validateConditions(String payload) {
 		JsonNode root = parse(payload);
 		DraftStateSchema schema = DraftStateSchema.from(root);
 		root.path("chapters").forEach(chapter -> conditionOf(chapter, schema));
 		root.path("endings").forEach(ending -> conditionOf(ending, schema));
+		return schema;
 	}
 
 	/**
