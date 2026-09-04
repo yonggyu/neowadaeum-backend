@@ -43,9 +43,6 @@ public class PreviewController {
 	static final int PREVIEW_TURN_LIMIT = 3;
 
 
-	/** R4.4 · §13-9 — 작성자가 자유 정의하지 않는다. 미리보기는 기본 템플릿으로 연다. */
-	private static final String PREVIEW_STATE_SCHEMA = "{\"flags\":[]}";
-
 	private final DraftService drafts;
 
 	private final StoryPublisher publisher;
@@ -77,9 +74,11 @@ public class PreviewController {
 		// 남의 원고에는 부를 수 없다 (I-8). 없는 것과 구분되지 않는다.
 		String payload = this.drafts.read(authorRef, draftId).getPayload();
 
-		StoryDefinition definition = DraftStoryDefinition.from(authorRef, payload);
-		StoryPublisher.PublishedVersion published = this.publisher.publishNew(definition,
-				PREVIEW_STATE_SCHEMA);
+		// #326 — 미리보기도 발행과 같은 스키마를 쓴다. 상수로 두면 작성자가 고른 조건이
+		// **미리보기에서만** 거짓이 되고, 그것이 미리보기가 답해야 할 질문이다.
+		DraftStoryDefinition.Publishable publishable = DraftStoryDefinition.from(authorRef, payload);
+		StoryPublisher.PublishedVersion published = this.publisher
+				.publishNew(publishable.definition(), publishable.stateSchema());
 
 		TestSessionStarter.TestSession session = this.sessions.start(authorRef, published.storyId(),
 				published.versionId(), PREVIEW_TURN_LIMIT);
