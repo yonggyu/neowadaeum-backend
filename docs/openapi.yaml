@@ -2886,12 +2886,24 @@ components:
 
     MyStoryItem:
       type: object
-      required: [storyId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount, updatedAt,
-                 submittedAt, reviewedAt]
+      required: [storyId, draftId, title, coverImage, visibility, reviewStatus, rejectReasons, playCount,
+                 updatedAt, submittedAt, reviewedAt]
       properties:
         storyId:
           type: string
           format: uuid
+        draftId:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            이 작품을 발행한 **원고** (#340). `/authoring/drafts/{draftId}` 로 이어서 쓰고,
+            `GET /authoring/drafts/{draftId}/review` 로 반려 사유를 자세히 본다.
+
+            **작품과 원고를 잇는 규칙은 서버가 갖는다.** 화면이 제목 같은 것으로 짝지으면
+            같은 제목의 원고가 둘일 때 조용히 남의 것으로 보낸다 — 제목은 식별자가 아니다.
+
+            **`null`** — 원고 없이 존재하는 작품이다. 미리보기가 만든 임시 작품이 그렇다
+            (§13-5) — 그 작품은 원고와 연결되지 않은 채 파기를 기다린다 (§13-37).
         title:
           type: string
         coverImage:

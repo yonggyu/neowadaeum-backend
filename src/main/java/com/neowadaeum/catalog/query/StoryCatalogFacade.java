@@ -1,5 +1,6 @@
 package com.neowadaeum.catalog.query;
 
+import com.neowadaeum.common.spi.StoryDraftLinkQuery;
 import com.neowadaeum.common.spi.StoryReviewTimes;
 import com.neowadaeum.common.spi.StoryReviewTimesQuery;
 import java.nio.charset.StandardCharsets;
@@ -70,11 +71,20 @@ public class StoryCatalogFacade {
 	 */
 	private final StoryReviewTimesQuery reviewTimes;
 
+	/**
+	 * 작품을 발행한 원고 (#340).
+	 *
+	 * <p><b>{@code story_draft} 도 같은 이유로 직접 읽지 않는다</b> — {@link #reviewTimes} 와
+	 * 같은 자리다. 연결을 만드는 것은 제출 경로이고, 그 규칙을 아는 모듈은 authoring 하나다.
+	 */
+	private final StoryDraftLinkQuery draftLinks;
+
 	public StoryCatalogFacade(@Qualifier("catalogDataSource") DataSource catalogDataSource, Clock clock,
-			StoryReviewTimesQuery reviewTimes) {
+			StoryReviewTimesQuery reviewTimes, StoryDraftLinkQuery draftLinks) {
 		this.jdbc = JdbcClient.create(catalogDataSource);
 		this.clock = clock;
 		this.reviewTimes = reviewTimes;
+		this.draftLinks = draftLinks;
 	}
 
 	/** 화면이 보여 줄 장르 목록. {@code display_order} 가 유일하므로 순서가 결정론이다. */
@@ -134,13 +144,15 @@ public class StoryCatalogFacade {
 		List<MyStoryRow> page = more ? rows.subList(0, size) : rows;
 
 		// §15 — 줄마다 물으면 20줄이 21번의 조회가 된다. 쪽 전체를 한 번에 묻는다 (#290).
-		Map<UUID, StoryReviewTimes> times = this.reviewTimes
-				.findByStoryIds(page.stream().map(MyStoryRow::id).toList());
+		List<UUID> storyIds = page.stream().map(MyStoryRow::id).toList();
+		Map<UUID, StoryReviewTimes> times = this.reviewTimes.findByStoryIds(storyIds);
+		// 같은 이유로 원고 id 도 쪽 단위로 묻는다 (#340).
+		Map<UUID, UUID> draftIds = this.draftLinks.findDraftIdsByStoryIds(storyIds);
 
 		List<MyStoryView> stories = page.stream().map(row -> {
 			var when = times.getOrDefault(row.id(), StoryReviewTimes.NONE);
-			return new MyStoryView(row.id(), row.title(), row.coverUrl(), row.visibility(),
-					reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt(),
+			return new MyStoryView(row.id(), draftIds.get(row.id()), row.title(), row.coverUrl(),
+					row.visibility(), reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt(),
 					when.submittedAt(), when.reviewedAt());
 		}).toList();
 
