@@ -63,12 +63,21 @@ class CatalogSeedTests extends ContainerTestBase {
 				"current_version_id", "published_at", "created_at");
 	}
 
-	/** §2.3 {@code story_version} — {@code choice_policy} 와 {@code state_schema} 가 빠지면 R4.1·R4.2 를 걸 곳이 없다. */
+	/**
+	 * §2.3 {@code story_version} — {@code choice_policy} 와 {@code state_schema} 가 빠지면
+	 * R4.1·R4.2 를 걸 곳이 없다.
+	 *
+	 * <p><b>뒤의 넷은 원문에 없다</b> (#358, §13-74). 승인은 발행보다 <b>나중에 다른 사람이</b>
+	 * 하므로, 그때 원고를 다시 읽으면 그 사이 작성자가 고친 값이 게시된다 (I-8) — 그래서 버전이
+	 * <b>무엇이 심사받았는가</b>를 함께 든다. 작품 수준 값의 정본은 여전히 {@code story} 행이고,
+	 * 이것은 승인을 기다리는 동안의 사본이다.
+	 */
 	@Test
 	void S2_3_story_version_columns_match_the_requirement_source() throws SQLException {
 		assertThat(columns("story_version")).containsExactlyInAnyOrder(
 				"id", "story_id", "version_no", "world_prompt", "choice_policy",
-				"state_schema", "state_template_key", "published_at");
+				"state_schema", "state_template_key", "published_at",
+				"title", "short_desc", "world_intro", "cover_url");
 	}
 
 	/** §2.3 {@code character} + §13-1 — 원문 컬럼에 {@code story_version_id} 가 더해진다. */

@@ -47,6 +47,11 @@ class StoryPublisherTests extends ContainerTestBase {
 		for (UUID storyId : this.published) {
 			// FK 순서대로 지운다 — 버전이 챕터·엔딩·인물을 잡고 있고 작품이 버전을 잡고 있다.
 			jdbc.sql("DELETE FROM story_genre WHERE story_id = ?").param(storyId).update();
+			// #358 — 장르의 정본은 버전이다. 버전보다 먼저 지운다.
+			jdbc.sql("""
+							DELETE FROM story_version_genre WHERE story_version_id IN
+									(SELECT id FROM story_version WHERE story_id = ?)
+							""").param(storyId).update();
 			jdbc.sql("DELETE FROM character WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
