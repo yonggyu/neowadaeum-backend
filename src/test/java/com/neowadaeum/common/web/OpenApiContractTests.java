@@ -472,6 +472,9 @@ class OpenApiContractTests {
 			Map.entry("AdminReviewController.ReviewVerdictResponse", "ReviewVerdictResult"),
 			// 계약이 관리자 응답에 Admin 접두를 붙인다 — 사용자 응답과 같은 표에 있기 때문이다.
 			Map.entry("SessionDebugView", "AdminSessionDebugSession"),
+			Map.entry("SessionListView", "AdminSessionListItem"),
+			// #332 — 계약은 원고 안의 조각을 Manuscript 접두로 부른다 (같은 응답의 다른 셋과 같다).
+			Map.entry("ReviewManuscript.PreviewTurn", "ManuscriptPreviewTurn"),
 			Map.entry("AiCallView", "AdminAiCall"),
 			// **이름이 겹친다.** SessionDebugView 안의 TurnView 는 플레이의 TurnView 와 다른
 			// 것인데 단순 이름이 같아, 별칭이 없으면 TurnResponse 스키마에 대조되어 통과한다 —

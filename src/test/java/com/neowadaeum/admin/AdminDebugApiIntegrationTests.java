@@ -32,6 +32,10 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>여기서만 확인할 수 있는 것이 있다 — 세 조건이 이 경로에도 서 있는지, 그리고 <b>원문을
  * 꺼내면 정말로 기록이 남는지</b>가 필터·가드·두 파사드를 다 거친 뒤에도 참인지.
+ *
+ * <p><b>세션을 찾는 층도 여기서 함께 본다</b> (#339). 두 경로의 차이는 무엇을 읽는지가 아니라
+ * <b>읽는 행위가 무엇을 남기는지</b>이므로, 나란히 두어야 그 대비가 읽힌다 — 한쪽은 남기고
+ * 한쪽은 남기지 않는다.
  */
 class AdminDebugApiIntegrationTests extends ContainerTestBase {
 
@@ -42,6 +46,8 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 	private static final UUID SEED_STORY = UUID.fromString("11111111-1111-4111-8111-000000000001");
 
 	private static final UUID SEED_VERSION = UUID.fromString("11111111-1111-4111-8111-111111111111");
+
+	private static final String LIST_PATH = "/api/v1/admin/sessions";
 
 	@Autowired
 	private MockMvc mvc;
@@ -148,6 +154,89 @@ class AdminDebugApiIntegrationTests extends ContainerTestBase {
 				.andExpect(status().isForbidden());
 
 		assertThat(this.accessLogs.findAll()).isEmpty();
+	}
+
+	// ── #339 세션을 찾는 층 — 원문을 열지 않으므로 감사를 남기지 않는다 ──
+
+	/** 목록도 같은 문 뒤에 있다 (S-4). 찾는 것이 여는 것보다 헐거우면 안 된다. */
+	@Test
+	void SEC4_the_session_list_also_needs_a_step_up() throws Exception {
+		givenAdmin();
+
+		this.mvc.perform(get(LIST_PATH).with(asPlayer(ADMIN_PLAYER_REF)))
+				.andExpect(status().isForbidden());
+	}
+
+	/**
+	 * <b>#339 — 콘솔에 들어가는 문.</b>
+	 *
+	 * <p>{@code getSessionDebug} 는 {@code sessionId} 를 이미 아는 사람만 부를 수 있었다.
+	 * 작품 이름이 함께 오는 것은 화면 {@code 1j} 가 그것을 상단에 그리기 때문이다.
+	 */
+	@Test
+	void S339_the_list_finds_sessions_and_names_the_story() throws Exception {
+		givenAdmin();
+		UUID sessionId = givenSession();
+
+		JsonNode body = JSON.readTree(this.mvc
+				.perform(get(LIST_PATH).with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUpToken()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+
+		JsonNode row = body.path("items").valueStream()
+				.filter(node -> sessionId.toString().equals(node.path("sessionId").asString()))
+				.findFirst().orElseThrow();
+		assertThat(row.path("storyId").asString()).isEqualTo(SEED_STORY.toString());
+		assertThat(row.path("storyTitle").asString()).isNotBlank();
+		assertThat(row.path("testSession").asBoolean()).isFalse();
+	}
+
+	/**
+	 * <b>#339 · R12.3 — 목록은 열람이 아니다.</b>
+	 *
+	 * <p>이것이 목록을 디버그와 다른 층에 둔 이유 전부다. 후보 세션들의 원문을 미리 불러
+	 * 두면 <b>열어 본 적 없는 세션이 열람 기록에 남고</b>, 그 순간 감사 로그는 <i>"이 관리자가
+	 * 이 세션을 봤다"</i> 를 말하지 않는다.
+	 */
+	@Test
+	void SEC5_listing_sessions_leaves_no_read_record() throws Exception {
+		givenAdmin();
+		UUID sessionId = givenSession();
+		givenAiCall(sessionId);
+
+		this.mvc.perform(get(LIST_PATH).with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUpToken()))
+				.andExpect(status().isOk());
+
+		assertThat(this.accessLogs.findAll()).isEmpty();
+	}
+
+	/** 작품으로 좁힌다 — 콘솔에서 가장 자주 하는 일이다 (#339). */
+	@Test
+	void S339_the_list_can_be_narrowed_by_story() throws Exception {
+		givenAdmin();
+		givenSession();
+
+		JsonNode body = JSON.readTree(this.mvc
+				.perform(get(LIST_PATH).param("storyId", UUID.randomUUID().toString())
+						.with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUpToken()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+
+		assertThat(body.path("items")).isEmpty();
+	}
+
+	/** <b>{@code playerRef} 는 목록에도 없다</b> (I-3). */
+	@Test
+	void I3_the_list_never_carries_a_player_ref() throws Exception {
+		givenAdmin();
+		givenSession();
+
+		String body = this.mvc.perform(get(LIST_PATH).with(asPlayer(ADMIN_PLAYER_REF))
+						.header(AdminAccessGuard.STEP_UP_HEADER, stepUpToken()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+		assertThat(body).doesNotContain(ADMIN_PLAYER_REF.toString());
 	}
 
 	private static String debugPath(UUID sessionId) {
