@@ -89,8 +89,16 @@ public class ReviewManuscriptService {
 
 		StoryVersionView version = this.versions.findByVersionId(versionId)
 				.orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
+		// #358 — 제목·소개·세계관 소개는 **그 버전이 든 것**을 읽는다. 작품 행은 승인 전까지
+		// 옛 버전의 값을 들고 있으므로(버전을 나눈 이유가 그것이다), 작품 행을 읽으면
+		// **옛 제목으로 새 챕터를 판정**하게 되고 승인은 검수자가 보지 않은 제목을 게시한다.
+		// 스냅샷이 없는 버전은 작품 행으로 돌아간다 — 그때는 그것이 유일한 사실이다.
+		StoryPublisher.VersionStoryFields judged = this.publisher.versionStoryFieldsOf(versionId)
+				.filter(fields -> fields.title() != null)
+				.orElseGet(() -> new StoryPublisher.VersionStoryFields(header.title(),
+						header.shortDesc(), header.worldIntro()));
 		Optional<StoryDraft> draft = this.drafts.findFirstByStoryIdOrderByUpdatedAtDesc(storyId);
-		return new ReviewManuscript(storyId, header.title(), header.shortDesc(), header.worldIntro(),
+		return new ReviewManuscript(storyId, judged.title(), judged.shortDesc(), judged.worldIntro(),
 				header.reviewStatus(), header.visibility(), header.createdAt(),
 				displayNameOf(header.authorRef()), version.worldPrompt(), charactersOf(version),
 				chaptersOf(version), endingsOf(versionId, version), autoCheckOf(storyId),

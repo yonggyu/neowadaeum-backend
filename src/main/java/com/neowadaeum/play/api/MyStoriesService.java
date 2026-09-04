@@ -96,11 +96,17 @@ public class MyStoriesService {
 	public MyStoriesView.Stories stories(UUID playerRef, String cursor, Integer limit) {
 		MyStoryPage page = this.stories.mine(playerRef, cursor, limit);
 
+		// §15 — 쪽 전체를 한 번에 묻는다 (#351). 줄마다 물으면 20줄이 조회 21번이 되고, 같은
+		// 목록의 검수 시각(#290)과 원고 id(#340)는 이미 쪽 단위다.
+		Map<UUID, Long> playCounts = this.sessions
+				.playCountsByStoryIds(page.stories().stream().map(MyStoryView::storyId).toList());
+
 		List<MyStoriesView.StoryItem> items = new ArrayList<>(page.stories().size());
 		for (MyStoryView story : page.stories()) {
 			items.add(new MyStoriesView.StoryItem(story.storyId(), story.draftId(), story.title(),
 					story.coverImage(), story.visibility(), story.reviewStatus(), story.rejectReasons(),
-					this.sessions.countByStoryIdAndDeletedAtIsNull(story.storyId()), story.updatedAt(),
+					// 아직 아무도 플레이하지 않은 작품은 지도에 없다 — 그것이 0 이다.
+					playCounts.getOrDefault(story.storyId(), 0L), story.updatedAt(),
 					story.submittedAt(), story.reviewedAt()));
 		}
 		return new MyStoriesView.Stories(items, page.nextCursor(), page.hasMore(),

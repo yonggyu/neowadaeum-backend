@@ -2,7 +2,10 @@ package com.neowadaeum.play.repository;
 
 import com.neowadaeum.play.domain.PlaySession;
 import com.neowadaeum.play.domain.SessionStatus;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.time.Instant;
 import org.springframework.data.domain.Limit;
@@ -79,14 +82,39 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 			@Param("cursorId") UUID cursorId, Limit limit);
 
 	/**
-	 * 작품별 플레이 횟수 (§13.7, R13.4).
+	 * 작품별 플레이 횟수 — <b>쪽 전체를 한 번에</b> (§13.7, R13.4, #351).
 	 *
 	 * <p>지운 세션은 세지 않는다 — 사용자가 없앤 것을 작성자의 지표로 삼지 않는다.
 	 *
 	 * <p><b>도달률(B-39)과 다른 값이다.</b> 그쪽은 배치가 갱신하는 집계이고 이것은 목록 한 줄을
-	 * 그리기 위한 즉석 계산이다. 작품 수가 적은 화면이므로 지금은 이것으로 충분하다.
+	 * 그리기 위한 즉석 계산이다.
+	 *
+	 * <p><b>줄마다 묻지 않는다</b> (§15). 20줄짜리 목록이 조회 21번이 된다 — 같은 목록의 검수
+	 * 시각(#290)과 원고 id(#340)는 이미 쪽 단위이고, <b>이 값만 규칙이 달랐다.</b>
 	 */
-	long countByStoryIdAndDeletedAtIsNull(UUID storyId);
+	@Query("""
+			SELECT new com.neowadaeum.play.repository.StoryPlayCount(s.storyId, COUNT(s))
+			FROM PlaySession s
+			WHERE s.storyId IN :storyIds AND s.deletedAt IS NULL
+			GROUP BY s.storyId
+			""")
+	List<StoryPlayCount> countByStoryIds(@Param("storyIds") Collection<UUID> storyIds);
+
+	/**
+	 * 작품 id 로 찾는 지도.
+	 *
+	 * <p><b>세지 않은 작품은 들어 있지 않다</b> — 아직 아무도 플레이하지 않은 작품이며, 부르는
+	 * 쪽이 0 을 안다. 빈 목록을 그대로 넘기지 않는 것은 {@code IN ()} 이 스토어마다 다르게
+	 * 굴기 때문이다 ({@code StoryCatalogFacade.briefs} 와 같은 자리).
+	 */
+	default Map<UUID, Long> playCountsByStoryIds(Collection<UUID> storyIds) {
+		if (storyIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<UUID, Long> counts = new HashMap<>();
+		countByStoryIds(storyIds).forEach(row -> counts.put(row.storyId(), row.playCount()));
+		return counts;
+	}
 
 	/**
 	 * 내 세션 목록의 한 쪽 (§13.7, B-36).
