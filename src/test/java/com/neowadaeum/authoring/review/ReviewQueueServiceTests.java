@@ -26,8 +26,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 class ReviewQueueServiceTests extends ContainerTestBase {
 
 	private static final String PAYLOAD = """
-			{"title":"봄의 학교","shortDesc":"짧은 소개","worldIntro":"소개",
-			 "worldPrompt":"봄의 학교에서 시작한다.",
+			{"title":"봄의 학교","shortDescription":"짧은 소개","worldIntro":"소개",
+			 "settingDetail":"봄의 학교에서 시작한다.",
 			 "chapters":[{"title":"1장","summarySeed":"시작"}],
 			 "endings":[{"label":"좋은 끝","epilogueText":"잘 끝났다."}]}
 			""";

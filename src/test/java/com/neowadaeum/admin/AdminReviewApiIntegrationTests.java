@@ -55,8 +55,8 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	/** 신고자가 쓴 자유 문장. <b>응답에 나가지 않는 것</b>을 확인하는 데 쓴다 (I-3, §13-62). */
 	private static final String REPORT_DETAIL = "신고자가 쓴 문장이다";
 
-	private static final String PAYLOAD = "{\"title\":\"봄의 학교\",\"shortDesc\":\"소개\","
-			+ "\"worldIntro\":\"소개\",\"worldPrompt\":\"봄의 학교에서 시작한다.\","
+	private static final String PAYLOAD = "{\"title\":\"봄의 학교\",\"shortDescription\":\"소개\","
+			+ "\"worldIntro\":\"소개\",\"settingDetail\":\"봄의 학교에서 시작한다.\","
 			+ "\"chapters\":[{\"title\":\"1장\",\"summarySeed\":\"시작\"}],"
 			+ "\"endings\":[{\"label\":\"좋은 끝\",\"epilogueText\":\"잘 끝났다.\"}]}";
 

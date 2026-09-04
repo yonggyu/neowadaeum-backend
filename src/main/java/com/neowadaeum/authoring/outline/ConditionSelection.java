@@ -20,12 +20,24 @@ import tools.jackson.databind.JsonNode;
  */
 public record ConditionSelection(ConditionTemplate template, JsonNode params) {
 
-	private static final String TEMPLATE_KEY = "templateKey";
+	/**
+	 * 계약이 이미 이 이름을 쓴다 (#354, §13-56).
+	 *
+	 * <p>{@code OutlineChapter} · {@code OutlineEnding} 이 초안 응답에서 이 키를 돌려주므로,
+	 * 저장할 때 <b>다른 이름으로 접어 넣으면 한 자리에 두 표기가 생긴다</b> — 화면은 응답에서
+	 * 받은 것을 그대로 되돌려 보낼 수 없게 되고, 그 변환이 어느 날 하나를 빠뜨린다.
+	 */
+	private static final String TEMPLATE_KEY = "conditionTemplateKey";
 
-	private static final String PARAMS = "params";
+	/** 키가 접고 있지 않은 값들 (#282). 형제 필드다 — 키와 같은 높이에 있다. */
+	private static final String PARAMS = "conditionParams";
 
 	/**
-	 * 원고 {@code payload} 의 {@code condition} 한 자리를 읽는다.
+	 * 원고 {@code payload} 의 챕터·엔딩 한 항목에서 <b>고른 조건</b>을 읽는다.
+	 *
+	 * <p><b>중첩 객체가 아니라 형제 필드다</b> (#354). 초안 응답이 {@code conditionTemplateKey}
+	 * 를 그 높이에 돌려주므로, 저장이 그것을 한 겹 접으면 화면은 <b>받은 모양과 보내는 모양이
+	 * 다른</b> 상태를 매번 변환해야 한다.
 	 *
 	 * @return 조건을 고르지 않았으면 비어 있다. <b>조건 없음은 오류가 아니다</b> — 챕터는
 	 *     조건 없이 이어질 수 있고, 기본 엔딩은 조건이 없어야 한다 (§13-16)
@@ -33,15 +45,21 @@ public record ConditionSelection(ConditionTemplate template, JsonNode params) {
 	 *     없는 키다. <b>모르는 키를 조용히 무시하지 않는다</b>: 무시하면 작성자가 고른 조건이
 	 *     사라진 채 발행되고, 그 챕터·엔딩은 <b>영원히 도달되지 않는다</b>
 	 */
-	public static Optional<ConditionSelection> read(JsonNode node) {
-		if (node == null || node.isNull() || node.isMissingNode()) {
+	public static Optional<ConditionSelection> read(JsonNode item) {
+		if (item == null || !item.isObject()) {
 			return Optional.empty();
 		}
-		String key = node.path(TEMPLATE_KEY).asString(null);
-		if (key == null || key.isBlank()) {
+		JsonNode key = item.path(TEMPLATE_KEY);
+		// **고르지 않은 것과 비운 것을 같게 본다.** 화면은 조건을 지울 때 `null` 을 보내고,
+		// 아직 고르지 않은 항목에는 키 자체가 없다 — 둘 다 "조건 없음"이 사실이다.
+		if (key.isNull() || key.isMissingNode()) {
+			return Optional.empty();
+		}
+		String value = key.asString(null);
+		if (value == null || value.isBlank()) {
 			throw new ApiException(ErrorCode.VALIDATION_ERROR);
 		}
-		return Optional.of(new ConditionSelection(templateOf(key), node.path(PARAMS)));
+		return Optional.of(new ConditionSelection(templateOf(value), item.path(PARAMS)));
 	}
 
 	private static ConditionTemplate templateOf(String key) {

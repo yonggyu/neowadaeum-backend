@@ -40,8 +40,8 @@ class StoryAppealApiIntegrationTests extends ContainerTestBase {
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
-	private static final String PAYLOAD = "{\"title\":\"여름의 등대\",\"shortDesc\":\"소개\","
-			+ "\"worldIntro\":\"소개\",\"worldPrompt\":\"여름의 등대에서 시작한다.\","
+	private static final String PAYLOAD = "{\"title\":\"여름의 등대\",\"shortDescription\":\"소개\","
+			+ "\"worldIntro\":\"소개\",\"settingDetail\":\"여름의 등대에서 시작한다.\","
 			+ "\"chapters\":[{\"title\":\"1장\",\"summarySeed\":\"시작\"}],"
 			+ "\"endings\":[{\"label\":\"좋은 끝\",\"epilogueText\":\"잘 끝났다.\"}]}";
 
