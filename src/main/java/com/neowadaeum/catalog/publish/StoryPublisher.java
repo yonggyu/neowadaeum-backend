@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -88,16 +89,17 @@ public class StoryPublisher {
 		UUID storyId = UUID.randomUUID();
 
 		this.jdbc.sql("""
-						INSERT INTO story (id, slug, title, short_desc, world_intro, author_type,
-								author_ref, visibility, review_status, created_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						INSERT INTO story (id, slug, title, short_desc, world_intro, cover_url,
+								author_type, author_ref, visibility, review_status, created_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(storyId, slugFor(storyId, definition.title()), definition.title(),
 						trimmedShortDesc(definition.shortDesc()), definition.worldIntro(),
-						USER_AUTHOR_TYPE, definition.authorRef(), PRIVATE_VISIBILITY,
-						DRAFT_REVIEW_STATUS, at(now))
+						definition.coverImageKey(), USER_AUTHOR_TYPE, definition.authorRef(),
+						PRIVATE_VISIBILITY, DRAFT_REVIEW_STATUS, at(now))
 				.update();
 
+		insertGenres(storyId, definition.genreKeys());
 		UUID versionId = insertVersion(storyId, 1, definition, stateSchemaJson, now);
 		return new PublishedVersion(storyId, versionId);
 	}
@@ -504,6 +506,38 @@ public class StoryPublisher {
 	}
 
 	/** §2.3 — 넘치면 자른다. 저장에서 거절하면 작성자는 <b>왜 실패했는지</b> 알기 어렵다. */
+	/**
+	 * 작성자가 고른 장르를 작품에 붙인다.
+	 *
+	 * <p><b>정본은 {@code genre} 표다</b> (§13-56). 화면이 고른 것은 키이고, 그 키가 표에 없으면
+	 * <b>거절한다</b> — 목록을 준 것도 서버이므로 없는 키가 온 것은 화면이 낡았거나 손댄 것이다.
+	 * 조용히 빼면 <b>작성자가 고른 장르가 사라진 채</b> 발행되고, 그 작품은 자기가 뜬다고
+	 * 생각한 섹션에 뜨지 않는다.
+	 *
+	 * <p><b>한 번에 묻는다</b> (§15). 장르마다 물으면 다섯 개가 여섯 번의 조회가 된다.
+	 */
+	private void insertGenres(UUID storyId, List<String> genreKeys) {
+		if (genreKeys.isEmpty()) {
+			return;
+		}
+		Map<String, UUID> byKey = new HashMap<>();
+		this.jdbc.sql("SELECT id, key FROM genre WHERE key IN (:keys)").param("keys", genreKeys)
+				.query((rs, rowNum) -> Map.entry(rs.getString("key"), rs.getObject("id", UUID.class)))
+				.list().forEach(entry -> byKey.put(entry.getKey(), entry.getValue()));
+
+		for (String key : genreKeys) {
+			UUID genreId = byKey.get(key);
+			if (genreId == null) {
+				throw new ApiException(ErrorCode.VALIDATION_ERROR);
+			}
+			this.jdbc.sql("""
+							INSERT INTO story_genre (story_id, genre_id) VALUES (?, ?)
+							ON CONFLICT DO NOTHING
+							""")
+					.params(storyId, genreId).update();
+		}
+	}
+
 	private static String trimmedShortDesc(String shortDesc) {
 		if (shortDesc == null) {
 			return null;

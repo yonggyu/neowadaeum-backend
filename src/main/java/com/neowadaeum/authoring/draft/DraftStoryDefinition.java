@@ -88,7 +88,8 @@ public final class DraftStoryDefinition {
 
 		StoryDefinition definition = new StoryDefinition(authorRef, title,
 				root.path("shortDescription").asString(null), root.path("worldIntro").asString(null),
-				worldPrompt, "affinity", chapters, endingsOf(root, schema), charactersOf(root));
+				worldPrompt, "affinity", chapters, endingsOf(root, schema), charactersOf(root),
+				genreKeysOf(root), root.path("coverImage").asString(null));
 		return new Publishable(definition, schema.toJson());
 	}
 
@@ -107,6 +108,24 @@ public final class DraftStoryDefinition {
 		DraftStateSchema schema = DraftStateSchema.from(root);
 		root.path("chapters").forEach(chapter -> conditionOf(chapter, schema));
 		root.path("endings").forEach(ending -> conditionOf(ending, schema));
+	}
+
+	/**
+	 * 작성자가 고른 장르의 키.
+	 *
+	 * <p><b>목록의 정본은 {@code genre} 표다</b> (§13-56) — 화면이 고른 것은 라벨이 아니라 키이고,
+	 * 표에 없는 키는 발행이 거절한다. 조용히 빼면 <b>작성자가 고른 장르가 사라진 채</b> 발행되고,
+	 * 그 작품은 자기가 뜬다고 생각한 섹션에 뜨지 않는다.
+	 */
+	private static List<String> genreKeysOf(JsonNode root) {
+		List<String> keys = new ArrayList<>();
+		for (JsonNode genre : root.path("genres")) {
+			String key = genre.asString(null);
+			if (key != null && !key.isBlank()) {
+				keys.add(key);
+			}
+		}
+		return keys;
 	}
 
 	/**

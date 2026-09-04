@@ -46,6 +46,7 @@ class StoryPublisherTests extends ContainerTestBase {
 		JdbcClient jdbc = JdbcClient.create(this.catalog);
 		for (UUID storyId : this.published) {
 			// FK 순서대로 지운다 — 버전이 챕터·엔딩·인물을 잡고 있고 작품이 버전을 잡고 있다.
+			jdbc.sql("DELETE FROM story_genre WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM character WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
@@ -91,6 +92,53 @@ class StoryPublisherTests extends ContainerTestBase {
 		// 옛 버전은 그대로다 — 진행 중 세션이 그것을 본다 (I-4).
 		assertThat(this.versions.findByVersionId(first.versionId())).get()
 				.satisfies(view -> assertThat(view.characters()).hasSize(1));
+	}
+
+	/**
+	 * <b>#357 — 고른 장르와 커버가 작품에 붙는다.</b>
+	 *
+	 * <p>그 전까지 발행이 둘 다 읽지 않아 <b>작성자가 고른 장르로는 그 작품이 뜨지 않았고</b>
+	 * 커버는 늘 비어 있었다. 라이브러리의 장르 섹션이 조용히 그 작품을 빼놓는다.
+	 */
+	@Test
+	void S357_the_chosen_genres_and_cover_reach_the_story() {
+		var published = publish(definition());
+
+		assertThat(genreKeysOf(published.storyId())).containsExactly("romance");
+		assertThat(coverOf(published.storyId())).isEqualTo("drafts/cover/키.jpg");
+	}
+
+	/**
+	 * <b>#357 — 표에 없는 장르 키는 거절한다.</b>
+	 *
+	 * <p>목록을 준 것도 서버다 (§13-56) — 없는 키가 온 것은 화면이 낡았거나 손댄 것이다.
+	 * 조용히 빼면 <b>작성자가 고른 장르가 사라진 채</b> 발행되고, 그 작품은 자기가 뜬다고
+	 * 생각한 섹션에 뜨지 않는다.
+	 */
+	@Test
+	void S357_an_unknown_genre_key_is_rejected() {
+		StoryDefinition definition = new StoryDefinition(UUID.randomUUID(), "봄의 학교", "짧은 소개",
+				"세계관 소개", "봄의 학교에서 시작한다.", "affinity",
+				List.of(new StoryDefinition.Chapter(1, "1장", "시작", null, 1, 10)),
+				defaultEndings(), List.of(), List.of("없는장르"), null);
+
+		assertThatThrownBy(() -> publish(definition))
+				.isInstanceOf(com.neowadaeum.common.error.ApiException.class);
+	}
+
+	private List<String> genreKeysOf(UUID storyId) {
+		return org.springframework.jdbc.core.simple.JdbcClient.create(this.catalog)
+				.sql("""
+						SELECT g.key FROM story_genre sg JOIN genre g ON g.id = sg.genre_id
+						WHERE sg.story_id = ? ORDER BY g.display_order
+						""")
+				.param(storyId).query(String.class).list();
+	}
+
+	private String coverOf(UUID storyId) {
+		return org.springframework.jdbc.core.simple.JdbcClient.create(this.catalog)
+				.sql("SELECT cover_url FROM story WHERE id = ?")
+				.param(storyId).query(String.class).single();
 	}
 
 	/** 발행하고 <b>치울 목록에 적어 둔다.</b> */
@@ -170,7 +218,7 @@ class StoryPublisherTests extends ContainerTestBase {
 	@Test
 	void S2_3_a_story_needs_at_least_one_chapter() {
 		assertThatThrownBy(() -> new StoryDefinition(UUID.randomUUID(), "제목", null, null, "세계관",
-				"affinity", List.of(), defaultEndings(), List.of()))
+				"affinity", List.of(), defaultEndings(), List.of(), List.of(), null))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 
@@ -203,7 +251,9 @@ class StoryPublisherTests extends ContainerTestBase {
 						new StoryDefinition.Chapter(2, "2장", "전개", null, 1, 10)),
 				endings,
 				// #350 — 인물도 버전에 묶인다. 없으면 없는 것이 사실이다.
-				List.of(new StoryDefinition.Character(1, "유나", "한 줄", "페르소나", null, true)));
+				List.of(new StoryDefinition.Character(1, "유나", "한 줄", "페르소나", null, true)),
+				// #357 — 고른 장르와 커버도 발행 한 벌 안에 있다.
+				List.of("romance"), "drafts/cover/키.jpg");
 	}
 
 	private static List<StoryDefinition.Ending> defaultEndings() {
