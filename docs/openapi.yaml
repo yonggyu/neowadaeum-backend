@@ -806,6 +806,11 @@ paths:
 
         같은 목록이 `story_version.state_schema` 로 발행된다 (R4.1) — 조건이 보는 이름과
         화이트리스트에 선언되는 이름이 갈라지면 검증을 통과한 조건이 런타임에 거짓이 된다.
+
+        **플래그를 선언하는 자리도 이 `payload` 다** (#362, §13-73). `DraftPayload.flags` 가
+        그 목록이며, **작성자가 여기 적기 전에는 `has_flag` · `lacks_flag` 를 고를 수 없다** —
+        후보가 없는 템플릿을 화면이 잠그는 것이 맞다. 빈 드롭다운은 고장으로 읽히고, 직접 친
+        이름은 조용히 거짓이 되는 조건을 만든다.
       x-implemented-by: B-51
       parameters:
         - $ref: '#/components/parameters/DraftId'
@@ -3102,6 +3107,26 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DraftCharacter'
+        flags:
+          type: array
+          description: |
+            이 원고가 선언한 **플래그 이름**들 (#362, §13-73).
+
+            **조건의 `flag` 파라미터가 가리키는 값이다.** `characters[].name` 이 `character`
+            파라미터의 정본인 것과 같은 자리이며, 여기 적히지 않은 이름을 가리키는 조건은
+            `400` 이다 — 받아 두면 평가기에서 조용히 거짓이 되고 그 챕터·엔딩은 **영원히
+            도달되지 않는다.**
+
+            **`story_version.state_schema` 로 그대로 발행된다** — 인물과 같은 취급이다
+            (R4.1, §13-69). 검증이 보는 목록과 화이트리스트에 선언되는 목록이 갈라지면
+            검증을 통과한 조건이 런타임에 거짓이 된다.
+
+            **문자열의 배열이다.** 인물처럼 객체를 싣지 않는다 — 플래그는 이름이 전부이고,
+            객체로 오면 서버는 이름을 못 찾아 **조용히 빈 목록**이 된다.
+          maxItems: 32
+          items:
+            type: string
+            maxLength: 40
         chapters:
           type: array
           items:
@@ -3207,7 +3232,9 @@ components:
         이름과 형은 `getAuthoringMetadata` 의 `parameters[]` 가 선언한다.
 
         - `character` — 이 원고의 `characters[].name` 중 하나여야 한다
-        - `flag` — 이 원고의 `flags[]` 중 하나여야 한다
+        - `flag` — 이 원고의 `DraftPayload.flags` 중 하나여야 한다. **그 자리를 #362 가
+          계약에 세웠다** — 그 전까지 여기만 가리키고 가리켜지는 목록이 없어,
+          `has_flag` · `lacks_flag` 는 **작성자가 고를 수 없었다** (§13-73)
         - `threshold` — 정수. **문자열로 온 숫자를 받지 않는다** (형이 둘이 된다)
 
         **원고에 없는 이름을 가리키면 `400` 이다** — 그런 조건은 평가기에서 조용히 거짓이

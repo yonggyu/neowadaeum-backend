@@ -1,5 +1,7 @@
 package com.neowadaeum.authoring.draft;
 
+import com.neowadaeum.common.error.ApiException;
+import com.neowadaeum.common.error.ErrorCode;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
@@ -33,6 +35,19 @@ public record DraftStateSchema(Set<String> characters, Set<String> flags) {
 	 */
 	private static final String AFFINITY_SPEC = "{\"min\":0,\"max\":100,\"maxDeltaPerTurn\":5}";
 
+	/**
+	 * 원고 하나가 선언할 수 있는 플래그 수 (#362).
+	 *
+	 * <p><b>원문은 값을 정하지 않는다</b> (§13-73, {@code [결정 필요]}). 조건은 챕터·엔딩마다
+	 * 하나씩이므로 실제로 쓰이는 이름은 그 합을 넘지 않으며, 32 는 거기에 여유를 둔 값이다.
+	 * 상한을 두는 이유는 저장소가 아니라 <b>프롬프트</b>다 — 플래그는 한 번 서면 매 턴
+	 * {@code GAME_STATE} 레이어에 실려 나간다 (R4.5 의 예산).
+	 */
+	static final int MAX_FLAGS = 32;
+
+	/** 플래그 이름 길이 (#362, §13-73 {@code [결정 필요]}). 같은 이유로 둔다. */
+	static final int MAX_FLAG_LENGTH = 40;
+
 	public DraftStateSchema {
 		characters = Set.copyOf(characters == null ? Set.of() : characters);
 		flags = Set.copyOf(flags == null ? Set.of() : flags);
@@ -47,14 +62,47 @@ public record DraftStateSchema(Set<String> characters, Set<String> flags) {
 				characters.add(name);
 			}
 		}
-		Set<String> flags = new LinkedHashSet<>();
-		for (JsonNode flag : payload.path("flags")) {
-			String name = flag.asString(null);
-			if (name != null && !name.isBlank()) {
-				flags.add(name);
-			}
+		return new DraftStateSchema(characters, flagsOf(payload));
+	}
+
+	/**
+	 * 선언된 플래그 이름 (#362).
+	 *
+	 * <p><b>모양이 어긋나면 조용히 비우지 않고 거절한다.</b> {@code flags} 가 배열이 아니거나
+	 * 항목이 문자열이 아니면 여기서 나오는 목록은 <b>빈 목록</b>이고, 그러면 작성자가 고른
+	 * {@code has_flag} 조건은 <b>없는 이름을 가리킨다</b>는 이유로 거절된다 — 작성자가 보는 것은
+	 * *플래그를 적었는데 그 이름이 없다고 한다* 이며, 무엇을 고쳐야 하는지 알 수 없다.
+	 * 이 사이클에서 세 번 반복된 실패가 <b>조용히 빠진 값</b>이다 (§13-72).
+	 *
+	 * <p><b>빈 항목은 건너뛴다</b> — 인물과 같다. 화면의 "추가" 버튼은 빈 줄을 먼저 만들고,
+	 * 그것을 거절하면 <b>줄을 추가한 순간 저장이 막힌다.</b>
+	 *
+	 * @throws ApiException {@code VALIDATION_ERROR} — 배열이 아니거나, 문자열 아닌 항목이
+	 *     있거나, 개수·길이 상한을 넘었다
+	 */
+	private static Set<String> flagsOf(JsonNode payload) {
+		JsonNode declared = payload.path("flags");
+		if (declared.isMissingNode() || declared.isNull()) {
+			return Set.of();
 		}
-		return new DraftStateSchema(characters, flags);
+		if (!declared.isArray() || declared.size() > MAX_FLAGS) {
+			throw new ApiException(ErrorCode.VALIDATION_ERROR);
+		}
+		Set<String> flags = new LinkedHashSet<>();
+		for (JsonNode flag : declared) {
+			if (!flag.isString()) {
+				throw new ApiException(ErrorCode.VALIDATION_ERROR);
+			}
+			String name = flag.asString();
+			if (name.isBlank()) {
+				continue;
+			}
+			if (name.length() > MAX_FLAG_LENGTH) {
+				throw new ApiException(ErrorCode.VALIDATION_ERROR);
+			}
+			flags.add(name);
+		}
+		return flags;
 	}
 
 	/**
