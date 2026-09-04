@@ -100,8 +100,11 @@ public class PayloadWhitelistValidator {
 		return new PayloadWhitelistValidator(Map.of(
 				// B-22 로 늘어난 이름들이 여기 있다. TurnRequest 가 참조만 나르던 시절에는 셋이었다.
 				// 늘어난 것은 전부 작품 데이터와 서버가 만든 상태다 — 회원 식별정보는 없다 (I-3).
+				// stateVocabulary 가 나르는 것은 작품이 선언한 이름이다 (§13-76). 값이 아니라 이름이며,
+				// 그 이름은 이미 state_schema 로 발행돼 매 턴 gameState 의 키로도 나가고 있다.
 				TurnRequest.class, Set.of("storyVersionRef", "turnNo", "chosenChoiceOrder", "freeInput", "context",
-						"worldPrompt", "characters", "name", "persona", "gameState", "summary",
+						"worldPrompt", "characters", "name", "persona", "gameState", "stateVocabulary",
+						"numerics", "flags", "inventory", "summary",
 						"recentTurns", "chosenChoiceText", "paragraphs", "paragraphsDigest", "userAction"),
 				SummaryRequest.class, Set.of("previousSummary", "turns", "maxTokens",
 						"turnNo", "chosenChoiceText", "paragraphsDigest"),
