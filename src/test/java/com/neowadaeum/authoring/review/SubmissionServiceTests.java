@@ -155,6 +155,43 @@ class SubmissionServiceTests extends ContainerTestBase {
 		assertThat(outcome.reviewStatus()).isEqualTo(ReviewStatus.REJECTED);
 	}
 
+	/**
+	 * <b>인물도 검수 대상이다</b> (R8.5, §13-75).
+	 *
+	 * <p>{@code persona} 는 매 턴 모델에게 들어가고 (인물 레이어), 이름과 한 줄 소개는 타인의
+	 * 상세 화면에 뜬다 (I-8). #350 이 인물을 발행하기 시작한 뒤로 <b>검수만 그것을 보지
+	 * 않았다.</b>
+	 */
+	@Test
+	void R8_5_characters_are_screened_too() {
+		this.blocklist.register(BlocklistKind.REAL_PERSON, "이나린", BlocklistSeverity.BLOCK, "test");
+		UUID draftId = givenDraft(PAYLOAD.replace("\"chapters\":[",
+				"\"characters\":[{\"name\":\"연우\",\"persona\":\"이나린 을 닮았다.\"}],\"chapters\":["));
+
+		var outcome = this.submissions.submit(authorOf(draftId), draftId, Visibility.UNLISTED);
+
+		assertThat(outcome.reviewStatus()).isEqualTo(ReviewStatus.REJECTED);
+		assertThat(outcome.storyId()).isNull();
+	}
+
+	/**
+	 * <b>플래그 이름도 검수 대상이다</b> (R8.5, §13-75).
+	 *
+	 * <p>선언된 이름은 화이트리스트로 발행되고 그 뒤 매 턴 {@code GAME_STATE} 로 나간다 —
+	 * <b>짧다는 이유로 다르게 보지 않는다.</b>
+	 */
+	@Test
+	void R8_5_declared_flags_are_screened_too() {
+		this.blocklist.register(BlocklistKind.REAL_PERSON, "이나린", BlocklistSeverity.BLOCK, "test");
+		UUID draftId = givenDraft(
+				PAYLOAD.replace("\"chapters\":[", "\"flags\":[\"이나린_만남\"],\"chapters\":["));
+
+		var outcome = this.submissions.submit(authorOf(draftId), draftId, Visibility.UNLISTED);
+
+		assertThat(outcome.reviewStatus()).isEqualTo(ReviewStatus.REJECTED);
+		assertThat(outcome.storyId()).isNull();
+	}
+
 	private SubmissionService.SubmissionOutcome submit(Visibility visibility) {
 		UUID draftId = givenDraft(PAYLOAD);
 		var outcome = this.submissions.submit(authorOf(draftId), draftId, visibility);

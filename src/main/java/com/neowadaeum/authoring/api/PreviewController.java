@@ -78,7 +78,7 @@ public class PreviewController {
 		// **미리보기에서만** 거짓이 되고, 그것이 미리보기가 답해야 할 질문이다.
 		DraftStoryDefinition.Publishable publishable = DraftStoryDefinition.from(authorRef, payload);
 		StoryPublisher.PublishedVersion published = this.publisher
-				.publishNew(publishable.definition(), publishable.stateSchema());
+				.publishNew(publishable.definition(), publishable.stateSchema().toJson());
 
 		TestSessionStarter.TestSession session = this.sessions.start(authorRef, published.storyId(),
 				published.versionId(), PREVIEW_TURN_LIMIT);
