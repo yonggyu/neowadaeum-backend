@@ -26,6 +26,15 @@ public enum PromptLayer {
 	/** 서버가 만든 현재 상태 (§4.1). */
 	GAME_STATE(BudgetGroup.GAME_STATE, false),
 
+	/**
+	 * 플랫폼. {@code state_schema} 가 선언한 이름 (§13-76, #367). 작품이 덮어쓸 수 없다 (I-7).
+	 *
+	 * <p><b>{@code GAME_STATE} 바로 뒤다.</b> 앞은 <b>지금 값</b>이고 여기는 <b>쓸 수 있는 이름</b>
+	 * 이며, 둘을 떼어 놓으면 모델이 값에 없는 이름을 <b>존재하지 않는 것</b>으로 읽는다 — 그것이
+	 * 이 레이어가 생긴 이유 그대로다.
+	 */
+	STATE_VOCABULARY(BudgetGroup.STATE_VOCABULARY, true),
+
 	/** 오래된 턴의 압축 (R4.5). */
 	SUMMARY(BudgetGroup.SUMMARY, false),
 
@@ -68,6 +77,15 @@ public enum PromptLayer {
 		FOUNDATION(1_200),
 
 		GAME_STATE(300),
+
+		/**
+		 * 선언된 이름 목록 (§13-76 {@code [결정 필요]}).
+		 *
+		 * <p><b>총 예산 4,000 과 나머지 묶음 합계 3,800 의 차이가 정확히 이만큼이다.</b> 그래서 이
+		 * 레이어는 <b>§4.3 의 어느 숫자도 밀어내지 않는다</b> — {@code GAME_STATE}(300)에 얹었다면
+		 * 같은 이름이 두 레이어에 실리므로 오늘 도는 작품의 여유가 절반이 된다.
+		 */
+		STATE_VOCABULARY(200),
 
 		SUMMARY(SummaryBudget.MAX_TOKENS),
 

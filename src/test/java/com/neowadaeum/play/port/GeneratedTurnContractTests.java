@@ -61,9 +61,14 @@ class GeneratedTurnContractTests {
 
 		// B-22 로 context 가 늘었다. 안쪽도 같은 성질을 지켜야 한다 — 회원 식별정보를 담을 자리는
 		// 바깥이든 안쪽이든 없다. 중첩이 생겼다는 이유로 검사가 얕아지면 보장이 사라진다.
+		// §13-76 로 stateVocabulary 가 늘었다. 작품이 state_schema 로 선언한 **이름**이며, 그 이름은
+		// 이미 gameState 의 키로도 나가고 있다 — 회원을 가리키는 자리가 새로 생긴 것이 아니다.
 		assertThat(componentNames(GenerationContext.class))
-				.containsExactly("worldPrompt", "characters", "gameState", "summary", "recentTurns", "userAction");
+				.containsExactly("worldPrompt", "characters", "gameState", "stateVocabulary", "summary",
+						"recentTurns", "userAction");
 		assertThat(componentNames(GenerationContext.Character.class)).containsExactly("name", "persona");
+		assertThat(componentNames(GenerationContext.StateVocabulary.class))
+				.containsExactly("numerics", "flags", "inventory");
 		assertThat(componentNames(GenerationContext.RecentTurn.class))
 				.containsExactly("turnNo", "chosenChoiceText", "paragraphs", "paragraphsDigest");
 	}

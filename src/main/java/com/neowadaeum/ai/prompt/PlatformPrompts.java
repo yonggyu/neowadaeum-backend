@@ -1,5 +1,7 @@
 package com.neowadaeum.ai.prompt;
 
+import java.util.List;
+
 /**
  * 작품이 덮어쓸 수 없는 레이어 (I-7, R5.0, B-20).
  *
@@ -16,6 +18,9 @@ package com.neowadaeum.ai.prompt;
  * <p>그래서 <b>설명을 한국어 산문으로 늘어놓지 않는다.</b> 같은 내용이라도 ASCII 는 한글의 1/5 값이라,
  * 출력 형식은 문장이 아니라 <b>JSON 골격</b>으로 보여 주는 편이 예산 안에 들어온다. 이 제약은
  * {@code PlatformPromptBudgetTests} 가 지킨다 — 문구를 늘리면 그 테스트가 먼저 빨개진다.
+ *
+ * <p><b>{@code STATE VOCABULARY} 는 머리글만 이 제약을 받는다</b> (§13-76). 그 묶음 200 중 나머지는
+ * 작품이 선언한 이름의 몫이므로, 머리글이 길어지면 <b>이름이 들어갈 자리가 줄어든다.</b>
  *
  * <p><b>S-11 — 이 레포는 공개다.</b> 여기에는 등급과 형식 지시만 둔다. 차단 목록의 실제 항목이나
  * 판정 임계값을 프롬프트에 적지 않는다 — 세이프티 판정은 프롬프트가 아니라 서버가 하며(I-12, I-13),
@@ -51,6 +56,55 @@ public final class PlatformPrompts {
 			 "chapterAdvanceSuggested": boolean,
 			 "endingSuggested": string|null}
 			paragraphs 3~5개, text 120자 내외. choices 1~4개, order 는 1부터.""";
+
+	/**
+	 * {@code STATE VOCABULARY} 의 머리글 (§13-76, #367).
+	 *
+	 * <p><b>이름 목록만으로는 지시가 되지 않는다.</b> 이 한 줄이 <b>그 목록이 무엇인지</b>와
+	 * <b>벗어나면 어떻게 되는지</b>를 말한다 — 그리고 그 문장은 코드가 소유한다 (I-7). 작품이
+	 * 넣을 수 있는 것은 뒤따르는 목록의 <b>한 항목</b>뿐이다.
+	 *
+	 * <p><b>"버립니다" 라고 적는 것이 사실이다.</b> 서버는 화이트리스트 밖 키를 걸러 내는 것이
+	 * 아니라 병합하지 않는다 (R4.1) — 모델에게 "지켜라" 가 아니라 <b>지키지 않으면 아무 일도
+	 * 일어나지 않는다</b> 고 말하는 편이 정확하고 짧다.
+	 */
+	static final String STATE_VOCABULARY_HEADER =
+			"stateChanges 에 쓸 수 있는 이름입니다. 없는 이름은 서버가 버립니다.";
+
+	/**
+	 * 선언된 이름을 {@code STATE VOCABULARY} 레이어로 찍는다 (§13-76).
+	 *
+	 * <p><b>왜 조립기가 아니라 여기인가.</b> 이 레이어는 플랫폼 레이어다 (I-7). 머리글과 연산자
+	 * 표기를 조립기가 조금, 여기가 조금 나눠 가지면 <b>플랫폼 문구가 어디까지인지</b>가 흐려지고,
+	 * 그때 작품 데이터가 문장 사이로 들어올 자리가 생긴다. 여기서 나가는 것은 <b>완성된 블록</b>
+	 * 하나이며 조립기는 그것을 넣을 뿐이다.
+	 *
+	 * <p><b>연산자 표기를 함께 적는다.</b> 이름만 주면 모델은 그 이름을 어떤 키로 감싸야 하는지를
+	 * 다시 추측해야 하고, 추측이 어긋나면 {@code ignoredKeys} 로 빠져 <b>이름을 맞힌 것과 같은
+	 * 결과</b>가 된다.
+	 *
+	 * @return 선언된 이름이 하나도 없으면 {@code null} — 레이어를 통째로 뺀다. 빈 블록도 토큰을 쓰고,
+	 *     <b>빈 목록은 "아무것도 못 바꾼다"</b> 는 사실을 말해 줄 이유가 없다
+	 */
+	static String stateVocabulary(PromptContext.StateVocabulary vocabulary) {
+		if (vocabulary == null || vocabulary.declaresNothing()) {
+			return null;
+		}
+
+		StringBuilder text = new StringBuilder(STATE_VOCABULARY_HEADER);
+		appendNames(text, "정수 델타", vocabulary.numerics());
+		appendNames(text, "flags.add / flags.remove", vocabulary.flags());
+		appendNames(text, "inventory.add / inventory.remove", vocabulary.inventory());
+		return text.toString();
+	}
+
+	/** 비어 있는 갈래는 줄을 만들지 않는다. 쓸 수 없는 연산자를 알려 줄 이유가 없다. */
+	private static void appendNames(StringBuilder text, String operator, List<String> names) {
+		if (names.isEmpty()) {
+			return;
+		}
+		text.append("\n").append(operator).append(" = ").append(String.join(", ", names));
+	}
 
 	/**
 	 * 세이프티 판정기에게 주는 지시 (§9.2, B-30).

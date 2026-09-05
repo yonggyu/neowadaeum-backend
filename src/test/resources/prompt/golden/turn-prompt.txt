@@ -14,6 +14,11 @@
 [GAME_STATE]
 {"chapter":2,"turn":7,"location":"강의실","affinity":{"yuna":18}}
 
+[STATE_VOCABULARY]
+stateChanges 에 쓸 수 있는 이름입니다. 없는 이름은 서버가 버립니다.
+정수 델타 = affinity.dohyun, affinity.yuna
+flags.add / flags.remove = met_yuna, shared_lunch
+
 [SUMMARY]
 주인공은 유나와 두 번 마주쳤고, 두 번 다 말을 걸지 못했다.
 

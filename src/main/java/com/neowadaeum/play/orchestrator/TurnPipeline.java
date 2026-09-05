@@ -312,12 +312,19 @@ public class TurnPipeline {
 		List<Turn> recent = this.turns
 				.findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(context.sessionId(), Limit.of(this.recentTurns.summaryMerge()));
 
+		StateSchema schema = StateSchema.from(context.version().stateSchema());
+
 		return new GenerationContext(
 				context.version().worldPrompt(),
 				context.version().characters().stream()
 						.map(character -> new GenerationContext.Character(character.name(), character.persona()))
 						.toList(),
 				context.state().toJson(),
+				// §13-76 — 병합을 허락하는 그 목록이 프롬프트로도 간다 (#367). 같은 StateSchema 에서
+				// 꺼내는 것이 요점이다: 모델이 보는 이름과 엔진이 받아들이는 이름이 갈라지면
+				// 어긋난 제안은 조용히 버려지고 그 조건은 영원히 거짓이 된다.
+				new GenerationContext.StateVocabulary(List.copyOf(schema.numerics().keySet()),
+						List.copyOf(schema.flags()), List.copyOf(schema.inventory())),
 				// R4.5 — 요약 파이프라인이 남긴 현재 요약. 아직 없으면 null 이다 (첫 8턴이 그렇다).
 				this.summaries.findFirstBySessionIdAndDeletedAtIsNullOrderByUptoTurnNoDescCreatedAtDesc(
 						context.sessionId()).map(StorySummary::getSummaryText).orElse(null),

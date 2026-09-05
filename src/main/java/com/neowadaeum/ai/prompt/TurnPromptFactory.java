@@ -17,6 +17,9 @@ import com.neowadaeum.play.port.TurnRequest;
  * <p><b>I-7 — 여기서 플랫폼 레이어를 만들지 않는다.</b> {@code SYSTEM} 과 {@code OUTPUT SPEC} 은
  * {@link PlatformPrompts} 가 소유하고 {@link PromptAssembler} 가 붙인다. 이 클래스가 옮기는 것은
  * <b>작품 레이어와 서버가 만든 상태까지</b>다.
+ *
+ * <p><b>{@code STATE VOCABULARY} 도 여기서 문장이 되지 않는다</b> (§13-76). 건너오는 것은 이름
+ * 목록이고, 그것을 어떻게 소개할지는 {@link PlatformPrompts} 가 정한다.
  */
 public class TurnPromptFactory {
 
@@ -37,6 +40,10 @@ public class TurnPromptFactory {
 						.map(character -> new PromptContext.Character(character.name(), character.persona()))
 						.toList(),
 				context.gameState(),
+				new PromptContext.StateVocabulary(
+						context.stateVocabulary().numerics(),
+						context.stateVocabulary().flags(),
+						context.stateVocabulary().inventory()),
 				context.summary(),
 				context.recentTurns().stream().map(TurnPromptFactory::toRecentTurn).toList(),
 				context.userAction());

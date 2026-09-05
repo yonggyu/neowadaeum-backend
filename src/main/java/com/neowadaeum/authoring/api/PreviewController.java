@@ -3,6 +3,7 @@ package com.neowadaeum.authoring.api;
 import com.neowadaeum.authoring.UgcLimitProperties;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.DraftStoryDefinition;
+import com.neowadaeum.authoring.draft.DraftVocabularyGate;
 import com.neowadaeum.catalog.publish.StoryDefinition;
 import com.neowadaeum.catalog.publish.StoryPublisher;
 import com.neowadaeum.common.error.ApiException;
@@ -45,6 +46,9 @@ public class PreviewController {
 
 	private final DraftService drafts;
 
+	/** §13-76 — 저장 게이트를 지나오지 않은 원고가 여기로도 온다 (#367). */
+	private final DraftVocabularyGate vocabulary;
+
 	private final StoryPublisher publisher;
 
 	private final TestSessionStarter sessions;
@@ -55,10 +59,11 @@ public class PreviewController {
 
 	private final UgcLimitProperties limits;
 
-	public PreviewController(DraftService drafts, StoryPublisher publisher,
-			TestSessionStarter sessions, RateLimiter rateLimiter, PlayerRefResolver playerRefs,
-			UgcLimitProperties limits) {
+	public PreviewController(DraftService drafts, DraftVocabularyGate vocabulary,
+			StoryPublisher publisher, TestSessionStarter sessions, RateLimiter rateLimiter,
+			PlayerRefResolver playerRefs, UgcLimitProperties limits) {
 		this.drafts = drafts;
+		this.vocabulary = vocabulary;
 		this.publisher = publisher;
 		this.sessions = sessions;
 		this.rateLimiter = rateLimiter;
@@ -73,6 +78,11 @@ public class PreviewController {
 		requireWithinDailyLimit(authorRef);
 		// 남의 원고에는 부를 수 없다 (I-8). 없는 것과 구분되지 않는다.
 		String payload = this.drafts.read(authorRef, draftId).getPayload();
+
+		// §13-76 — 여기서 막지 않으면 넘긴 어휘는 **미리보기 첫 턴의 500** 으로 나타난다 (#367).
+		// 미리보기는 작성자가 자기 작품을 처음 보는 자리이고, 거기서 서버 오류를 받으면
+		// 고칠 곳이 자기 원고라는 것을 알 방법이 없다.
+		this.vocabulary.verify(DraftStoryDefinition.validateConditions(payload));
 
 		// #326 — 미리보기도 발행과 같은 스키마를 쓴다. 상수로 두면 작성자가 고른 조건이
 		// **미리보기에서만** 거짓이 되고, 그것이 미리보기가 답해야 할 질문이다.
