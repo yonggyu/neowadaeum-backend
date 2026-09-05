@@ -19,9 +19,16 @@ public final class GenerationContexts {
 	private GenerationContexts() {
 	}
 
-	/** 최소한으로 유효한 컨텍스트. 필수는 {@code worldPrompt} 와 {@code gameState} 뿐이다. */
+	/**
+	 * 최소한으로 유효한 컨텍스트. 필수는 {@code worldPrompt} · {@code gameState} ·
+	 * {@code stateVocabulary} 다.
+	 *
+	 * <p><b>어휘는 비어 있다</b> (§13-76). 아무것도 선언하지 않은 작품이며, 그때
+	 * {@code STATE VOCABULARY} 레이어는 통째로 빠진다.
+	 */
 	public static GenerationContext sample() {
-		return new GenerationContext("눈이 오래 내리는 도시.", List.of(), JSON.readTree("{}"), null, List.of(), null);
+		return new GenerationContext("눈이 오래 내리는 도시.", List.of(), JSON.readTree("{}"),
+				GenerationContext.StateVocabulary.none(), null, List.of(), null);
 	}
 
 	/**
@@ -37,6 +44,8 @@ public final class GenerationContexts {
 				"눈이 오래 내리는 도시.",
 				List.of(new GenerationContext.Character("유나", "말수가 적고 문장이 짧다.")),
 				JSON.readTree("{\"chapter\":1,\"turn\":1}"),
+				new GenerationContext.StateVocabulary(List.of("affinity.yuna"), List.of("met_yuna"),
+						List.of("letter")),
 				"주인공은 유나와 두 번 마주쳤다.",
 				List.of(new GenerationContext.RecentTurn(1, "먼저 인사한다", "복도에서 마주쳤다.", "복도 조우")),
 				"고맙다고 말한다");

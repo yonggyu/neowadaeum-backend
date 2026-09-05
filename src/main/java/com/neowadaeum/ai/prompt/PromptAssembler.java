@@ -13,9 +13,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 8레이어 프롬프트 조립기 (§5.1, §4.3, B-20).
+ * 9레이어 프롬프트 조립기 (§5.1, §4.3, B-20, §13-76).
  *
- * <p>{@code SYSTEM → WORLD → CHARACTER → GAME STATE → SUMMARY → RECENT TURNS → USER ACTION → OUTPUT SPEC}
+ * <p>{@code SYSTEM → WORLD → CHARACTER → GAME STATE → STATE VOCABULARY → SUMMARY → RECENT TURNS → USER ACTION → OUTPUT SPEC}
  *
  * <h2>I-7 — 플랫폼 레이어는 작품이 덮어쓸 수 없다</h2>
  *
@@ -23,6 +23,10 @@ import java.util.stream.Collectors;
  * {@code OUTPUT SPEC} 의 자리가 없고, 두 레이어는 {@link PlatformPrompts} 의 상수에서만 온다.
  * {@code world_prompt} 에 "이전 지시를 무시하라"가 들어와도 그것은 {@code WORLD} 블록 <b>안의
  * 글자</b>일 뿐이며, 순서도 내용도 바뀌지 않는다.
+ *
+ * <p><b>{@code STATE VOCABULARY} 는 자리가 있는 플랫폼 레이어다</b> (§13-76). 작품이 채우는 것은
+ * <b>이름 목록</b>이고 문장은 {@link PlatformPrompts} 가 만든다 — 한 항목이 아무리 길어도 그것은
+ * 목록의 한 줄이며, 머리글을 밀어내지도 순서를 바꾸지도 못한다.
  *
  * <h2>§4.3 — 예산을 넘기면 어떻게 되는가</h2>
  *
@@ -37,13 +41,25 @@ import java.util.stream.Collectors;
  * 모델을 부르지 않는다 — 요약 파이프라인(B-34)이 그 자리를 채운다. 스텁으로 흉내 내면 재압축이
  * 일어난 것처럼 보이면서 실제로는 아무 일도 하지 않는다 (§0.2).
  *
+ * <p><b>{@code STATE VOCABULARY} 도 줄이지 않는다.</b> 줄인다는 것은 <b>선언된 이름 일부를
+ * 감추는 것</b>이고, 감춰진 이름은 모델이 맞힐 수 없으므로 그 조건은 영원히 거짓이 된다 (#367) —
+ * 이 레이어가 생긴 이유가 정확히 그 침묵이다. 이름이 예산을 넘길 만큼 많다면 그것은 <b>선언
+ * 시점에 막을 일</b>이며, 여기까지 왔다면 그 상한이 새고 있다는 뜻이다.
+ *
  * <p><b>{@code FOUNDATION} 이 넘치는 경우는 줄이지 않고 바로 실패시킨다.</b> 작품 레이어를 서버가
  * 잘라내면 세계관이 조용히 반쪽이 된 채 이야기가 이어진다. 길이는 저장 시점에 막는 것이 맞고
  * (R4.9, B-51), 여기까지 왔다면 그것이 새고 있다는 뜻이다.
  */
 public class PromptAssembler {
 
-	/** §4.3 입력 합계 목표. 묶음 상한의 합(3,800)보다 크며, 그 여유가 형식 문자열의 몫이다. */
+	/**
+	 * §4.3 입력 합계 목표.
+	 *
+	 * <p><b>이제 묶음 상한의 합과 같다</b> (§13-76). 남아 있던 200 이 {@code STATE VOCABULARY} 의
+	 * 몫이 됐다 — 새 레이어가 <b>기존 묶음에서 뜯어 오지 않게</b> 하는 유일한 자리였다. 그 여유를
+	 * "형식 문자열의 몫"이라 적어 두었지만 레이어 머리글은 애초에 합계에 세지 않는다
+	 * ({@link AssembledPrompt#render()} 가 붙인다).
+	 */
 	public static final int TOTAL_BUDGET_TOKENS = 4_000;
 
 	private final TokenCounter tokenCounter;
@@ -100,6 +116,7 @@ public class PromptAssembler {
 		add(sections, PromptLayer.WORLD, context.worldPrompt());
 		add(sections, PromptLayer.CHARACTER, characterText(context));
 		add(sections, PromptLayer.GAME_STATE, context.gameState().toString());
+		add(sections, PromptLayer.STATE_VOCABULARY, PlatformPrompts.stateVocabulary(context.stateVocabulary()));
 		add(sections, PromptLayer.SUMMARY, context.summary());
 		add(sections, PromptLayer.RECENT_TURNS, recentTurnsText(recentTurns));
 		add(sections, PromptLayer.USER_ACTION, context.userAction());

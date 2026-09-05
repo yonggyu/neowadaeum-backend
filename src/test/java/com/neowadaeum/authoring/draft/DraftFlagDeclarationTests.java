@@ -79,7 +79,7 @@ class DraftFlagDeclarationTests {
 
 		// 순서는 단언하지 않는다 — 화이트리스트에 순서는 뜻이 없고, Set.copyOf 는 그것을
 		// 보장하지도 않는다. 확인할 것은 **두 이름이 다 발행되는가** 다.
-		assertThat(flagsOf(publishable.stateSchema()))
+		assertThat(flagsOf(publishable.stateSchema().toJson()))
 				.containsExactlyInAnyOrder("met_yuna", "got_letter");
 	}
 
@@ -143,7 +143,7 @@ class DraftFlagDeclarationTests {
 		var publishable = DraftStoryDefinition.from(UUID.randomUUID(),
 				payload("[\"met_yuna\",\"\",\"  \"]", hasFlag("met_yuna")));
 
-		assertThat(flagsOf(publishable.stateSchema())).containsExactly("met_yuna");
+		assertThat(flagsOf(publishable.stateSchema().toJson())).containsExactly("met_yuna");
 	}
 
 	/**

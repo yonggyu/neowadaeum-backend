@@ -63,6 +63,7 @@ class TurnPromptFactoryTests {
 				"눈이 오래 내리는 도시.",
 				List.of(),
 				JsonMapper.builder().build().readTree("{}"),
+				GenerationContext.StateVocabulary.none(),
 				null,
 				List.of(new GenerationContext.RecentTurn(1, "먼저 인사한다", "복도에서 마주쳤다.", null),
 						new GenerationContext.RecentTurn(2, null, "우산을 내밀었다.", null),
@@ -81,6 +82,8 @@ class TurnPromptFactoryTests {
 				List.of(new GenerationContext.Character("유나", "무뚝뚝하지만 먼저 챙긴다. 말끝을 흐린다.")),
 				JsonMapper.builder().build().readTree(
 						"{\"chapter\":2,\"turn\":7,\"location\":\"강의실\",\"affinity\":{\"yuna\":18}}"),
+				new GenerationContext.StateVocabulary(List.of("affinity.yuna", "affinity.dohyun"),
+						List.of("met_yuna", "shared_lunch"), List.of()),
 				"주인공은 유나와 두 번 마주쳤고, 두 번 다 말을 걸지 못했다.",
 				List.of(new GenerationContext.RecentTurn(6, "먼저 인사한다",
 								"복도에서 유나가 먼저 고개를 돌렸다. 눈이 어깨에 조금 쌓여 있었다.",

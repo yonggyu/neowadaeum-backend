@@ -33,6 +33,10 @@ import tools.jackson.databind.json.JsonMapper;
  * <p><b>기록이 원문보다 먼저다.</b> 순서를 뒤집으면 <b>읽고 나서 기록에 실패한</b> 열람이 생기고,
  * 그것이 곧 기록되지 않는 열람 경로다.
  *
+ * <p><b>이미지 읽기 URL 을 발급하지 않는다</b> (#368, I-8). 커버는 객체 키로만 나간다 — 승인 전
+ * 이미지를 누구에게 어떤 조건으로 여는가는 <b>결정이 필요한 문제</b>이고 (§13-77), 검수 화면을
+ * 채우려고 그 문을 조용히 여는 것이 I-8 이 막는 바로 그것이다.
+ *
  * <p><b>없는 작품에 대한 열람은 남기지 않는다</b> — 작품을 먼저 찾는다. 순서를 뒤집으면 감사
  * 로그가 존재하지 않는 작품으로 채워진다 ({@code AdminDebugController} 와 같은 이유다).
  */
@@ -93,16 +97,31 @@ public class ReviewManuscriptService {
 		// 옛 버전의 값을 들고 있으므로(버전을 나눈 이유가 그것이다), 작품 행을 읽으면
 		// **옛 제목으로 새 챕터를 판정**하게 되고 승인은 검수자가 보지 않은 제목을 게시한다.
 		// 스냅샷이 없는 버전은 작품 행으로 돌아간다 — 그때는 그것이 유일한 사실이다.
-		StoryPublisher.VersionStoryFields judged = this.publisher.versionStoryFieldsOf(versionId)
-				.filter(fields -> fields.title() != null)
+		Optional<StoryPublisher.VersionStoryFields> snapshot = this.publisher
+				.versionStoryFieldsOf(versionId).filter(fields -> fields.title() != null);
+		StoryPublisher.VersionStoryFields judged = snapshot
 				.orElseGet(() -> new StoryPublisher.VersionStoryFields(header.title(),
-						header.shortDesc(), header.worldIntro()));
+						header.shortDesc(), header.worldIntro(), header.coverImageKey()));
+		// #368 — 장르도 그 한 벌에 속한다 (§13-77). 승인이 작품 행의 장르를 **이 버전의 것으로
+		// 맞추므로**, 작품 행을 읽으면 검수자는 자기가 승인하는 것과 다른 섹션을 보고 판정한다.
+		// 스냅샷이 통째로 없는 버전에서만 작품 행으로 돌아간다 — 제목과 갈라지지 않는다.
+		List<StoryPublisher.GenreLabel> genres = snapshot.isPresent()
+				? this.publisher.versionGenresOf(versionId) : this.publisher.storyGenresOf(storyId);
 		Optional<StoryDraft> draft = this.drafts.findFirstByStoryIdOrderByUpdatedAtDesc(storyId);
 		return new ReviewManuscript(storyId, judged.title(), judged.shortDesc(), judged.worldIntro(),
 				header.reviewStatus(), header.visibility(), header.createdAt(),
-				displayNameOf(header.authorRef()), version.worldPrompt(), charactersOf(version),
-				chaptersOf(version), endingsOf(versionId, version), autoCheckOf(storyId),
+				displayNameOf(header.authorRef()), version.worldPrompt(), genresOf(genres),
+				judged.coverImageKey(), charactersOf(version), chaptersOf(version),
+				endingsOf(versionId, version), autoCheckOf(storyId),
 				draft.map(StoryDraft::getPreviewedAt).orElse(null), previewTurnsOf(draft));
+	}
+
+	/** 검수 화면이 읽는 모양으로 옮긴다 (#368). 키와 라벨이 함께 간다 — 이유는 계약에 있다. */
+	private static List<ReviewManuscript.ManuscriptGenre> genresOf(
+			List<StoryPublisher.GenreLabel> genres) {
+		return genres.stream()
+				.map(genre -> new ReviewManuscript.ManuscriptGenre(genre.key(), genre.label()))
+				.toList();
 	}
 
 	/**
