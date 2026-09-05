@@ -214,7 +214,8 @@ class PayloadWhitelistValidatorTests {
 
 	private static TurnRequest withGameState(String gameStateJson) {
 		GenerationContext context = new GenerationContext("세계관", java.util.List.of(),
-				JsonMapper.builder().build().readTree(gameStateJson), null, java.util.List.of(), null);
+				JsonMapper.builder().build().readTree(gameStateJson),
+				GenerationContext.StateVocabulary.none(), null, java.util.List.of(), null);
 		return TurnRequest.opening(STORY_VERSION, context);
 	}
 

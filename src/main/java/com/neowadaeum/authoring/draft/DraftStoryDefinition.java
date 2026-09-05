@@ -56,10 +56,15 @@ public final class DraftStoryDefinition {
 	/**
 	 * 발행에 필요한 한 벌 — 작품 정의와 그 작품의 상태 화이트리스트.
 	 *
-	 * @param stateSchema {@code story_version.state_schema} 에 저장된다 (R4.1). <b>조건이 보는
+	 * <p><b>JSON 이 아니라 선언 그 자체를 담는다</b> (#366). 발행은 이것을 문자열로 저장하지만
+	 * 제출 검수는 <b>이름 목록</b>으로 읽는다 — 플래그 이름도 작성자가 쓴 값이고 매 턴
+	 * {@code GAME_STATE} 로 나가므로 L1 이 본다 (R8.5). 같은 것을 두 모양으로 담으면 갈라지고,
+	 * <b>갈라진 쪽이 짧아도 아무도 알아채지 못한다.</b>
+	 *
+	 * @param stateSchema {@code story_version.state_schema} 로 저장된다 (R4.1). <b>조건이 보는
 	 *     이름과 같은 목록에서 나온다</b> (#326)
 	 */
-	public record Publishable(StoryDefinition definition, String stateSchema) {
+	public record Publishable(StoryDefinition definition, DraftStateSchema stateSchema) {
 	}
 
 	/**
@@ -90,7 +95,7 @@ public final class DraftStoryDefinition {
 				root.path("shortDescription").asString(null), root.path("worldIntro").asString(null),
 				worldPrompt, "affinity", chapters, endingsOf(root, schema), charactersOf(root),
 				genreKeysOf(root), root.path("coverImage").asString(null));
-		return new Publishable(definition, schema.toJson());
+		return new Publishable(definition, schema);
 	}
 
 	/**
@@ -102,12 +107,18 @@ public final class DraftStoryDefinition {
 	 *
 	 * <p><b>여기서 나머지를 보지 않는다.</b> 아직 채우지 않은 단계가 있는 것은 정상이며
 	 * (5단계 저장, R8.3), 제목이 없다고 저장을 막으면 <b>작성 중인 원고를 저장할 수 없다.</b>
+	 *
+	 * <p><b>읽은 선언을 돌려준다</b> (§13-76). 저장 시점의 게이트가 둘이고 둘 다 같은 목록을
+	 * 본다 — 다시 파싱하면 <b>두 게이트가 서로 다른 것을 볼 수 있는 자리</b>가 생긴다.
+	 *
+	 * @return 이 원고가 선언한 이름. {@link DraftVocabularyGate} 가 이어서 본다
 	 */
-	public static void validateConditions(String payload) {
+	public static DraftStateSchema validateConditions(String payload) {
 		JsonNode root = parse(payload);
 		DraftStateSchema schema = DraftStateSchema.from(root);
 		root.path("chapters").forEach(chapter -> conditionOf(chapter, schema));
 		root.path("endings").forEach(ending -> conditionOf(ending, schema));
+		return schema;
 	}
 
 	/**

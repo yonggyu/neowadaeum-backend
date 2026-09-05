@@ -46,6 +46,17 @@ class PublishRevisionTests extends ContainerTestBase {
 			 "endings":[{"label":"좋은 끝","epilogueText":"잘 끝났다."}]}
 			""";
 
+	/** 커버의 객체 키. <b>URL 이 아니다</b> (#315, §13-72) — S-11: 가상의 문자열이다. */
+	private static final String FIRST_COVER_KEY =
+			"drafts/00000000-0000-4000-8000-0000000000d0/cover/00000000-0000-4000-8000-0000000000d1.jpg";
+
+	private static final String REVISED_COVER_KEY =
+			"drafts/00000000-0000-4000-8000-0000000000d0/cover/00000000-0000-4000-8000-0000000000d2.jpg";
+
+	/** 커버까지 갈아 끼운 개정판 (#368). 승인 전이므로 작품 행은 아직 첫 발행의 커버를 든다. */
+	private static final String REVISED_PAYLOAD_WITH_COVER = REVISED_PAYLOAD.replace("\"chapters\"",
+			"\"coverImage\":\"" + REVISED_COVER_KEY + "\",\"chapters\"");
+
 	@Autowired
 	private SubmissionService submissions;
 
@@ -63,6 +74,10 @@ class PublishRevisionTests extends ContainerTestBase {
 
 	@Autowired
 	private StoryPublisher publisher;
+
+	/** #368 — 검수자가 무엇을 보고 판정하는가. 그 값이 어느 행에서 오는지가 여기서 갈린다. */
+	@Autowired
+	private ReviewManuscriptService manuscripts;
 
 	@Autowired
 	@Qualifier("catalogDataSource")
@@ -283,6 +298,35 @@ class PublishRevisionTests extends ContainerTestBase {
 		submitted(authorRef, draftId, Visibility.UNLISTED);
 
 		assertThat(genreKeysOf(storyId)).containsExactly("fantasy");
+	}
+
+	/**
+	 * <b>검수자는 심사 중인 버전의 장르와 커버를 본다</b> (#368, §13-77).
+	 *
+	 * <p>제목과 같은 이유다 (§13-74). 승인이 작품 행의 장르를 <b>이 버전의 것으로 맞추므로</b>
+	 * (#358), 작품 행을 읽으면 검수자는 <b>자기가 승인하는 것과 다른 섹션</b>을 보고 판정한다 —
+	 * 커버는 15세 등급 판정의 대상이므로 (R8.5) 같은 어긋남이 더 비싸다.
+	 *
+	 * <p>작품 행이 아직 첫 발행의 값을 들고 있다는 것을 함께 단언한다 — 그것이 없으면 이
+	 * 테스트는 <b>어느 행을 읽었는지 구분하지 못한다.</b>
+	 */
+	@Test
+	void S13_77_the_manuscript_reads_the_version_awaiting_review() {
+		UUID draftId = givenDraft();
+		UUID authorRef = authorOf(draftId);
+		this.drafts.save(authorRef, draftId, 5, PAYLOAD.replace("\"chapters\"",
+				"\"genres\":[\"romance\"],\"coverImage\":\"" + FIRST_COVER_KEY + "\",\"chapters\""));
+		UUID storyId = submitted(authorRef, draftId, Visibility.UNLISTED);
+
+		this.drafts.save(authorRef, draftId, 5, REVISED_PAYLOAD_WITH_COVER);
+		submitted(authorRef, draftId, Visibility.PUBLIC);
+
+		ReviewManuscript manuscript = this.manuscripts.read(UUID.randomUUID(), storyId);
+
+		assertThat(manuscript.genres()).extracting(ReviewManuscript.ManuscriptGenre::key)
+				.containsExactly("fantasy");
+		assertThat(manuscript.coverImageKey()).isEqualTo(REVISED_COVER_KEY);
+		assertThat(genreKeysOf(storyId)).containsExactly("romance");
 	}
 
 	/**

@@ -34,13 +34,16 @@ public class DraftService {
 
 	private final StoryDraftRepository drafts;
 
+	private final DraftVocabularyGate vocabulary;
+
 	private final Clock clock;
 
 	private final TransactionTemplate transactions;
 
-	public DraftService(StoryDraftRepository drafts, Clock clock,
+	public DraftService(StoryDraftRepository drafts, DraftVocabularyGate vocabulary, Clock clock,
 			PlatformTransactionManager catalogTransactionManager) {
 		this.drafts = drafts;
+		this.vocabulary = vocabulary;
 		this.clock = clock;
 		this.transactions = new TransactionTemplate(catalogTransactionManager);
 	}
@@ -77,7 +80,8 @@ public class DraftService {
 	public StoryDraft save(UUID authorRef, UUID draftId, int step, String payload) {
 		// #326 — 고른 조건이 원고에 없는 이름을 가리키면 여기서 막는다. 발행까지 미루면
 		// 작성자는 **왜 그 엔딩이 안 나오는지**를 끝내 알지 못한다.
-		DraftStoryDefinition.validateConditions(payload);
+		// §13-76 — 그 이름들이 프롬프트에 실릴 수 있는지도 같은 자리에서 본다 (#367).
+		this.vocabulary.verify(DraftStoryDefinition.validateConditions(payload));
 		return this.transactions.execute(status -> {
 			StoryDraft draft = requireOwned(authorRef, draftId);
 			if (draft.getSafetyState() == DraftSafetyState.BLOCKED && step > draft.getStep()) {

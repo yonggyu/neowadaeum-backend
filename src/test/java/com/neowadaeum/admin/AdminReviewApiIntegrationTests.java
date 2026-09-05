@@ -62,6 +62,17 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 			+ "\"chapters\":[{\"title\":\"1장\",\"summarySeed\":\"시작\"}],"
 			+ "\"endings\":[{\"label\":\"좋은 끝\",\"epilogueText\":\"잘 끝났다.\"}]}";
 
+	/**
+	 * 커버의 객체 키 (#368). <b>발급이 만드는 모양</b>이며 (`drafts/&lt;원고&gt;/cover/…`) 그
+	 * 자체로는 아무것도 열지 못한다 — 버킷이 비공개다 (#315, S-11: 가상의 문자열이다).
+	 */
+	private static final String COVER_KEY = "drafts/00000000-0000-4000-8000-0000000000c0/cover/"
+			+ "00000000-0000-4000-8000-0000000000c1.jpg";
+
+	/** 작성자가 장르를 고르고 커버를 올린 원고 (#368). 승인이 그 둘을 작품 행으로 옮긴다. */
+	private static final String PAYLOAD_WITH_GENRES_AND_COVER = PAYLOAD.replace("\"chapters\"",
+			"\"genres\":[\"school\",\"romance\"],\"coverImage\":\"" + COVER_KEY + "\",\"chapters\"");
+
 	@Autowired
 	private MockMvc mvc;
 
@@ -115,6 +126,13 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("UPDATE story SET current_version_id = NULL WHERE id = ?").param(storyId).update();
+			// #368 — 장르를 고른 원고가 생겼다. 버전보다 먼저 지우지 않으면 FK 가 뒷정리를
+			// 통째로 중단시키고, 그다음 테스트는 남은 관리자 계정에서 실패한다.
+			jdbc.sql("""
+							DELETE FROM story_version_genre WHERE story_version_id IN
+									(SELECT id FROM story_version WHERE story_id = ?)
+							""").param(storyId).update();
+			jdbc.sql("DELETE FROM story_genre WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM story_version WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM story WHERE id = ?").param(storyId).update();
 		});
@@ -518,6 +536,72 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	}
 
 	/**
+	 * <b>#368 — 검수자가 장르를 본다.</b>
+	 *
+	 * <p>승인이 장르를 작품 행으로 옮기므로 (#358), 여기 없으면 <b>판정한 사람이 보지 않은
+	 * 장르가 라이브러리 섹션을 정한다.</b>
+	 *
+	 * <p><b>키와 라벨이 함께 온다</b> (§13-77). 사람이 읽는 것은 라벨이지만 그 정본은 서버이고
+	 * (§13-56), 키는 검수자가 본 장르와 승인이 여는 섹션이 같은지를 값으로 확인하게 한다.
+	 *
+	 * <p><b>순서는 {@code display_order} 다</b> — 작성자가 고른 순서가 아니라 라이브러리가
+	 * 늘어놓는 순서여야 검수자가 본 것과 독자가 볼 것이 같다.
+	 */
+	@Test
+	void S13_77_the_manuscript_shows_the_genres_a_verdict_publishes() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission(UUID.randomUUID(), PAYLOAD_WITH_GENRES_AND_COVER);
+
+		this.mvc.perform(manuscript(storyId, stepUpToken()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.genres[0].key").value("romance"))
+				.andExpect(jsonPath("$.genres[0].label").value("로맨스"))
+				.andExpect(jsonPath("$.genres[1].key").value("school"))
+				.andExpect(jsonPath("$.genres[1].label").value("학원"));
+	}
+
+	/**
+	 * <b>커버는 키로만 온다</b> (#368, I-8, §13-77).
+	 *
+	 * <p>버킷은 비공개이고 검수자용 읽기 URL 을 내는 경로는 아직 없다 — 여기서 <b>열 수 있는
+	 * 값</b>이 나가면 그것은 승인 전 UGC 를 여는 문이며, 그 결정은 아직 내려지지 않았다.
+	 *
+	 * <p><b>있어야 할 것만 단언하면 값이 새어도 통과한다</b> (S-11) — 그래서 <b>없어야 할
+	 * 것</b>을 함께 건다.
+	 */
+	@Test
+	void I8_the_manuscript_carries_the_cover_key_and_no_readable_url() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission(UUID.randomUUID(), PAYLOAD_WITH_GENRES_AND_COVER);
+
+		String body = this.mvc.perform(manuscript(storyId, stepUpToken()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.coverImageKey").value(COVER_KEY))
+				.andReturn().getResponse().getContentAsString();
+
+		// 서명된 URL 도, 버킷 주소도, 그것을 URL 인 척 부르는 이름도 없다.
+		assertThat(body).doesNotContain("://").doesNotContain("coverUrl").doesNotContain("coverImageUrl");
+	}
+
+	/**
+	 * <b>고르지 않은 것은 없는 것이다</b> (#368).
+	 *
+	 * <p>장르가 빈 배열이고 커버가 {@code null} 인 것은 실패가 아니라 <b>작성자가 그것을 고르지
+	 * 않았다는 사실</b>이다 — 미리보기가 없는 원고와 같은 자리다 (§13-68). 서버가 지어내지
+	 * 않고, 화면은 아무것도 주장하지 않는다.
+	 */
+	@Test
+	void S13_77_a_story_without_genres_or_a_cover_says_so() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+
+		this.mvc.perform(manuscript(storyId, stepUpToken()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.genres").isEmpty())
+				.andExpect(jsonPath("$.coverImageKey").isEmpty());
+	}
+
+	/**
 	 * <b>#332 · §13-68 — 검수자가 미리보기 턴을 본다.</b>
 	 *
 	 * <p>미리보기는 여전히 다른 작품을 만들지만 (§13-5) 원고가 그 세션을 기억하므로 원고를
@@ -594,13 +678,17 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 	}
 
 	private UUID givenPublicSubmission(UUID authorRef) throws Exception {
+		return givenPublicSubmission(authorRef, PAYLOAD);
+	}
+
+	private UUID givenPublicSubmission(UUID authorRef, String payload) throws Exception {
 		String created = this.mvc.perform(post("/api/v1/authoring/drafts").with(asPlayer(authorRef)))
 				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
 		UUID draftId = UUID.fromString(JSON.readTree(created).get("draftId").asString());
 
 		this.mvc.perform(patch("/api/v1/authoring/drafts/%s".formatted(draftId)).with(asPlayer(authorRef))
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(JSON.writeValueAsString(java.util.Map.of("step", 5, "payload", PAYLOAD))))
+						.content(JSON.writeValueAsString(java.util.Map.of("step", 5, "payload", payload))))
 				.andExpect(status().isOk());
 
 		String submitted = this.mvc

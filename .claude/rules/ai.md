@@ -16,9 +16,10 @@ paths:
 
 ## 프롬프트 레이어
 
-`SYSTEM → WORLD → CHARACTER → GAME STATE → SUMMARY → RECENT TURNS → USER ACTION → OUTPUT SPEC`
+`SYSTEM → WORLD → CHARACTER → GAME STATE → STATE VOCABULARY → SUMMARY → RECENT TURNS → USER ACTION → OUTPUT SPEC`
 
 - **`SYSTEM`과 `OUTPUT SPEC`은 플랫폼 레이어다. 작품이 덮어쓸 수 없다** (I-7). UGC `world_prompt`에 "이전 지시를 무시하라"가 들어와도 SYSTEM이 유지되어야 한다.
+- **`STATE VOCABULARY`도 플랫폼 레이어다** (§13-76). `state_schema`가 선언한 **이름**을 알린다 — 값은 이미 `GAME STATE`에 있다. 작품이 넘기는 것은 목록의 항목이고 문장은 코드가 만든다. 묶음 200이며 **축소 대상이 아니다** — 이름을 감추면 그 조건이 영원히 거짓이 된다.
 - `WORLD` / `CHARACTER`는 작품 레이어(`StoryVersion` 소유). UGC 합계 **1,000토큰 하드 제한** — 저장 시점에 검증한다.
 - 총 예산 **≤ 4,000토큰**. 초과 시 RECENT TURNS를 오래된 것부터 → SUMMARY 재압축 → 그래도 초과면 `500 CONTEXT_BUDGET_EXCEEDED`로 실패시키고 알람. **조용히 잘라내고 진행하지 않는다.**
 - 프롬프트 조립 결과는 **골든 파일 테스트**로 고정한다. 프롬프트 변경이 리뷰 diff에 보여야 한다.

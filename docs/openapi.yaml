@@ -1683,6 +1683,9 @@ paths:
 
         **가장 마지막 버전을 본다** (R8.8). 승인이 현재로 만드는 것이 그 버전이므로, 판정과
         열람이 다른 버전을 보면 승인된 적 없는 원고가 열린다.
+
+        **커버는 키로만 온다** (#368, §13-77). 이 응답은 이미지를 열 수 있는 값을 담지 않으며,
+        승인 전 이미지를 여는 것은 별도의 결정이다 (I-8).
       x-implemented-by: B-55
       parameters:
         - name: storyId
@@ -3105,6 +3108,11 @@ components:
             값이 아니기 때문이며, **발행 시 필수다.**
         characters:
           type: array
+          description: |
+            등장인물. **이름이 `state_schema` 의 호감도 경로가 된다** (§13-69).
+
+            **개수 상한이 없다.** 그래서 `flags` 의 숫자만으로는 어휘가 예산에 들어가는지
+            알 수 없고, 게이트가 둘을 **함께** 재는 이유가 그것이다 (§13-76).
           items:
             $ref: '#/components/schemas/DraftCharacter'
         flags:
@@ -3123,6 +3131,16 @@ components:
 
             **문자열의 배열이다.** 인물처럼 객체를 싣지 않는다 — 플래그는 이름이 전부이고,
             객체로 오면 서버는 이름을 못 찾아 **조용히 빈 목록**이 된다.
+
+            **개수와 길이는 진짜 상한이 아니다** (§13-76). 아래 둘은 요청 본문의 **거친
+            바깥 울타리**일 뿐이며, 실제 게이트는 **이 원고가 만들 어휘 블록이 프롬프트
+            예산에 들어가는가**다 — 그 판정은 인물 이름까지 함께 본다. §13-73 이 이 두
+            숫자를 *프롬프트 때문에* 정했다고 적었지만 그 프롬프트의 상한과는 대조되지
+            않았고, 실제로는 32 × 40 이 예산의 두 배를 넘는다.
+
+            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며
+            `details.vocabularyUsagePercent` 가 **상한 대비 몇 %인지**를 준다 (100 이 상한).
+            토큰 수와 상한값은 응답에 담지 않는다 (S-6).
           maxItems: 32
           items:
             type: string
@@ -4035,9 +4053,17 @@ components:
 
         **미리보기 3턴을 담는다** (#332, §13-68). 원고가 마지막 미리보기 세션을 기억하므로
         원고를 거쳐 그 턴에 닿는다. 없으면 빈 배열이다 — 지어내지 않는다.
+
+        **장르와 커버가 있다** (#368, §13-77). 승인이 그 둘을 작품 행으로 옮기므로 (#358),
+        여기 없으면 **판정한 사람이 보지 않은 값이 라이브러리에 걸린다** — 장르는 그 작품이
+        어느 섹션에 뜨는지를 정하고 (§13-56), 커버는 15세 등급 판정의 대상이다 (R8.5).
+
+        **커버는 아직 볼 수 없다.** `coverImageKey` 는 이름 그대로 **객체 키**이고 버킷은
+        비공개다 (#315, §13-72) — 검수자용 읽기 URL 을 발급하는 경로가 아직 없으며, 그것은
+        I-8 이 지키는 선 위의 결정이다 (§13-77 `[결정 필요]`). **`<img src>` 에 넣지 않는다.**
       required: [storyId, title, shortDesc, worldIntro, reviewStatus, visibility, submittedAt,
-                 authorDisplayName, worldPrompt, characters, chapters, endings, autoCheck,
-                 previewedAt, previewTurns]
+                 authorDisplayName, worldPrompt, genres, coverImageKey, characters, chapters,
+                 endings, autoCheck, previewedAt, previewTurns]
       properties:
         storyId: { type: string, format: uuid }
         title: { type: string }
@@ -4059,6 +4085,26 @@ components:
         worldPrompt:
           type: string
           description: 세계관 프롬프트 원문. **UGC 원고의 본체다**
+        genres:
+          type: array
+          description: |
+            그 버전이 심사받는 장르 (#368). **제목과 같은 곳에서 온다** — 승인이 작품 행의
+            장르를 이 버전의 것으로 맞추므로 (#358), 작품 행을 읽으면 검수자는 자기가
+            승인하는 것과 **다른 섹션**을 보고 판정한다.
+
+            작성자가 고르지 않았으면 빈 배열이다.
+          items:
+            $ref: '#/components/schemas/ManuscriptGenre'
+        coverImageKey:
+          type: [string, 'null']
+          description: |
+            커버의 **객체 키** (#368, #315). **URL 이 아니다** — 버킷이 비공개이므로 이 값을
+            `<img src>` 에 넣으면 아무것도 뜨지 않는다.
+
+            **보이는 척하지 않는다.** 검수자용 읽기 URL 을 발급하는 경로는 아직 없고, 그것은
+            *승인 전 이미지를 누가 어떤 조건으로 읽는가* 라는 결정을 요구한다 (§13-77
+            `[결정 필요]`, I-8). 그때까지 화면이 정직하게 말할 수 있는 것은 **커버가 있다는
+            사실**까지다 — 커버가 없으면 `null` 이다.
         characters:
           type: array
           items: { $ref: '#/components/schemas/ManuscriptCharacter' }
@@ -4092,11 +4138,32 @@ components:
           items:
             $ref: '#/components/schemas/ManuscriptPreviewTurn'
 
+    ManuscriptGenre:
+      type: object
+      description: |
+        작성자가 고른 장르 하나 (#368, §13-77).
+
+        **키와 라벨을 함께 준다.** 검수 화면은 사람이 읽으므로 라벨이 필요하지만, 라벨의
+        정본은 `genre` 표다 (§13-56) — 키만 주면 화면이 그것을 우리말로 옮기기 시작하고
+        **표시 문구의 정본이 하나 더 생긴다.** 키를 함께 두는 것은 검수자가 본 장르와 승인이
+        게시하는 섹션이 **같은 것임을 값으로 확인**할 수 있게 하기 위해서다.
+      required: [key, label]
+      properties:
+        key:
+          type: string
+          description: 라이브러리 섹션 키 `genre:<key>` 가 쓰는 값과 같다
+        label:
+          type: string
+          description: 화면 문구. 정본은 `genre` 표이며 배포 없이 바뀔 수 있다
+
     ManuscriptCharacter:
       type: object
       description: |
         **`persona` 를 담는다.** 작품 상세 화면(`CharacterCard`)은 그것을 감추지만 검수는
         반대다 — 매 턴 모델에게 들어가는 문장을 보지 않은 승인은 작품의 절반만 본 승인이다.
+
+        **초상(`portraitImage`)은 담지 않는다** (#368). 커버와 **같은 자리의 같은 결정**이며
+        (§13-77 `[결정 필요]`), 셋을 따로 정하면 세 번 갈라진다.
       required: [name, persona]
       properties:
         name: { type: string }

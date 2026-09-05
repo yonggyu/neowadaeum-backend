@@ -50,6 +50,19 @@ class PlatformPromptBudgetTests {
 	}
 
 	/**
+	 * <b>{@code STATE VOCABULARY} 의 머리글이 이름의 자리를 다 먹지 않는다</b> (§13-76).
+	 *
+	 * <p>이 묶음 200 은 머리글과 <b>작품이 선언한 이름</b>이 나눠 쓴다. 머리글이 길어지면 이름이
+	 * 먼저 밀려나고, 밀려난 이름은 모델이 맞힐 수 없다 (#367). 절반 이상을 이름 몫으로 남긴다.
+	 */
+	@Test
+	void S13_76_the_vocabulary_header_leaves_most_of_the_group_to_the_names() {
+		int header = this.counter.count(PlatformPrompts.STATE_VOCABULARY_HEADER);
+
+		assertThat(header).isLessThan(BudgetGroup.STATE_VOCABULARY.maxTokens() / 2);
+	}
+
+	/**
 	 * 형식 설명을 한국어 산문이 아니라 JSON 골격으로 쓴 이유가 값으로 드러난다.
 	 *
 	 * <p>ASCII 는 한글의 1/5 값이다. 같은 내용을 문장으로 풀면 예산에 들어가지 않는다.

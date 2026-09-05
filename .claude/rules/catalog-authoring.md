@@ -40,6 +40,13 @@ paths:
 
 `blocklist_entry`는 **authoring 소유**이고 catalog 스키마에 있다. safety는 `common/spi`로 읽기만 한다. 갱신 경로(운영 중 갱신)와 **캐시 무효화**는 authoring의 책임이다.
 
+## 선언한 이름의 상한 (`docs/corrections.md` §13-76)
+
+- 게이트는 **개수·길이가 아니라 프롬프트 토큰 예산**이다. 인물과 플래그를 **함께** 잰다 — `characters`에는 개수 상한이 없어 플래그만 세면 아무것도 지키지 못한다.
+- **`authoring`은 그 상한 값을 알지 못한다.** `common/spi`의 `StateVocabularyBudget`으로 묻고 `ai`가 구현한다 (ADR-0002/0003과 같은 패턴). 숫자를 복제하면 `ai`가 레이어 문구를 고치는 날 조용히 어긋난다.
+- 막는 자리는 **저장 · 미리보기 · 제출** 셋이다. 승인 뒤에는 세션이 버전에 고정되므로 (I-4) 되돌릴 수 없다.
+- 계약의 `maxItems: 32` / `maxLength: 40`은 **거친 바깥 울타리로만 남는다.** 그것이 상한인 이유는 더 이상 프롬프트가 아니다.
+
 ## 미리보기 (`docs/corrections.md` §13-5)
 
 미리보기 시점에는 `story`도 `story_version`도 없다. `review_status='draft'` / `visibility='private'`로 `story`를 즉시 생성하고 임시 `story_version`을 발행한다. 승인 시 정식 버전으로 승격한다.
