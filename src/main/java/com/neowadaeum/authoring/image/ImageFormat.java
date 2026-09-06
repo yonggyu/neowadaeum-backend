@@ -35,6 +35,25 @@ public enum ImageFormat {
 		return null;
 	}
 
+	/**
+	 * 키의 확장자로 되찾는다 (#377, §13-78).
+	 *
+	 * <p><b>중계가 내보내는 {@code Content-Type} 의 출처가 여기다.</b> 저장소가 기록한 값을
+	 * 그대로 흘리면 <b>버킷이 응답 헤더를 정하게</b> 되고, 그때 15세 등급이 걸린 이미지가
+	 * 브라우저에서 무엇으로 해석되는지를 서버가 더 이상 결정하지 않는다. 확장자는 발급이
+	 * 서명한 형식에서 나왔으므로 (§13-65) <b>업로드 때 서명한 값</b>과 같다.
+	 *
+	 * @return 목록에 없으면 {@code null}
+	 */
+	public static ImageFormat ofExtension(String extension) {
+		for (ImageFormat format : values()) {
+			if (extension != null && format.extension.equals(extension.trim().toLowerCase(Locale.ROOT))) {
+				return format;
+			}
+		}
+		return null;
+	}
+
 	public String contentType() {
 		return this.contentType;
 	}

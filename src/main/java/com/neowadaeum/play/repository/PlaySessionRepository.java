@@ -153,6 +153,28 @@ public interface PlaySessionRepository extends JpaRepository<PlaySession, UUID> 
 			UUID playerRef, UUID storyId, SessionStatus status, Limit limit);
 
 	/**
+	 * 진행 중 세션이 고정하고 있는 버전 (I-4, §13-80, #372).
+	 *
+	 * <p><b>사후 검수가 무엇을 읽어야 하는지</b>를 정하는 값이다 (R8.11). 세션은 생성 시 버전에
+	 * 고정되므로 새 버전이 현재가 된 뒤에도 그 전에 시작한 세션은 <b>옛 버전의 세계관과 인물
+	 * 페르소나를 매 턴 모델에 싣는다</b> — 현재 버전만 훑으면 <b>읽히고 있는데 검사되지 않는
+	 * 자리</b>가 남는다.
+	 *
+	 * <p><b>{@code active} 만이다.</b> 끝났거나 버려졌거나 만료된 세션은 다음 턴을 만들지
+	 * 않으므로 그 버전을 더 읽지 않는다. 지운 세션도 같다.
+	 *
+	 * <p><b>{@code is_test_session} 을 조건에 넣지 않는다.</b> 기준은 세션의 성질이 아니라
+	 * <b>그 버전이 지금 모델에게 실려 나가는가</b>이며, 테스트 세션도 실어 나른다 (I-18 이
+	 * 가르는 것은 자유입력이지 읽기가 아니다).
+	 */
+	@Query("""
+			SELECT DISTINCT s.storyVersionId FROM PlaySession s
+			WHERE s.storyId IN :storyIds AND s.status = :status AND s.deletedAt IS NULL
+			""")
+	List<UUID> findPinnedVersionIds(@Param("storyIds") Collection<UUID> storyIds,
+			@Param("status") SessionStatus status);
+
+	/**
 	 * 무활동 세션을 만료로 바꾼다 (§4.7, B-61).
 	 *
 	 * <p><b>지우지 않는다.</b> 기록은 남고 이어갈 수만 없게 된다 — 지나간 플레이는 계속 읽힌다.

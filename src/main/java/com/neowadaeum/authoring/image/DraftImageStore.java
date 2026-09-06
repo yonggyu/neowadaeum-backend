@@ -2,7 +2,9 @@ package com.neowadaeum.authoring.image;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.spi.ImageReadUrlSigner;
 import java.net.URI;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,13 +24,19 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  * <p><b>인터페이스를 두지 않는다.</b> 구현이 하나이고 바뀌는 것은 <b>엔드포인트</b>이지 코드가
  * 아니다 — 테스트도 같은 자리를 쓴다(고정 응답 서버로 돌린다).
  *
- * <p><b>버킷은 비공개다.</b> 나가는 URL 은 업로드용 하나뿐이고 짧게 산다 — 읽기 URL 을 만들지
- * 않는 것이 승인 전 노출을 막는 방법이다 (I-8).
+ * <p><b>버킷은 비공개다.</b> 나가는 URL 은 전부 짧게 살고, <b>서버가 누구에게 서명해 주는가</b>로
+ * 노출이 결정된다 (I-8). 읽기 URL 은 <b>승인된 작품에만</b> 나간다 (#378, §13-79) — 승인 전
+ * 이미지는 서버가 바이트를 중계한다 (§13-78).
+ *
+ * <p><b>{@link ImageReadUrlSigner} 를 여기서 구현한다.</b> 버킷 설정과 서명 능력을 가진 것이
+ * 이 클래스이고, 그것을 필요로 하는 목록은 다른 모듈에 있다 — 자격증명을 그쪽으로 복제하면
+ * 설정이 두 곳에 생기고 한쪽이 조용히 낡는다 (ADR-0002 와 같은 형태). <b>포트를 새로 판 것이
+ * 아니라</b> 모듈 경계를 넘는 한 가지 능력만 계약으로 내놓은 것이다.
  *
  * <p><b>모든 호출이 외부 HTTP 다.</b> 트랜잭션 안에서 부르지 않는다.
  */
 @Component
-public class DraftImageStore {
+public class DraftImageStore implements ImageReadUrlSigner {
 
 	/** 이미지 하나의 상한 — <b>5 MiB</b> (#315). 설정으로 두면 계약이 말한 값과 갈라진다. */
 	public static final long MAX_BYTES = 5L * 1024 * 1024;
@@ -100,6 +108,65 @@ public class DraftImageStore {
 			throw new ApiException(ErrorCode.VALIDATION_ERROR);
 		}
 		return new StoredImage(format, size);
+	}
+
+	/**
+	 * <b>승인된 작품</b>의 이미지를 읽는 URL (#378, §13-79).
+	 *
+	 * <p><b>서명은 계산이다.</b> 저장소에 묻지 않으므로 목록 한 쪽에 스무 번 불러도 왕복이 늘지
+	 * 않는다 — 트랜잭션 안에서 외부 HTTP 를 부르는 것과 다르다.
+	 *
+	 * <p><b>승인 전 이미지에는 부르지 않는다.</b> 이 URL 은 수명 동안 인증·감사 밖에서 열리므로,
+	 * 그것을 승인 전 UGC 에 내주면 I-8 이 지키던 것이 URL 한 줄로 샌다 (§13-78). 부르는 쪽이
+	 * <b>승인됐는가</b>를 판정한다 — 여기서 그것을 알 방법이 없다.
+	 *
+	 * @return 저장소 설정이 없으면 비어 있다. 목록이 통째로 실패하는 것은 이미지 하나가 없는
+	 *     것보다 나쁘다 — 로컬과 CI 는 저장소를 갖지 않는다
+	 */
+	@Override
+	public Optional<String> signRead(String objectKey) {
+		if (this.presigner == null || objectKey == null || objectKey.isBlank()) {
+			return Optional.empty();
+		}
+		return Optional.of(this.presigner.presignGetObject(request -> request
+				.signatureDuration(this.properties.readUrlTtl())
+				.getObjectRequest(get -> get.bucket(this.properties.bucket()).key(objectKey)))
+				.url().toString());
+	}
+
+	/**
+	 * 객체의 바이트를 그대로 읽는다 (#377, §13-78).
+	 *
+	 * <p><b>읽기 URL 을 만들지 않는다.</b> 서명 URL 은 그 객체의 <b>출입증</b>이라 수명 동안
+	 * 아무 곳에서나 게이트 없이 열린다 — 승인 전 이미지에 그것을 허용하면 I-8 이 지키던 것이
+	 * URL 한 줄로 새고 S-4 도 함께 무의미해진다. 그래서 승인 전 경로는 <b>서버가 중계한다.</b>
+	 *
+	 * <p><b>내부 참조 토큰도 만들지 않는다.</b> 짧은 수명의 참조를 주면 그것이 다시 출입증이 되어,
+	 * 서명 URL 을 피한 이유가 절반 돌아온다.
+	 *
+	 * <p><b>{@code Content-Type} 을 함께 돌려주지 않는다.</b> 저장소가 기록한 값이 아니라 발급이
+	 * 서명한 값을 내보내야 하고 (§13-65), 그 값은 <b>키</b>가 들고 있다 — 부르는 쪽이 정한다.
+	 *
+	 * @throws ApiException {@code NOT_FOUND} — 그 자리에 객체가 없다. <b>커버를 올리지 않은
+	 *     원고가 정상이다</b> (§13-68 이 미리보기 턴에 대해 세운 판단과 같다)
+	 */
+	public byte[] readObject(String objectKey) {
+		if (this.client == null) {
+			throw notConfigured();
+		}
+		try {
+			return this.client.getObjectAsBytes(
+					req -> req.bucket(this.properties.bucket()).key(objectKey)).asByteArray();
+		}
+		catch (NoSuchKeyException ex) {
+			throw new ApiException(ErrorCode.NOT_FOUND);
+		}
+		catch (S3Exception ex) {
+			if (ex.statusCode() == 404) {
+				throw new ApiException(ErrorCode.NOT_FOUND);
+			}
+			throw ex;
+		}
 	}
 
 	/** 올라온 적이 없으면 잘못된 요청이다 — 서버의 문제가 아니다. */

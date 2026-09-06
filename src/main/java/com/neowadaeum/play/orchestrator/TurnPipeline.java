@@ -312,7 +312,7 @@ public class TurnPipeline {
 		List<Turn> recent = this.turns
 				.findBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(context.sessionId(), Limit.of(this.recentTurns.summaryMerge()));
 
-		StateSchema schema = StateSchema.from(context.version().stateSchema());
+		StateSchema schema = context.stateSchema();
 
 		return new GenerationContext(
 				context.version().worldPrompt(),
@@ -320,9 +320,10 @@ public class TurnPipeline {
 						.map(character -> new GenerationContext.Character(character.name(), character.persona()))
 						.toList(),
 				context.state().toJson(),
-				// §13-76 — 병합을 허락하는 그 목록이 프롬프트로도 간다 (#367). 같은 StateSchema 에서
-				// 꺼내는 것이 요점이다: 모델이 보는 이름과 엔진이 받아들이는 이름이 갈라지면
-				// 어긋난 제안은 조용히 버려지고 그 조건은 영원히 거짓이 된다.
+				// §13-76 — 병합을 허락하는 그 목록이 프롬프트로도 간다 (#367). 턴에 하나뿐인
+				// StateSchema 에서 꺼내는 것이 요점이다 (#381): 모델이 보는 이름과 엔진이
+				// 받아들이는 이름이 갈라지면 어긋난 제안은 조용히 버려지고 그 조건은 영원히
+				// 거짓이 된다.
 				new GenerationContext.StateVocabulary(List.copyOf(schema.numerics().keySet()),
 						List.copyOf(schema.flags()), List.copyOf(schema.inventory())),
 				// R4.5 — 요약 파이프라인이 남긴 현재 요약. 아직 없으면 null 이다 (첫 8턴이 그렇다).
@@ -419,7 +420,9 @@ public class TurnPipeline {
 		Instant now = Instant.now(this.clock);
 		int newTurnNo = context.turnNo() + 1;
 
-		StateSchema schema = StateSchema.from(context.version().stateSchema());
+		// 화이트리스트는 프롬프트가 어휘로 실어 보낸 그 목록이다 (#381, §13-76). 여기서 새로
+		// 만들면 두 자리가 갈라질 자리가 생긴다.
+		StateSchema schema = context.stateSchema();
 		StateChanges changes = StateChanges.from(generated.result().proposedStateChanges());
 
 		// 8 — 화이트리스트 → clamp → 병합. 그다음 서버 전용 경로로 턴 번호를 올린다 (I-9).
@@ -550,9 +553,28 @@ public class TurnPipeline {
 				.toList();
 	}
 
-	/** 읽기 트랜잭션이 모아 온 값. 트랜잭션 밖에서도 안전하도록 엔티티를 들고 나오지 않는다. */
+	/**
+	 * 읽기 트랜잭션이 모아 온 값. 트랜잭션 밖에서도 안전하도록 엔티티를 들고 나오지 않는다.
+	 *
+	 * <p><b>{@code stateSchema} 를 함께 들고 다니는 것이 요점이다</b> (#381). 이 목록을 읽는 자리는
+	 * 둘이고 — 프롬프트에 실을 어휘(§13-76)와 병합을 허락하는 화이트리스트(R4.1) — <b>두 자리가
+	 * 같은 목록을 봐야 한다.</b> 갈라지면 모델이 보는 이름과 엔진이 받아들이는 이름이 어긋나고,
+	 * 어긋난 제안은 조용히 버려져 그 이름을 가리키는 조건이 영원히 거짓이 된다 (#367). 값이 하나면
+	 * 갈라질 자리가 없다.
+	 *
+	 * <p><b>이것은 트랜잭션 경계를 건너지 않는다.</b> {@code version} 은 이미 읽기 TX 가 들고 나온
+	 * 값이고 두 자리 모두 그것에서 스키마를 만들었다 — 되읽기가 아니라 <b>같은 문자열의 두 번째
+	 * 파싱</b>이었다. 그래서 한 번 만들어 넘기는 것과 두 번 만드는 것의 뜻이 같다 (#294 가 세션에
+	 * 대해 한 것과 같은 확인이다). {@link StateSchema} 는 불변 record 다.
+	 */
 	private record PipelineContext(UUID sessionId, UUID storyVersionId, int turnNo, int chapterNo,
-			int turnsInChapter, GameState state, StoryVersionView version) {
+			int turnsInChapter, GameState state, StoryVersionView version, StateSchema stateSchema) {
+
+		PipelineContext(UUID sessionId, UUID storyVersionId, int turnNo, int chapterNo,
+				int turnsInChapter, GameState state, StoryVersionView version) {
+			this(sessionId, storyVersionId, turnNo, chapterNo, turnsInChapter, state, version,
+					StateSchema.from(version.stateSchema()));
+		}
 	}
 
 	/** L2 를 통과한 생성 결과. 통과하지 못한 것은 이 타입으로 존재하지 않는다 (I-2). */

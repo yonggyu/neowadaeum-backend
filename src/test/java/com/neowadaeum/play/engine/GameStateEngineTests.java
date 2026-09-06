@@ -2,12 +2,14 @@ package com.neowadaeum.play.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.neowadaeum.play.port.StateChangeOperator;
 import java.lang.reflect.RecordComponent;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * S-5 (#55) — 서버가 상태의 최종 권한을 갖는지 확인한다.
@@ -184,6 +186,32 @@ class GameStateEngineTests {
 		assertThat(result.location()).isEqualTo("교실");
 		assertThat(result.timeOfDay()).isEqualTo("오후");
 		assertThat(result.numerics()).containsEntry("affinity.yuna", 3);
+	}
+
+	/**
+	 * <b>파서가 아는 연산자와 프롬프트가 인쇄하는 연산자가 같은 목록이다</b> (§13-82).
+	 *
+	 * <p>{@link StateChangeOperator} 에 항목을 더하고 파서를 고치지 않으면, 모델은 인쇄된 표기를
+	 * 그대로 써도 <b>수치 델타 자리로 흘러</b> 무시된다 — 그 실패는 예외를 내지 않는다 (#375).
+	 */
+	@Test
+	void S13_82_every_printed_operator_is_understood_by_the_parser() {
+		ObjectNode proposal = JSON.createObjectNode();
+		for (StateChangeOperator operator : StateChangeOperator.values()) {
+			// 값 모양도 그 열거가 정한다 — 배열 자리에 문자열을 넣으면 파서가 무시한다.
+			if (operator.wireShape().startsWith("[")) {
+				proposal.putArray(operator.key());
+			}
+			else {
+				proposal.put(operator.key(), "교실");
+			}
+		}
+
+		StateChanges parsed = StateChanges.from(proposal);
+
+		assertThat(parsed.ignoredKeys()).isEmpty();
+		// 연산자 키가 하나라도 파서에 없으면 수치 델타 자리로 흘러 여기 걸린다.
+		assertThat(parsed.numericDeltas()).isEmpty();
 	}
 
 	/** §13-9 — 그 외 키는 무시한다. 예외를 던지지 않는다. */

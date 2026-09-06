@@ -49,17 +49,22 @@ class DraftVocabularyGateTests {
 	}
 
 	/**
-	 * <b>경계에서 갈린다</b> — 40자 플래그 13개는 지나가고 14개는 걸린다.
+	 * <b>경계에서 갈린다</b> — 40자 플래그 11개는 지나가고 12개는 걸린다.
 	 *
 	 * <p>이 두 수는 계산한 것이 아니라 <b>운영 계산기가 낸 값</b>이다. 게이트가 상한을 스스로
 	 * 정하지 않고 {@code ai} 에게 묻는다는 사실이 여기서 값으로 드러난다 — 레이어 문구가 바뀌면
 	 * 이 경계도 함께 움직이고, 그때 이 테스트가 먼저 빨개진다.
+	 *
+	 * <p><b>13/14 에서 11/12 로 좁아졌다</b> (§13-82). 연산자 표기가 {@code OUTPUT SPEC} 으로
+	 * 가면서 이 묶음의 상한이 200 에서 175 로 내려갔고, 머리표가 짧아져 되찾은 몫은 그보다 작다.
+	 * <b>여기가 그 대가가 값으로 보이는 자리다</b> — §13-73 의 계약 상한(32개 · 40자)은 이 경계를
+	 * 예나 지금이나 훌쩍 넘으므로, 좁아진 것은 <b>이미 예산 밖이던 구간</b>이다.
 	 */
 	@Test
-	void S13_76_the_gate_splits_at_the_measured_boundary() {
-		assertThatCode(() -> this.gate.verify(declaring(0, 13, 40))).doesNotThrowAnyException();
+	void S13_82_the_gate_splits_at_the_measured_boundary() {
+		assertThatCode(() -> this.gate.verify(declaring(0, 11, 40))).doesNotThrowAnyException();
 
-		assertThatThrownBy(() -> this.gate.verify(declaring(0, 14, 40)))
+		assertThatThrownBy(() -> this.gate.verify(declaring(0, 12, 40)))
 				.isInstanceOf(ApiException.class)
 				.extracting(thrown -> ((ApiException) thrown).errorCode())
 				.isEqualTo(ErrorCode.VALIDATION_ERROR);
@@ -90,7 +95,7 @@ class DraftVocabularyGateTests {
 
 		assertThat(thrown.details()).containsOnlyKeys("vocabularyUsagePercent");
 		assertThat((Integer) thrown.details().get("vocabularyUsagePercent")).isGreaterThan(100);
-		assertThat(thrown.getMessage()).doesNotContain("200", "token", "토큰");
+		assertThat(thrown.getMessage()).doesNotContain("175", "token", "토큰");
 	}
 
 	/** 공식 작품 시드 규모(인물 3 · 플래그 6)는 여유가 크다. 게이트가 정상 작품을 막지 않는다. */
