@@ -12,6 +12,7 @@ import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.play.port.SummaryRequest;
+import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.common.support.FixedTokenCounter;
 import com.neowadaeum.common.support.RecentTurnsProperties;
@@ -22,7 +23,6 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -60,7 +60,7 @@ class AnthropicSummaryTests {
 		AnthropicProperties properties = new AnthropicProperties("test-key", models,
 				"http://localhost:" + this.server.port(), 4096, null);
 		return new AnthropicStoryProvider(
-				RestClient.builder().baseUrl(properties.baseUrl()).defaultHeader("x-api-key", "test-key").build(),
+				AnthropicProviderConfiguration.restClient(properties, new ProviderProperties(null, null)),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
 				new TurnOutputParser(),
