@@ -46,7 +46,8 @@ class DraftImageStoreTests {
 		this.storage.start();
 		this.store = new DraftImageStore(new ImageStorageProperties(
 				"http://localhost:" + this.storage.port(), "us-east-1", "test-only-bucket",
-				"test-only-access-key", "test-only-secret-key", Duration.ofMinutes(10)));
+				"test-only-access-key", "test-only-secret-key", Duration.ofMinutes(10),
+				Duration.ofMinutes(15)));
 	}
 
 	@AfterEach
