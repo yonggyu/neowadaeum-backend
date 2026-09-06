@@ -218,15 +218,45 @@ public class StoryPublisher {
 	 * <p><b>지워진 작품은 판정으로 되살아나지 않는다</b> (§13-58). 검수자가 큐를 연 뒤 작성자가
 	 * 지우면 판정이 나중에 도착한다 — 조건절이 없으면 그 판정이 {@code deleted} 를
 	 * {@code approved} 로 덮어쓴다.
+	 *
+	 * <p><b>판정은 요청을 지운다</b> (§13-83, #391). {@code pending_visibility} 는 <b>이 회차가
+	 * 열어 달라고 한 자리</b>이고 판정과 함께 그 회차가 끝난다 — 남겨 두면 나중에 신고로
+	 * 내려갔다가 통과할 때 <b>지난 회차의 요청</b>이 작품을 연다.
 	 */
 	@Transactional("catalogTransactionManager")
 	public void applyReview(UUID storyId, String reviewStatus, String visibility) {
 		this.jdbc.sql("""
-						UPDATE story SET review_status = ?, visibility = ?,
+						UPDATE story SET review_status = ?, visibility = ?, pending_visibility = NULL,
 								published_at = COALESCE(published_at, ?)
 						WHERE id = ? AND review_status <> ?
 						""")
 				.params(reviewStatus, visibility, at(Instant.now(this.clock)), storyId, DELETED_STATUS)
+				.update();
+	}
+
+	/**
+	 * <b>사람을 기다리게 한다</b> (R8.6, §13-83).
+	 *
+	 * <p><b>두 가시성을 함께 적는다.</b> {@code kept} 는 반려됐을 때 <b>돌아갈 자리</b>이고
+	 * (#245 · #249) {@code pending} 은 통과가 <b>열 자리</b>다. 지금까지 후자는 언제나
+	 * {@code public} 이라 물어볼 필요가 없었으나, 이미지가 있는 원고가 큐를 지나기 시작하면
+	 * ({@code SubmissionService}) <b>{@code unlisted} 를 원한 작성자</b>가 그 길로 온다 —
+	 * 한 컬럼으로 둘을 답하면 통과가 작성자가 고르지 않은 넓이로 작품을 연다 (I-8).
+	 *
+	 * <p><b>{@link #applyReview} 와 나눈 것은 의도다.</b> 그쪽은 판정을 적는 자리이고 이쪽은
+	 * 요청을 적는 자리다 — 같은 메서드로 겸하면 판정이 요청을 지우는 규칙을 매 호출부가
+	 * 기억해야 한다.
+	 *
+	 * @param kept 반려되면 돌아갈 자리. 처음 내는 작품은 {@code private} 이다
+	 * @param pending 통과가 열 자리. <b>작성자가 요청한 값</b>이다
+	 */
+	@Transactional("catalogTransactionManager")
+	public void awaitReview(UUID storyId, String kept, String pending) {
+		this.jdbc.sql("""
+						UPDATE story SET review_status = ?, visibility = ?, pending_visibility = ?
+						WHERE id = ? AND review_status <> ?
+						""")
+				.params(IN_REVIEW_STATUS, kept, pending, storyId, DELETED_STATUS)
 				.update();
 	}
 
@@ -266,10 +296,13 @@ public class StoryPublisher {
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public Optional<StoryStatus> statusOf(UUID storyId) {
 		return this.jdbc
-				.sql("SELECT review_status, visibility FROM story WHERE id = ? AND review_status <> ?")
+				.sql("""
+						SELECT review_status, visibility, pending_visibility FROM story
+						WHERE id = ? AND review_status <> ?
+						""")
 				.params(storyId, DELETED_STATUS)
 				.query((rs, rowNum) -> new StoryStatus(rs.getString("review_status"),
-						rs.getString("visibility")))
+						rs.getString("visibility"), rs.getString("pending_visibility")))
 				.optional();
 	}
 
@@ -584,7 +617,6 @@ public class StoryPublisher {
 			UUID authorRef, String reviewStatus, String visibility, Instant createdAt) {
 	}
 
-	/** 작품의 상태 한 벌. */
 	/**
 	 * 작성자까지 담은 현재 상태 (#245).
 	 *
@@ -593,7 +625,16 @@ public class StoryPublisher {
 	public record OwnedStory(UUID authorRef, String reviewStatus, String visibility) {
 	}
 
-	public record StoryStatus(String reviewStatus, String visibility) {
+	/**
+	 * 작품의 상태 한 벌.
+	 *
+	 * @param visibility <b>지금 어디까지 보이는가</b>, 그리고 검수 중이라면 반려됐을 때
+	 *     <b>돌아갈 자리</b>다 (#245 · #249)
+	 * @param pendingVisibility 통과가 <b>열 자리</b> (§13-83, #391). 작성자가 요청한 값이며,
+	 *     <b>{@code null} 은 요청이 없었다는 사실이다</b> — 정지와 샘플링은 작성자가 부른 것이
+	 *     아니므로 통과가 있던 자리로 돌려놓는다 (§13-42)
+	 */
+	public record StoryStatus(String reviewStatus, String visibility, String pendingVisibility) {
 	}
 
 	private UUID insertVersion(UUID storyId, int versionNo, StoryDefinition definition,

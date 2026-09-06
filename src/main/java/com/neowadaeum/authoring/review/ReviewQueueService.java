@@ -52,20 +52,6 @@ public class ReviewQueueService {
 
 	private static final String REJECTED_STATUS = "rejected";
 
-	/**
-	 * <b>제출이 기다리던 것을 통과시키면 공개다.</b>
-	 *
-	 * <p>{@code in_review} 로 큐에 오는 길은 {@code public} 제출 하나뿐이므로 (R8.6, B-54),
-	 * 승인이 여는 가시성도 그 하나다. 사후 검수(B-59)가 <b>이미 승인된 작품</b>을 그 상태로
-	 * 올리기 시작하면 그때는 목표 가시성을 함께 날라야 한다 — 그 경로는 아직 없다.
-	 *
-	 * <p><b>다른 길로 온 것은 원래 자리로 돌아간다.</b> 정지(B-57)와 샘플링(B-59)은 가시성을
-	 * 건드리지 않으므로 원래 값이 그대로 남아 있고, 통과는 <b>그것</b>으로 돌려놓는다 — 신고
-	 * 하나로 내려간 {@code unlisted} 작품이나 <b>무작위로 뽑혔을 뿐인</b> 작품이 통과하면서
-	 * 공개되면 그것은 복귀가 아니다.
-	 */
-	private static final String PUBLIC_VISIBILITY = "public";
-
 	/** 반려된 작품은 아무에게도 보이지 않는다 (I-8). */
 	private static final String PRIVATE_VISIBILITY = "private";
 
@@ -193,15 +179,18 @@ public class ReviewQueueService {
 	/**
 	 * 통과가 여는 가시성.
 	 *
-	 * <p><b>어디서 왔는지가 답을 정한다.</b> 제출이 기다리던 것은 {@code public} 을 원했고
-	 * (R8.6), 정지에서 돌아오는 것은 <b>내려가기 전의 자리</b>로 돌아간다 (B-57) — 정지는
-	 * 가시성을 지우지 않았으므로 그 값이 그대로 남아 있다.
+	 * <p><b>작성자가 요청한 자리가 있으면 그것이 답이다</b> (§13-83, #391). 제출과 승격은
+	 * 사람을 기다리게 하면서 <b>열어 달라고 한 값</b>을 함께 적어 둔다 — 예전에는 그 값이
+	 * 언제나 {@code public} 이라 상태만 보고 답할 수 있었으나, 이미지가 있는 원고가 큐를
+	 * 지나기 시작하면서 {@code unlisted} 를 원한 작성자가 같은 길로 온다.
+	 *
+	 * <p><b>요청이 없으면 있던 자리로 돌아간다.</b> 정지(§13-41)와 샘플링(§13-42)은 작성자가
+	 * 부른 것이 아니고 가시성을 건드리지도 않았으므로, 그 값이 곧 답이다 — 무작위로 뽑혔을
+	 * 뿐인 작품이 통과하면서 공개되면 그것은 복귀가 아니다.
 	 */
 	private static String restoredVisibilityOf(StoryPublisher.StoryStatus stored) {
-		// in_review 로 오는 길은 public 제출 하나뿐이다 (§13-39). 나머지 — 정지(§13-41)와
-		// 샘플링(§13-42) — 는 내려가지도 가려지지도 않았으므로 있던 자리가 곧 답이다.
-		return ReviewStatus.IN_REVIEW.columnValue().equals(stored.reviewStatus())
-				? PUBLIC_VISIBILITY : stored.visibility();
+		return (stored.pendingVisibility() != null) ? stored.pendingVisibility()
+				: stored.visibility();
 	}
 
 	/**
