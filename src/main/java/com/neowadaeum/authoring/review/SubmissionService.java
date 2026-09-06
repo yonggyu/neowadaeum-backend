@@ -231,11 +231,7 @@ public class SubmissionService {
 			fields.put("chapters[%d].title".formatted(index), chapter.title());
 			fields.put("chapters[%d].summarySeed".formatted(index), chapter.summarySeed());
 		}
-		for (int index = 0; index < definition.endings().size(); index++) {
-			StoryDefinition.Ending ending = definition.endings().get(index);
-			fields.put("endings[%d].label".formatted(index), ending.label());
-			fields.put("endings[%d].epilogueText".formatted(index), ending.epilogueText());
-		}
+		putAuthorEndings(fields, definition.endings());
 		putCharacters(fields, definition.characters());
 		// 플래그는 이름뿐이고 문장이 아니다. 짧다는 이유로 다르게 보지 않는다 (§13-75) —
 		// 판정이 둘이 되면 무른 쪽이 곧 길이 된다.
@@ -245,6 +241,34 @@ public class SubmissionService {
 		}
 		fields.values().removeIf(java.util.Objects::isNull);
 		return fields;
+	}
+
+	/**
+	 * <b>작성자가 적은 엔딩만 건다</b> (§13-84, #397).
+	 *
+	 * <p>발행 정의의 엔딩 목록에는 §13-16 이 더하는 <b>기본 엔딩</b>이 섞여 있다 — 라벨은
+	 * 서버 상수이고 에필로그는 없다. 그것을 걸면 두 가지가 어긋난다: <b>작성자가 쓰지 않은
+	 * 문자열이 판정 대상이 되고</b> ({@code NOT_AUTHOR_TEXT} 와 같은 종류다), 그 경로가
+	 * 가리키는 자리는 <b>작성 화면에 없는 줄</b>이다.
+	 *
+	 * <p><b>값의 모양으로 알아내지 않는다.</b> 라벨을 상수와 비교하면 그 문구를 고치는 날
+	 * 조용히 어긋난다 — 발행 정의가 {@code isDefault} 로 이미 답하고 있고, DB 도 같은 값으로
+	 * 그 행을 하나로 강제한다 (R2.2).
+	 *
+	 * <p><b>자리는 작성자의 줄이다.</b> 기본 엔딩을 건너뛴 만큼 뒤로 밀지 않는다 — 경로는
+	 * 밑줄을 그을 자리를 가리키는 값이고 (§13-81), 화면에는 작성자가 적은 엔딩만 있다.
+	 */
+	private static void putAuthorEndings(Map<String, String> fields,
+			List<StoryDefinition.Ending> endings) {
+		int row = 0;
+		for (StoryDefinition.Ending ending : endings) {
+			if (ending.isDefault()) {
+				continue;
+			}
+			fields.put("endings[%d].label".formatted(row), ending.label());
+			fields.put("endings[%d].epilogueText".formatted(row), ending.epilogueText());
+			row++;
+		}
 	}
 
 	/**
