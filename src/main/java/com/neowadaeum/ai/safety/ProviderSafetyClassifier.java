@@ -5,6 +5,7 @@ import com.neowadaeum.common.spi.SafetyCategory;
 import com.neowadaeum.common.spi.SafetyClassificationFailedException;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.common.spi.SafetyClassifier;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,9 +44,15 @@ public class ProviderSafetyClassifier implements SafetyClassifier {
 			throw ex;
 		}
 		catch (RuntimeException ex) {
-			// 판정 대상 원문도 응답 원문도 남기지 않는다 (S-3). 남기는 것은 실패했다는 사실까지다.
-			log.warn("safety classification did not complete; treating it as a closed failure");
-			throw new SafetyClassificationFailedException("safety classification did not complete");
+			// 판정 대상 원문도 응답 원문도 남기지 않는다 (S-3). 남기는 것은 실패했다는 사실과
+			// 타입 이름의 사슬까지다 (§13-86) — 여기가 fail-closed 라 벤더 하나가 죽으면 모든 턴이
+			// 차단되고, 그때 "무엇이 죽었는가"를 이 한 줄에서 읽지 못하면 §13-86 이 막으려던
+			// 이틀이 그대로 재현된다.
+			String causeChain = ProviderCallFailedException.typeChainOf(ex);
+			log.warn("safety classification did not complete; treating it as a closed failure cause={}",
+					causeChain);
+			throw new SafetyClassificationFailedException(
+					"safety classification did not complete cause=" + causeChain);
 		}
 	}
 }

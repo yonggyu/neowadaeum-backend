@@ -87,8 +87,10 @@ public class FallbackChain implements StoryProvider {
 						: provider.generateTurn(request);
 			}
 			catch (ProviderCallFailedException ex) {
-				// 원문도 예외 본문도 남기지 않는다 (S-3). 남기는 것은 어느 provider 가 죽었는가까지다.
-				log.warn("provider {} failed; falling back", provider.providerId());
+				// 원문도 예외 본문도 남기지 않는다 (S-3). 남기는 것은 어느 provider 가 죽었는가와
+				// 그 아래에 무엇이 있었는가의 타입 사슬까지다 (§13-86) — 승계가 일어난 뒤에는
+				// 예외가 삼켜지므로 여기가 그 사슬이 로그에 닿는 유일한 자리다.
+				log.warn("provider {} failed; falling back cause={}", provider.providerId(), ex.causeChain());
 				lastFailure = ex;
 			}
 		}
@@ -131,7 +133,8 @@ public class FallbackChain implements StoryProvider {
 						: provider.classifySafety(request);
 			}
 			catch (ProviderCallFailedException ex) {
-				log.warn("provider {} failed to classify; falling back", provider.providerId());
+				log.warn("provider {} failed to classify; falling back cause={}", provider.providerId(),
+						ex.causeChain());
 				lastFailure = ex;
 			}
 		}

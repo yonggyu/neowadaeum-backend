@@ -135,13 +135,18 @@ public class PlayTurnService {
 		catch (GenerationTimedOutException ex) {
 			// R6.4 — 세션은 직전 턴 상태 그대로다. §4.3 의 8단계 이전에서 끊겼다.
 			failed(sessionId, key);
-			throw new ApiException(ErrorCode.GENERATION_TIMEOUT);
+			throw new ApiException(ErrorCode.GENERATION_TIMEOUT, ex);
 		}
 		catch (OutputSchemaRejectedException | ProviderCallFailedException ex) {
 			// R5.8 — 재요청까지 스키마를 못 맞췄거나(전자) 호출 자체가 실패했다(후자, B-22).
 			// 둘 다 시간 초과와 같은 자리에서 끊기므로 상태는 그대로다 (R6.6).
+			//
+			// 원인을 붙인다 (§13-86). 응답에는 아무것도 늘지 않는다 — 본문은 ErrorCode 로만
+			// 만들어진다(S-6). 늘어나는 것은 GlobalExceptionHandler 의 5xx 로그이며, 거기 실리는
+			// 것은 우리 예외의 메시지, 즉 타입 이름의 사슬까지다. 붙이지 않으면 그 사슬은
+			// 어디에도 닿지 않는다.
 			failed(sessionId, key);
-			throw new ApiException(ErrorCode.PROVIDER_ERROR);
+			throw new ApiException(ErrorCode.PROVIDER_ERROR, ex);
 		}
 		catch (RuntimeException ex) {
 			failed(sessionId, key);

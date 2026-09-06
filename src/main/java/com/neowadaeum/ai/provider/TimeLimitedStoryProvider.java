@@ -6,6 +6,7 @@ import com.neowadaeum.common.support.TurnDeadline;
 import com.neowadaeum.common.spi.SafetyClassificationRequest;
 import com.neowadaeum.play.port.GeneratedTurn;
 import com.neowadaeum.play.port.GenerationTimedOutException;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import com.neowadaeum.play.port.TurnRequest;
 import java.time.Clock;
 import java.time.Duration;
@@ -142,7 +143,10 @@ public class TimeLimitedStoryProvider implements StoryProvider {
 			if (cause instanceof RuntimeException runtime) {
 				throw runtime;
 			}
-			throw new IllegalStateException("provider call failed", cause);
+			// 원인을 붙이지 않는다 (§13-86). 여기 오는 것은 어댑터가 감싸지 못한 Throwable 이며
+			// 벤더 예외일 수 있다 — 붙이면 그 메시지가 스택트레이스를 타고 로그로 나간다.
+			throw new IllegalStateException(
+					"provider call failed cause=" + ProviderCallFailedException.typeChainOf(cause));
 		}
 		catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();

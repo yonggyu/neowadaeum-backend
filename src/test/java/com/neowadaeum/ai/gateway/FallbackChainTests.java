@@ -174,6 +174,40 @@ class FallbackChainTests {
 				.isEqualTo("dead");
 	}
 
+	/**
+	 * <b>승계가 성공하면 실패한 예외는 삼켜진다</b> — 그래서 이 한 줄이 그 사슬이 로그에 닿는
+	 * 유일한 자리다 (§13-86, #393).
+	 *
+	 * <p>사슬은 나가고 벤더 메시지는 나가지 않는다. 둘 다 건다 — 있어야 할 것만 단언하면 값이
+	 * 새어도 통과한다 (S-3).
+	 */
+	@Test
+	void SEC3_the_fallback_log_carries_the_type_chain_and_not_the_vendor_message() {
+		String vendorMarker = "http://vendor.invalid/api/chat key=sk-DO-NOT-LOG";
+		ch.qos.logback.classic.Logger logger =
+				(ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(FallbackChain.class);
+		ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+				new ch.qos.logback.core.read.ListAppender<>();
+		appender.start();
+		logger.addAppender(appender);
+
+		try {
+			Counting primary = Counting.failingWith("anthropic",
+					() -> new ProviderCallFailedException("anthropic call failed",
+							ProviderCallFailedException.typeChainOf(
+									new org.springframework.web.client.ResourceAccessException(vendorMarker))));
+
+			new FallbackChain(List.of(primary, Counting.answering("ollama"))).generateTurn(request());
+
+			assertThat(appender.list).hasSize(1);
+			String logged = appender.list.getFirst().getFormattedMessage();
+			assertThat(logged).contains("ResourceAccessException").doesNotContain(vendorMarker);
+		}
+		finally {
+			logger.detachAppender(appender);
+		}
+	}
+
 	/** 호출 횟수와 승계 여부를 기록하는 어댑터. */
 	private static final class Counting extends TurnOnlyStoryProvider {
 
