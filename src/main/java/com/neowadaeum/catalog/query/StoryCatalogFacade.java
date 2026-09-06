@@ -117,6 +117,11 @@ public class StoryCatalogFacade {
 	 * <p><b>승인된 것만 서명한다</b> (I-8, §13-78). 서명 URL 은 그 객체의 출입증이라 수명 동안
 	 * 게이트 없이 열린다 — 승인 전 이미지에 그것을 내주면 #377 이 세운 경계가 무의미해진다.
 	 * 승인 전 커버는 {@code null} 로 나가고, 작성자는 원고 경로에서 중계로 본다.
+	 *
+	 * <p><b>화면에 나가는 이미지는 예외 없이 여기를 지난다</b> (#395, §13-85). 상세의
+	 * {@code heroImage} 는 지나지 않고 있었다 — 지금은 UGC 발행이 {@code hero_url} 을 채우지
+	 * 않아 깨지지 않았을 뿐이고, 채우기 시작하는 날 <b>커버가 겪은 것과 같은 일</b>이
+	 * 일어난다. 자리마다 정하면 이 사이클에 여섯 번째로 같은 모양이 된다.
 	 */
 	private String imageUrlOf(String storedValue, String authorType, String reviewStatus) {
 		if (!"user".equals(authorType)) {
@@ -306,7 +311,8 @@ public class StoryCatalogFacade {
 		}
 		DetailRow detail = row.get();
 		UUID versionId = detail.currentVersionId();
-		return Optional.of(new StoryDetailView(storyId, detail.title(), detail.heroUrl(),
+		return Optional.of(new StoryDetailView(storyId, detail.title(),
+				imageUrlOf(detail.heroUrl(), detail.authorType(), detail.reviewStatus()),
 				genresOf(List.of(storyId)).getOrDefault(storyId, List.of()), detail.description(),
 				detail.worldIntro(), detail.authorType(), displayNameOf(detail.authorRef()),
 				countOf("SELECT COUNT(*) FROM chapter_def WHERE story_version_id = :id", versionId),

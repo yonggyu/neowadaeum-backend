@@ -70,6 +70,13 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	/** 공식 작품의 초상은 이미 실제 주소다 (S-11 — 가상의 호스트다). */
 	private static final String OFFICIAL_PORTRAIT_URL = "https://cover.invalid/official-portrait.png";
 
+	/** 히어로 키. 커버와 같은 버킷·같은 관행이다 (#395, S-11: 가상의 문자열). */
+	private static final String HERO_KEY = "drafts/00000000-0000-4000-8000-0000000000d0/hero/"
+			+ "00000000-0000-4000-8000-0000000000d3.jpg";
+
+	/** 공식 작품의 히어로는 이미 실제 주소다 (S-11 — 가상의 호스트다). */
+	private static final String OFFICIAL_HERO_URL = "https://cover.invalid/official-hero.jpg";
+
 	private final List<UUID> created = new java.util.ArrayList<>();
 
 	private final List<UUID> createdVersions = new java.util.ArrayList<>();
@@ -522,6 +529,53 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 
 		assertThat(this.facade.detail(storyId).orElseThrow().characters().getFirst().portraitImage())
 				.isEqualTo(OFFICIAL_PORTRAIT_URL);
+	}
+
+	/**
+	 * <b>#395 · §13-85 — 상세의 히어로 이미지도 같은 판정을 지난다.</b>
+	 *
+	 * <p>지나지 않고 있었다. <b>지금 UGC 발행이 {@code hero_url} 을 채우지 않아 깨지지 않았을
+	 * 뿐</b>이고, 채우기 시작하는 날 커버가 겪은 것과 글자 그대로 같은 일이 일어난다 — 객체 키가
+	 * {@code <img src>} 로 나가고 <b>서버는 아무 소리도 내지 않는다.</b>
+	 *
+	 * <p>그래서 값을 여기 심어 <b>판정이 지금 걸려 있는지</b>를 본다. 채우는 경로가 생긴 뒤에
+	 * 세우면 그때는 이미 깨진 뒤다.
+	 */
+	@Test
+	void S13_79_an_approved_user_hero_image_comes_back_signed() {
+		UUID storyId = insertStory("user", "public", "approved");
+		setHero(storyId, HERO_KEY);
+		UUID versionId = insertVersion(storyId);
+		setCurrentVersion(storyId, versionId);
+
+		assertThat(this.facade.detail(storyId).orElseThrow().heroImage())
+				.isNotEqualTo(HERO_KEY).startsWith("http").contains("X-Amz-Signature");
+	}
+
+	/** 공식 작품의 히어로는 <b>이미 주소다</b> — 커버·초상과 같은 이유로 건드리지 않는다 (#395). */
+	@Test
+	void S13_79_an_official_hero_image_is_passed_through() {
+		UUID storyId = insertStory("official", "public", "approved", null);
+		setHero(storyId, OFFICIAL_HERO_URL);
+		UUID versionId = insertVersion(storyId);
+		setCurrentVersion(storyId, versionId);
+
+		assertThat(this.facade.detail(storyId).orElseThrow().heroImage())
+				.isEqualTo(OFFICIAL_HERO_URL);
+	}
+
+	/** 히어로 키를 그 작품에 붙인다. <b>가상의 문자열이다</b> (S-11). */
+	private void setHero(UUID storyId, String heroUrl) {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection
+						.prepareStatement("UPDATE story SET hero_url = ? WHERE id = ?")) {
+			statement.setString(1, heroUrl);
+			statement.setObject(2, storyId);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	/** 상세에 보이는 인물 하나. <b>초상 값은 가상의 문자열이다</b> (S-11). */
