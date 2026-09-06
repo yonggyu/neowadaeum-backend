@@ -28,10 +28,14 @@ import java.util.UUID;
  * 여기 없으면 <b>판정한 사람이 보지 않은 값이 라이브러리에 걸린다</b> — 장르는 그 작품이 어느
  * 섹션에 뜨는지를 정하고 (§13-56), 커버는 15세 등급 판정의 대상이다 (R8.5).
  *
- * <p><b>커버는 아직 볼 수 없다.</b> {@code coverImageKey} 는 이름 그대로 <b>객체 키</b>이고
- * 버킷은 비공개다 (#315, §13-72) — 검수자용 읽기 URL 을 발급하는 경로는 아직 없으며, 그것은
- * I-8 이 지키는 선 위의 결정이라 여기서 지어내지 않는다 (§13-77 `[결정 필요]`). 있다는 사실만
- * 정직하게 말하는 것이 <b>보이는 척하는 URL</b> 보다 낫다.
+ * <p><b>키를 주고 바이트는 다른 문이 준다</b> (#377, §13-78). {@code coverImageKey} 와
+ * {@code characters[].portraitImageKey} 는 이름 그대로 <b>객체 키</b>이고 버킷은 비공개다
+ * (#315, §13-72) — 검수 화면은 그 키로 {@code GET /admin/reviews/{storyId}/images} 를 불러
+ * 이미지를 받는다. <b>서명 URL 을 여기 싣지 않는 것이 결정이다</b>: 그것은 수명 동안 관리자
+ * 게이트(S-4) 밖에서 열리고, 승인 전 UGC 에 그것을 허용하면 I-8 이 지키던 것이 URL 한 줄로 샌다.
+ *
+ * <p><b>키가 {@code null} 인 것이 정상이다.</b> 커버나 초상을 올리지 않은 원고가 있고, 그 사실은
+ * 이 응답이 실패할 이유가 아니다 — 없는 이미지의 404 는 그 한 장에만 걸린다 (§13-68).
  *
  * @param submittedAt 작품이 만들어진 시각. 제출 회차별 시각은 검수 이력이 답한다 (§13-57)
  * @param worldPrompt 세계관 프롬프트 원문. <b>UGC 원고의 본체다</b>
@@ -84,10 +88,13 @@ public record ReviewManuscript(UUID storyId, String title, String shortDesc, Str
 	 * 검수는 반대다 — 페르소나 프롬프트야말로 <b>매 턴 모델에게 들어가는 문장</b>이고, 그것을
 	 * 보지 않은 승인은 작품의 절반만 본 승인이다.
 	 *
-	 * <p><b>초상({@code portraitImage})은 담지 않는다</b> (#368). 커버와 <b>같은 자리의 같은
-	 * 결정</b>이며 (§13-77 `[결정 필요]`), 셋을 따로 정하면 세 번 갈라진다.
+	 * <p><b>초상 키를 담는다</b> (#377, §13-78). 커버와 <b>같은 자리의 같은 결정</b>이며 (§13-77),
+	 * 나눠서 답하면 이미지 채널이 둘이 되고 수명·감사가 갈라진다 — I-8 경계에서 가장 비싼 종류의
+	 * 분기다.
+	 *
+	 * @param portraitImageKey 초상의 <b>객체 키</b>이며 URL 이 아니다. 올리지 않았으면 {@code null}
 	 */
-	public record ManuscriptCharacter(String name, String persona) {
+	public record ManuscriptCharacter(String name, String persona, String portraitImageKey) {
 	}
 
 	/** 챕터 한 장. <b>진입 조건식은 담지 않는다</b> — 판정 로직이지 사람이 읽는 문장이 아니다. */

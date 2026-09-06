@@ -102,6 +102,41 @@ public class DraftImageStore {
 		return new StoredImage(format, size);
 	}
 
+	/**
+	 * 객체의 바이트를 그대로 읽는다 (#377, §13-78).
+	 *
+	 * <p><b>읽기 URL 을 만들지 않는다.</b> 서명 URL 은 그 객체의 <b>출입증</b>이라 수명 동안
+	 * 아무 곳에서나 게이트 없이 열린다 — 승인 전 이미지에 그것을 허용하면 I-8 이 지키던 것이
+	 * URL 한 줄로 새고 S-4 도 함께 무의미해진다. 그래서 승인 전 경로는 <b>서버가 중계한다.</b>
+	 *
+	 * <p><b>내부 참조 토큰도 만들지 않는다.</b> 짧은 수명의 참조를 주면 그것이 다시 출입증이 되어,
+	 * 서명 URL 을 피한 이유가 절반 돌아온다.
+	 *
+	 * <p><b>{@code Content-Type} 을 함께 돌려주지 않는다.</b> 저장소가 기록한 값이 아니라 발급이
+	 * 서명한 값을 내보내야 하고 (§13-65), 그 값은 <b>키</b>가 들고 있다 — 부르는 쪽이 정한다.
+	 *
+	 * @throws ApiException {@code NOT_FOUND} — 그 자리에 객체가 없다. <b>커버를 올리지 않은
+	 *     원고가 정상이다</b> (§13-68 이 미리보기 턴에 대해 세운 판단과 같다)
+	 */
+	public byte[] readObject(String objectKey) {
+		if (this.client == null) {
+			throw notConfigured();
+		}
+		try {
+			return this.client.getObjectAsBytes(
+					req -> req.bucket(this.properties.bucket()).key(objectKey)).asByteArray();
+		}
+		catch (NoSuchKeyException ex) {
+			throw new ApiException(ErrorCode.NOT_FOUND);
+		}
+		catch (S3Exception ex) {
+			if (ex.statusCode() == 404) {
+				throw new ApiException(ErrorCode.NOT_FOUND);
+			}
+			throw ex;
+		}
+	}
+
 	/** 올라온 적이 없으면 잘못된 요청이다 — 서버의 문제가 아니다. */
 	private HeadObjectResponse head(String objectKey) {
 		try {

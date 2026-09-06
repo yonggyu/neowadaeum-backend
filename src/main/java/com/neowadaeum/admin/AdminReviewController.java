@@ -2,6 +2,7 @@ package com.neowadaeum.admin;
 
 import com.neowadaeum.authoring.report.ReportInspection;
 
+import com.neowadaeum.authoring.review.ReviewImageService;
 import com.neowadaeum.authoring.review.ReviewManuscript;
 import com.neowadaeum.authoring.review.ReviewManuscriptService;
 
@@ -14,11 +15,13 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -44,16 +47,19 @@ public class AdminReviewController {
 
 	private final ReviewManuscriptService manuscripts;
 
+	private final ReviewImageService reviewImages;
+
 	private final AdminAccessGuard guard;
 
 	private final PlayerRefResolver playerRefs;
 
 	public AdminReviewController(ReviewQueueService queue, ReportInspection inspection,
-			ReviewManuscriptService manuscripts, ReviewHistoryService history,
-			AdminAccessGuard guard, PlayerRefResolver playerRefs) {
+			ReviewManuscriptService manuscripts, ReviewImageService reviewImages,
+			ReviewHistoryService history, AdminAccessGuard guard, PlayerRefResolver playerRefs) {
 		this.queue = queue;
 		this.inspection = inspection;
 		this.manuscripts = manuscripts;
+		this.reviewImages = reviewImages;
 		this.history = history;
 		this.guard = guard;
 		this.playerRefs = playerRefs;
@@ -106,6 +112,36 @@ public class AdminReviewController {
 		this.guard.recordAction(adminUserId, "admin.review.manuscript", "story", storyId, Map.of(),
 				request);
 		return manuscript;
+	}
+
+	/**
+	 * 원고의 이미지 한 장을 본다 (#377, §13-78).
+	 *
+	 * <p><b>커버와 초상은 15세 등급 판정의 대상이다</b> (R8.5). 이미지는 블록리스트가 볼 수 없는
+	 * 종류라 <b>사람 말고는 판정할 주체가 없고</b>, 그 사람이 볼 수 없으면 검수는 키 문자열을
+	 * 보고 누르는 절차가 된다.
+	 *
+	 * <p><b>서명 URL 이 아니라 중계다.</b> 승인 전 이미지에 서명 URL 을 내주면 그것이 수명 동안
+	 * 이 게이트(S-4) 밖에서 열린다 — 경계는 <b>"승인됐는가"</b> 이고 그것은 I-8 이 그은 선이다.
+	 *
+	 * <p><b>열람은 두 번 남는다.</b> 관리자 행위로 한 번 (R14.5), <b>이미지 열람</b>으로 한 번
+	 * (R12.3, S-5) — 후자는 서비스가 남기고 기록에 실패하면 바이트가 나가지 않는다.
+	 *
+	 * <p><b>없는 이미지는 이 한 장만 404 다.</b> 커버를 올리지 않은 원고가 정상이며, 검수 상세는
+	 * 자기 응답을 그대로 내놓는다 (§13-68).
+	 */
+	@GetMapping("/{storyId}/images")
+	public ResponseEntity<byte[]> image(@PathVariable UUID storyId, @RequestParam String objectKey,
+			HttpServletRequest request) {
+		UUID adminUserId = this.guard.requireAdmin(this.playerRefs.currentPlayerRef(), request);
+
+		ReviewImageService.ReviewImage image = this.reviewImages.read(adminUserId, storyId, objectKey);
+		this.guard.recordAction(adminUserId, "admin.review.image", "story", storyId, Map.of(),
+				request);
+		// 승인 전 이미지는 게이트 뒤에 있어야 한다. 중간 캐시에 남은 바이트는 그 게이트를
+		// 지나지 않는다 (I-8).
+		return ResponseEntity.ok().header("Content-Type", image.contentType())
+				.header("Cache-Control", "private, no-store").body(image.bytes());
 	}
 
 	/**

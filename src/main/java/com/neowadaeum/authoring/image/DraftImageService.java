@@ -18,8 +18,10 @@ import org.springframework.stereotype.Service;
  * <p><b>발급이 보장하는 것은 자리와 형식뿐이다.</b> 바이트는 브라우저가 직접 올리므로 서버가
  * 보지 못한다 — 그래서 {@link #commit} 이 있다.
  *
- * <p><b>읽기 URL 을 발급하지 않는다.</b> 버킷은 비공개이고 영구 URL 이 없으므로 승인 전 이미지가
- * 타인에게 닿는 경로가 없다 (I-8). 열람은 소유자·검수자에 한해 뒤에 연다.
+ * <p><b>읽기 URL 을 발급하지 않는다</b> (I-8). 버킷은 비공개이고 영구 URL 이 없다 — 승인 전
+ * 이미지는 <b>서버가 바이트를 중계</b>해서만 닿는다 (#377, §13-78). 서명 URL 은 그 객체의
+ * 출입증이라 수명 동안 게이트 밖에서 열리므로, 승인 전 UGC 에 그것을 내주면 I-8 이 지키던 것이
+ * URL 한 줄로 샌다.
  *
  * <p><b>트랜잭션을 열지 않는다.</b> 소유 판정은 {@link DraftService} 안에서 짧게 끝나고 저장소
  * 호출은 그 밖에서 일어난다.
@@ -71,23 +73,36 @@ public class DraftImageService {
 	 */
 	public CommittedImage commit(UUID authorRef, UUID draftId, String objectKey) {
 		this.drafts.read(authorRef, draftId);
-		requireKeyOf(draftId, objectKey);
-		DraftImageStore.StoredImage stored = this.store.verifyStored(objectKey);
-		return new CommittedImage(objectKey, stored.format(), stored.sizeBytes());
+		DraftImageKey key = DraftImageKey.of(draftId, objectKey);
+		DraftImageStore.StoredImage stored = this.store.verifyStored(key.objectKey());
+		return new CommittedImage(key.objectKey(), stored.format(), stored.sizeBytes());
 	}
 
 	/**
-	 * <b>이 원고의 키인가.</b> 발급이 만든 모양 그대로여야 한다 — 접두어만 보면
-	 * {@code drafts/<id>/../<남의 원고>} 가 통과한다.
+	 * 작성자가 자기 원고의 이미지를 본다 (#377, §13-78).
+	 *
+	 * <p><b>판정은 원고 소유권이다.</b> 작성자는 관리자가 아니므로 (S-4 밖) 게이트가 될 수 있는
+	 * 사실은 그것 하나뿐이고, 그 자리는 {@link DraftService} 가 세운 <i>남의 원고는 없는 것과
+	 * 구분되지 않는다</i> 와 <b>같아야 한다</b> — 여기서만 다른 코드를 내면 어느 원고가 존재하는지가
+	 * 이미지 응답으로 새어 나간다 (I-8).
+	 *
+	 * @throws ApiException {@code NOT_FOUND} — 없거나 남의 원고이거나, 그 자리에 객체가 없다
+	 * @throws ApiException {@code VALIDATION_ERROR} — 이 원고의 키가 아니다
 	 */
-	private static void requireKeyOf(UUID draftId, String objectKey) {
-		String[] parts = (objectKey == null) ? new String[0] : objectKey.split("/");
-		boolean shaped = parts.length == 4 && "drafts".equals(parts[0])
-				&& parts[1].equals(draftId.toString()) && DraftImageSlot.of(parts[2]) != null
-				&& parts[3].matches("[0-9a-f-]{36}\\.[a-z]{3,4}");
-		if (!shaped) {
-			throw new ApiException(ErrorCode.VALIDATION_ERROR);
-		}
+	public RelayedImage readForAuthor(UUID authorRef, UUID draftId, String objectKey) {
+		this.drafts.read(authorRef, draftId);
+		return read(DraftImageKey.of(draftId, objectKey));
+	}
+
+	/**
+	 * 확인된 키의 바이트를 읽는다 (#377, §13-78).
+	 *
+	 * <p><b>게이트를 걸지 않는다</b> — 부르는 쪽이 이미 걸었다. 검수자 경로는 관리자 게이트(S-4)와
+	 * <b>열람 감사</b>를 자기 자리에서 세우며, 감사는 <b>바이트보다 먼저</b> 남아야 하므로 (S-5)
+	 * 그 순서를 여기서 대신 정하지 않는다.
+	 */
+	public RelayedImage read(DraftImageKey key) {
+		return new RelayedImage(key.format(), this.store.readObject(key.objectKey()));
 	}
 
 	/** 발급 결과. 원고에 적히는 값은 {@code objectKey} 이며 URL 이 아니다. */
@@ -96,5 +111,14 @@ public class DraftImageService {
 
 	/** 확인 결과. 형식과 크기는 <b>저장소가 말한 것</b>이지 클라이언트가 말한 것이 아니다. */
 	public record CommittedImage(String objectKey, ImageFormat format, long sizeBytes) {
+	}
+
+	/**
+	 * 중계되는 이미지 한 장 (#377).
+	 *
+	 * <p><b>바이트를 그대로 흘린다.</b> 내부 참조 토큰을 주면 그것이 다시 출입증이 되어, 승인 전에
+	 * 서명 URL 을 쓰지 않기로 한 이유가 절반 돌아온다 (§13-78).
+	 */
+	public record RelayedImage(ImageFormat format, byte[] bytes) {
 	}
 }
