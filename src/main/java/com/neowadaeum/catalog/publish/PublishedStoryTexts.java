@@ -28,7 +28,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p><b>공식 작품은 대상이 아니다.</b> 재스캔은 UGC 사후 관리이며 (§8.4), 시드 작품까지 훑으면
  * 운영이 직접 넣은 것을 배치가 내리는 일이 생긴다.
  *
- * <p><b>필드 경로를 만들지 않는다.</b> {@code chapters[1].title} 같은 표기는 작성 화면이
+ * <p><b>필드 경로를 만들지 않는다.</b> {@code chapters[0].title} 같은 표기는 작성 화면이
  * 밑줄을 긋기 위한 것이고 ({@code authoring} 의 어휘다), 재스캔이 남기는 것은 <b>카테고리</b>
  * 뿐이다 (R8.7) — 여기서는 검사할 문자열만 모아 준다.
  */

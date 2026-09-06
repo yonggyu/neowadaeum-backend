@@ -34,6 +34,13 @@ class SubmissionFieldCoverageTests {
 	/** 표식은 값마다 다르다 — 어느 성분이 새는지 실패 메시지가 스스로 말해야 한다. */
 	private static final String MARK = "표식";
 
+	/** 둘째 줄의 표식 (§13-81). 자리가 밀리면 이 값이 첫 줄의 경로에 걸린다. */
+	private static final String SECOND_ROW = MARK + "-둘째줄";
+
+	/** {@code chapters[1].title} 의 {@code chapters} 와 {@code 1}. */
+	private static final java.util.regex.Pattern INDEXED_PATH =
+			java.util.regex.Pattern.compile("^([A-Za-z]+)\\[(\\d+)\\]");
+
 	/** L1 이 거는 것. <b>{@link #R8_5_every_screened_text_reaches_the_screen()} 이 값으로 확인한다.</b> */
 	private static final List<String> SCREENED = List.of("title", "shortDesc", "worldIntro",
 			"worldPrompt", "chapters[].title", "chapters[].summarySeed", "endings[].label",
@@ -131,6 +138,45 @@ class SubmissionFieldCoverageTests {
 	}
 
 	/**
+	 * <b>표기는 목록 전체에서 하나다 — 배열의 자리</b> (§13-81, #379).
+	 *
+	 * <p>챕터·엔딩은 도메인 번호(1부터)를, 인물·플래그는 배열의 자리(0부터)를 넣어 <b>같은
+	 * 지도 안에 두 규칙</b>이 있었다. 성분을 세는 자리에서 <b>표기까지 센다</b> — 목록에 값이
+	 * 느는 날 그 값의 표기도 여기서 정해진다.
+	 *
+	 * <p><b>자리는 0 부터 빈틈없이 이어진다.</b> 시작점만 보면 두 번째 줄부터 어긋나는 표기를
+	 * 놓치고, 이어짐만 보면 통째로 1 씩 밀린 표기를 놓친다.
+	 */
+	@Test
+	void S13_81_every_indexed_path_is_a_zero_based_array_position() {
+		Map<String, String> fields = SubmissionService.fieldsOf(definitionOfTwoRows(),
+				new java.util.LinkedHashSet<>(List.of(mark("flags[0]"), mark("flags[1]"))));
+
+		assertThat(positionsByPrefixOf(fields.keySet()))
+				.as("계약이 정한 표기는 배열의 자리다 — precheck(L0)이 답하는 표기와 같아야 한다")
+				.isNotEmpty()
+				.allSatisfy((prefix, positions) -> assertThat(positions).as("%s 의 자리", prefix)
+						.containsExactlyElementsOf(zeroUntil(positions.size())));
+	}
+
+	/**
+	 * <b>두 번째 줄이 자기 자리를 가리킨다</b> (§13-81, #379).
+	 *
+	 * <p>위의 규칙을 값으로 한 번 더 못 박는다 — {@code chapters[1]} 은 <b>둘째 챕터</b>이며
+	 * 1부터 세던 표기에서는 <b>첫째 챕터</b>였다.
+	 */
+	@Test
+	void S13_81_the_second_row_is_index_one() {
+		Map<String, String> fields = SubmissionService.fieldsOf(definitionOfTwoRows(),
+				new java.util.LinkedHashSet<>(List.of(mark("flags[0]"), mark("flags[1]"))));
+
+		assertThat(fields).containsEntry("chapters[1].title", SECOND_ROW)
+				.containsEntry("endings[1].label", SECOND_ROW)
+				.containsEntry("characters[1].name", SECOND_ROW)
+				.containsEntry("flags[1]", mark("flags[1]"));
+	}
+
+	/**
 	 * <b>대신 발행된 한 줄 소개를 두 번 걸지 않는다</b> (§13-71).
 	 *
 	 * <p>페르소나가 비어 있으면 한 줄 소개가 그 자리로 발행된다. 같은 문장을 두 자리에 걸면
@@ -157,6 +203,27 @@ class SubmissionFieldCoverageTests {
 		return definitionWith(new StoryDefinition.Character(1, mark("characters[].name"),
 				mark("characters[].oneLine"), mark("characters[].personaPrompt"),
 				mark("characters[].portraitUrl"), true));
+	}
+
+	/**
+	 * 성분마다 <b>줄이 둘</b>인 한 벌. 표기는 두 번째 줄에서만 갈린다 (§13-81).
+	 *
+	 * <p>둘째 줄의 값은 전부 같은 표식이다 — 확인하는 것은 <b>값이 어느 자리에 걸리는가</b>이지
+	 * 값 자체가 아니다.
+	 */
+	private static StoryDefinition definitionOfTwoRows() {
+		StoryDefinition one = definitionOfMarks();
+		return new StoryDefinition(one.authorRef(), one.title(), one.shortDesc(), one.worldIntro(),
+				one.worldPrompt(), one.stateTemplateKey(),
+				List.of(one.chapters().get(0),
+						new StoryDefinition.Chapter(2, SECOND_ROW, SECOND_ROW, null, 1, 10)),
+				List.of(one.endings().get(0),
+						new StoryDefinition.Ending(2, SECOND_ROW, SECOND_ROW, "{}", false, false),
+						// R2.2 — 서버가 더하는 기본 엔딩은 언제나 마지막이다 (§13-16).
+						new StoryDefinition.Ending(3, "끝", null, null, true, false)),
+				List.of(one.characters().get(0), new StoryDefinition.Character(2, SECOND_ROW,
+						SECOND_ROW, SECOND_ROW + "-persona", null, true)),
+				one.genreKeys(), one.coverImageKey());
 	}
 
 	private static StoryDefinition definitionWith(StoryDefinition.Character character) {
@@ -210,6 +277,29 @@ class SubmissionFieldCoverageTests {
 			return element;
 		}
 		return null;
+	}
+
+	/**
+	 * 경로에 적힌 자리를 성분별로 모은다 — {@code chapters[1].title} 은 {@code chapters} 의 1 이다.
+	 *
+	 * <p>중복은 접는다: 한 줄이 여러 필드를 내므로 {@code chapters[0]} 은 두 번 나온다.
+	 */
+	private static Map<String, List<Integer>> positionsByPrefixOf(Set<String> paths) {
+		Map<String, java.util.SortedSet<Integer>> positions = new java.util.LinkedHashMap<>();
+		java.util.regex.Matcher matcher = INDEXED_PATH.matcher("");
+		for (String path : paths) {
+			if (matcher.reset(path).find()) {
+				positions.computeIfAbsent(matcher.group(1), key -> new java.util.TreeSet<>())
+						.add(Integer.parseInt(matcher.group(2)));
+			}
+		}
+		Map<String, List<Integer>> sorted = new java.util.LinkedHashMap<>();
+		positions.forEach((prefix, seen) -> sorted.put(prefix, List.copyOf(seen)));
+		return sorted;
+	}
+
+	private static List<Integer> zeroUntil(int size) {
+		return java.util.stream.IntStream.range(0, size).boxed().toList();
 	}
 
 	private static List<String> union(List<String> left, Set<String> right) {
