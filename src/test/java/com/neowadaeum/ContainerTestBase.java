@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
@@ -42,9 +43,15 @@ import org.springframework.context.annotation.Import;
  * <p>{@code @AutoConfigureMockMvc} 도 여기에 둔다. 컨트롤러 테스트마다 붙이면 캐시 키가 갈라져
  * 컨텍스트가 그 수만큼 더 뜬다 — 위와 같은 이유다.
  *
+ * <p><b>뒷정리 실패는 여기서 크게 터진다</b> (#394). {@link LoudCleanupFailures} 가 {@code @AfterEach}
+ * 의 실패를 <b>뒷정리라고 이름 붙여</b> 던지고, 그 뒤에 실패하는 테스트에 앞선 뒷정리로 가는 표지를
+ * 붙인다. 개별 테스트 파일에 규칙을 복사하지 않기 위해 이 한 자리에 건다.
+ *
  * @see TestcontainersConfiguration
+ * @see LoudCleanupFailures
  */
 @Tag("container")
+@ExtendWith(LoudCleanupFailures.class)
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("dev")
 @AutoConfigureMockMvc
