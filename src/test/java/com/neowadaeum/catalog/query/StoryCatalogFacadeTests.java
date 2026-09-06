@@ -442,6 +442,28 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	}
 
 	/**
+	 * <b>#396 · §13-85 — 이름을 고치는 동안에도 옛 컬럼의 값이 화면에 남는다.</b>
+	 *
+	 * <p>무중단 배포에서는 구 버전과 신 버전이 겹쳐 돈다 (docs/deployment.md §2). 그 창 동안
+	 * 구 버전이 만든 행은 <b>새 컬럼이 비어 있고</b>, 읽는 쪽이 새 컬럼만 보면 그 작품의 커버가
+	 * 조용히 사라진다 — 다시 발행되기 전까지 돌아오지 않는다.
+	 *
+	 * <p>이 단언이 성립하지 않게 되는 날은 <b>옛 컬럼을 지우는 배포</b>이며, 그때 이 테스트와
+	 * {@code COALESCE} 가 함께 사라진다.
+	 */
+	@Test
+	void S13_85_a_cover_written_before_the_rename_still_reaches_the_screen() {
+		UUID storyId = insertStory("user", "public", "approved");
+		setCoverBeforeRename(storyId, COVER_KEY);
+
+		StoryCardView card = this.facade.cards(section("community"), null, null).stories().stream()
+				.filter(story -> story.storyId().equals(storyId)).findFirst().orElseThrow();
+
+		assertThat(card.coverImage()).isNotEqualTo(COVER_KEY).startsWith("http")
+				.contains("X-Amz-Signature");
+	}
+
+	/**
 	 * <b>승인 전 커버에는 서명하지 않는다</b> (I-8, §13-78).
 	 *
 	 * <p>서명 URL 은 그 객체의 <b>출입증</b>이라 수명 동안 게이트 없이 열린다 — 경계는
@@ -566,16 +588,7 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 
 	/** 히어로 키를 그 작품에 붙인다. <b>가상의 문자열이다</b> (S-11). */
 	private void setHero(UUID storyId, String heroUrl) {
-		try (Connection connection = this.dataSource.getConnection();
-				PreparedStatement statement = connection
-						.prepareStatement("UPDATE story SET hero_url = ? WHERE id = ?")) {
-			statement.setString(1, heroUrl);
-			statement.setObject(2, storyId);
-			statement.executeUpdate();
-		}
-		catch (SQLException ex) {
-			throw new IllegalStateException(ex);
-		}
+		update("UPDATE story SET hero_url = ? WHERE id = ?", heroUrl, storyId);
 	}
 
 	/** 상세에 보이는 인물 하나. <b>초상 값은 가상의 문자열이다</b> (S-11). */
@@ -583,7 +596,7 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 		try (Connection connection = this.dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement("""
 						INSERT INTO character (id, story_version_id, story_id, name, role,
-								portrait_url, one_line, persona_prompt, display_order,
+								portrait_image_key, one_line, persona_prompt, display_order,
 								is_visible_in_detail)
 						VALUES (?, ?, ?, '유나', '친구', ?, '한 줄', '페르소나', 1, TRUE)
 						""")) {
@@ -614,10 +627,22 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 
 	/** 커버 키를 그 작품에 붙인다. <b>가상의 문자열이다</b> (S-11). */
 	private void setCover(UUID storyId, String coverUrl) {
+		update("UPDATE story SET cover_image_key = ? WHERE id = ?", coverUrl, storyId);
+	}
+
+	/**
+	 * <b>옛 이름 쪽만 채운다</b> (#396, §13-85). 배포가 겹치는 동안 구 버전이 만든 행이 그
+	 * 모양이며, 그 행이 화면에서 사라지지 않는지는 그것을 만들 수 있어야 확인된다.
+	 */
+	private void setCoverBeforeRename(UUID storyId, String coverUrl) {
+		update("UPDATE story SET cover_image_key = NULL, cover_url = ? WHERE id = ?", coverUrl,
+				storyId);
+	}
+
+	private void update(String sql, String value, UUID storyId) {
 		try (Connection connection = this.dataSource.getConnection();
-				PreparedStatement statement = connection
-						.prepareStatement("UPDATE story SET cover_url = ? WHERE id = ?")) {
-			statement.setString(1, coverUrl);
+				PreparedStatement statement = connection.prepareStatement(sql)) {
+			statement.setString(1, value);
 			statement.setObject(2, storyId);
 			statement.executeUpdate();
 		}

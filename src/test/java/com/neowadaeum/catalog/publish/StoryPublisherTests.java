@@ -114,6 +114,25 @@ class StoryPublisherTests extends ContainerTestBase {
 	}
 
 	/**
+	 * <b>#396 · §13-85 — 발행은 두 컬럼에 함께 쓴다.</b>
+	 *
+	 * <p>커버 컬럼의 이름을 고치는 중이고 무중단 배포에서는 구 버전과 신 버전이 겹쳐 돈다
+	 * (docs/deployment.md §2). 옛 컬럼에 쓰지 않으면 <b>겹치는 동안 구 버전이 빈 커버를 읽는다</b>
+	 * — 작품 행과 버전 행 둘 다 그렇다 (버전이 승인 때 작품 행으로 옮겨진다, #358).
+	 *
+	 * <p>이 단언은 <b>옛 컬럼을 지우는 배포에서 뒤집힌다</b> — 그때 양쪽 쓰기와 함께 사라진다.
+	 */
+	@Test
+	void S13_85_publishing_writes_the_cover_to_both_column_names() {
+		var published = publish(definition());
+
+		assertThat(coverColumnsOf(published.storyId()))
+				.containsExactly("drafts/cover/키.jpg", "drafts/cover/키.jpg");
+		assertThat(versionCoverColumnsOf(published.versionId()))
+				.containsExactly("drafts/cover/키.jpg", "drafts/cover/키.jpg");
+	}
+
+	/**
 	 * <b>#357 — 표에 없는 장르 키는 거절한다.</b>
 	 *
 	 * <p>목록을 준 것도 서버다 (§13-56) — 없는 키가 온 것은 화면이 낡았거나 손댄 것이다.
@@ -140,9 +159,26 @@ class StoryPublisherTests extends ContainerTestBase {
 				.param(storyId).query(String.class).list();
 	}
 
+	/** 두 이름이 같은 값을 들고 있어야 한다 (#396). 순서는 {@code (새 이름, 옛 이름)} 이다. */
+	private List<String> coverColumnsOf(UUID storyId) {
+		return org.springframework.jdbc.core.simple.JdbcClient.create(this.catalog)
+				.sql("SELECT cover_image_key, cover_url FROM story WHERE id = ?")
+				.param(storyId)
+				.query((rs, rowNum) -> List.of(rs.getString(1), rs.getString(2)))
+				.single();
+	}
+
+	private List<String> versionCoverColumnsOf(UUID versionId) {
+		return org.springframework.jdbc.core.simple.JdbcClient.create(this.catalog)
+				.sql("SELECT cover_image_key, cover_url FROM story_version WHERE id = ?")
+				.param(versionId)
+				.query((rs, rowNum) -> List.of(rs.getString(1), rs.getString(2)))
+				.single();
+	}
+
 	private String coverOf(UUID storyId) {
 		return org.springframework.jdbc.core.simple.JdbcClient.create(this.catalog)
-				.sql("SELECT cover_url FROM story WHERE id = ?")
+				.sql("SELECT cover_image_key FROM story WHERE id = ?")
 				.param(storyId).query(String.class).single();
 	}
 

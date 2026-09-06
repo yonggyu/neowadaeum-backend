@@ -72,11 +72,12 @@ public record StoryDefinition(UUID authorRef, String title, String shortDesc, St
 	 * <p><b>{@code displayOrder} 는 버전 안에서 유일하다</b> (DB 제약). 작성자가 정한 순서이며
 	 * 배열의 자리에서 나온다 — 화면이 순서를 바꿀 수 있으므로 그 순서가 곧 값이다.
 	 *
-	 * @param portraitUrl 초상 <b>객체 키</b> (#315). 없을 수 있다 — 버킷이 비공개이므로 이 값이
-	 *     있다고 이미지가 보이는 것은 아니다 (I-8)
+	 * @param portraitImageKey 초상 <b>객체 키</b> (#315). 없을 수 있다 — 버킷이 비공개이므로 이
+	 *     값이 있다고 이미지가 보이는 것은 아니다 (I-8). <b>이름이 {@code Url} 이었다</b> — 계약과
+	 *     컬럼이 이 값을 키라고 부르는데 여기만 다르게 불렀다 (#396, §13-85)
 	 * @param visibleInDetail 작품 상세의 인물 카드에 뜨는가 (R7.11 의 숨은 인물과 같은 축)
 	 */
 	public record Character(int displayOrder, String name, String oneLine, String personaPrompt,
-			String portraitUrl, boolean visibleInDetail) {
+			String portraitImageKey, boolean visibleInDetail) {
 	}
 }

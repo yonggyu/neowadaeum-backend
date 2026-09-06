@@ -31,6 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><b>슬러그는 서버가 만든다.</b> 작성자가 정하게 하면 남의 작품 주소를 선점할 수 있고,
  * 제목에서 만들면 같은 제목이 충돌한다 — id 를 섞어 유일성을 보장한다.
+ *
+ * <p><b>커버·초상은 두 컬럼에 함께 쓴다</b> (#396, §13-85). 이름을 고치는 중이며 무중단 배포에서는
+ * 구 버전과 신 버전이 겹쳐 돌기 때문이다 (docs/deployment.md §2) — 옛 컬럼에 쓰지 않으면 겹치는
+ * 동안 구 버전이 빈 커버를 읽고, 옛 컬럼을 먼저 지우면 구 버전의 쓰기가 통째로 실패한다.
+ * 읽을 때 {@code COALESCE} 를 거는 것도 같은 창 때문이다 — 그 사이 구 버전이 만든 행은 새 컬럼이
+ * 비어 있다. <b>양쪽 쓰기와 {@code COALESCE} 는 옛 컬럼을 지우는 배포에서 함께 사라진다.</b>
  */
 @Service
 public class StoryPublisher {
@@ -89,13 +95,15 @@ public class StoryPublisher {
 		UUID storyId = UUID.randomUUID();
 
 		this.jdbc.sql("""
-						INSERT INTO story (id, slug, title, short_desc, world_intro, cover_url,
+						INSERT INTO story (id, slug, title, short_desc, world_intro,
+								cover_image_key, cover_url,
 								author_type, author_ref, visibility, review_status, created_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(storyId, slugFor(storyId, definition.title()), definition.title(),
 						trimmedShortDesc(definition.shortDesc()), definition.worldIntro(),
-						definition.coverImageKey(), USER_AUTHOR_TYPE, definition.authorRef(),
+						definition.coverImageKey(), definition.coverImageKey(),
+						USER_AUTHOR_TYPE, definition.authorRef(),
 						PRIVATE_VISIBILITY, DRAFT_REVIEW_STATUS, at(now))
 				.update();
 
@@ -157,8 +165,9 @@ public class StoryPublisher {
 		}
 		this.jdbc.sql("""
 						UPDATE story s
-						SET title = v.title, short_desc = v.short_desc,
-								world_intro = v.world_intro, cover_url = v.cover_url
+						SET title = v.title, short_desc = v.short_desc, world_intro = v.world_intro,
+								cover_image_key = COALESCE(v.cover_image_key, v.cover_url),
+								cover_url = COALESCE(v.cover_image_key, v.cover_url)
 						FROM story_version v
 						WHERE v.id = ? AND s.id = ?
 						""")
@@ -417,13 +426,14 @@ public class StoryPublisher {
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public Optional<StoryHeader> headerOf(UUID storyId) {
 		return this.jdbc.sql("""
-						SELECT title, short_desc, world_intro, cover_url, author_ref, review_status,
-								visibility, created_at
+						SELECT title, short_desc, world_intro,
+								COALESCE(cover_image_key, cover_url) AS cover_image_key,
+								author_ref, review_status, visibility, created_at
 						FROM story WHERE id = ?
 						""")
 				.param(storyId)
 				.query((rs, rowNum) -> new StoryHeader(rs.getString("title"), rs.getString("short_desc"),
-						rs.getString("world_intro"), rs.getString("cover_url"),
+						rs.getString("world_intro"), rs.getString("cover_image_key"),
 						rs.getObject("author_ref", UUID.class),
 						rs.getString("review_status"), rs.getString("visibility"),
 						rs.getTimestamp("created_at").toInstant()))
@@ -441,18 +451,22 @@ public class StoryPublisher {
 	 */
 	public Optional<VersionStoryFields> versionStoryFieldsOf(UUID versionId) {
 		return this.jdbc
-				.sql("SELECT title, short_desc, world_intro, cover_url FROM story_version WHERE id = ?")
+				.sql("""
+						SELECT title, short_desc, world_intro,
+								COALESCE(cover_image_key, cover_url) AS cover_image_key
+						FROM story_version WHERE id = ?
+						""")
 				.param(versionId)
 				.query((rs, rowNum) -> new VersionStoryFields(rs.getString("title"),
 						rs.getString("short_desc"), rs.getString("world_intro"),
-						rs.getString("cover_url")))
+						rs.getString("cover_image_key")))
 				.optional();
 	}
 
 	/**
 	 * 버전이 든 작품 수준 값 (#358). {@code title} 은 스냅샷 없는 버전에서 {@code null} 이다.
 	 *
-	 * @param coverImageKey 커버의 <b>객체 키</b>이며 URL 이 아니다 (#315, §13-72)
+	 * @param coverImageKey 커버의 <b>객체 키</b>이며 URL 이 아니다 (#315, §13-85)
 	 */
 	public record VersionStoryFields(String title, String shortDesc, String worldIntro,
 			String coverImageKey) {
@@ -523,19 +537,21 @@ public class StoryPublisher {
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public List<VersionCharacter> versionCharactersOf(UUID storyVersionId) {
 		return this.jdbc.sql("""
-						SELECT name, persona_prompt, portrait_url FROM character
+						SELECT name, persona_prompt,
+								COALESCE(portrait_image_key, portrait_url) AS portrait_image_key
+						FROM character
 						WHERE story_version_id = ? ORDER BY display_order
 						""")
 				.param(storyVersionId)
 				.query((rs, rowNum) -> new VersionCharacter(rs.getString("name"),
-						rs.getString("persona_prompt"), rs.getString("portrait_url")))
+						rs.getString("persona_prompt"), rs.getString("portrait_image_key")))
 				.list();
 	}
 
 	/**
 	 * 등장인물 한 명 (#377).
 	 *
-	 * @param portraitImageKey 초상의 <b>객체 키</b>이며 URL 이 아니다 (#315, §13-72). 올리지
+	 * @param portraitImageKey 초상의 <b>객체 키</b>이며 URL 이 아니다 (#315, §13-85). 올리지
 	 *     않았으면 {@code null} 이다 — 초상 없는 인물이 정상이다
 	 */
 	public record VersionCharacter(String name, String persona, String portraitImageKey) {
@@ -609,8 +625,9 @@ public class StoryPublisher {
 	/**
 	 * 검수 화면이 여는 작품의 머리말 (#316, §13-61).
 	 *
-	 * @param coverImageKey 커버의 <b>객체 키</b>. 컬럼 이름은 {@code cover_url} 이지만 URL 이
-	 *     아니다 (#315, §13-72) — 버킷이 비공개라 이 값만으로는 아무도 이미지를 열지 못한다
+	 * @param coverImageKey 커버의 <b>객체 키</b>이며 URL 이 아니다 (#315). 컬럼도 이제 같은 이름을
+	 *     쓴다 ({@code story.cover_image_key}, §13-85) — 버킷이 비공개라 이 값만으로는 아무도
+	 *     이미지를 열지 못한다
 	 * @param authorRef 작성자의 {@code player_ref}. <b>표시명으로 바꿔 내보낸다</b> (§13-7, I-3)
 	 */
 	public record StoryHeader(String title, String shortDesc, String worldIntro, String coverImageKey,
@@ -646,13 +663,13 @@ public class StoryPublisher {
 		this.jdbc.sql("""
 						INSERT INTO story_version (id, story_id, version_no, world_prompt, choice_policy,
 								state_schema, state_template_key, published_at,
-								title, short_desc, world_intro, cover_url)
-						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?)
+								title, short_desc, world_intro, cover_image_key, cover_url)
+						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(versionId, storyId, versionNo, definition.worldPrompt(), CHOICE_POLICY,
 						stateSchemaJson, definition.stateTemplateKey(), at(now), definition.title(),
 						trimmedShortDesc(definition.shortDesc()), definition.worldIntro(),
-						definition.coverImageKey())
+						definition.coverImageKey(), definition.coverImageKey())
 				.update();
 
 		insertVersionGenres(versionId, definition.genreKeys());
@@ -686,13 +703,14 @@ public class StoryPublisher {
 		for (StoryDefinition.Character character : definition.characters()) {
 			this.jdbc.sql("""
 							INSERT INTO character (id, story_version_id, story_id, name, role,
-									portrait_url, one_line, persona_prompt, display_order,
-									is_visible_in_detail)
-							VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+									portrait_image_key, portrait_url, one_line, persona_prompt,
+									display_order, is_visible_in_detail)
+							VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 							""")
 					// role 은 아직 작성자가 정하지 않는다 — 지어내지 않고 비운다.
 					.params(UUID.randomUUID(), versionId, storyId, character.name(), null,
-							character.portraitUrl(), character.oneLine(), character.personaPrompt(),
+							character.portraitImageKey(), character.portraitImageKey(),
+							character.oneLine(), character.personaPrompt(),
 							character.displayOrder(), character.visibleInDetail())
 					.update();
 		}

@@ -33,6 +33,12 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>작품 수만큼 조회하지 않는다</b> (§15 — p95 300ms). 한 쪽을 읽고, 그 쪽의 작품 id 로
  * 장르를 <b>한 번에</b> 읽는다. 카드마다 장르를 물으면 20장이 21번의 조회가 된다.
+ *
+ * <p><b>커버·초상을 읽는 자리마다 {@code COALESCE(<새 이름>, <옛 이름>)} 이 붙어 있다</b>
+ * (#396, §13-85). 컬럼 이름을 고치는 중이며, 무중단 배포에서는 구 버전과 신 버전이 겹쳐 돈다
+ * (docs/deployment.md §2) — 그 창 동안 구 버전이 만든 행은 새 컬럼이 비어 있고,
+ * {@code COALESCE} 가 없으면 그 작품의 커버가 <b>다시 발행될 때까지 조용히 사라진다.</b>
+ * <b>옛 컬럼을 지우는 배포에서 이 표기가 함께 사라진다.</b>
  */
 @Component
 public class StoryCatalogFacade {
@@ -106,7 +112,7 @@ public class StoryCatalogFacade {
 	 * (§13-65) 같은 컬럼 관행을 물려받았다 — 판정을 나누면 <b>커버는 고쳐지고 초상은 깨진</b>
 	 * 상태가 생기며, 그것이 이 이슈가 발견될 때의 모양이었다.
 	 *
-	 * <p><b>한 필드가 두 종류의 값을 나르고 있었다.</b> 공식 시드 작품의 {@code cover_url} 에는
+	 * <p><b>한 필드가 두 종류의 값을 나르고 있었다.</b> 공식 시드 작품의 {@code cover_image_key} 에는
 	 * 실제 주소가 들어 있지만, UGC 작품에는 <b>객체 키</b>가 들어 있다 (#357, §13-72) — 화면은
 	 * 그것을 구분할 방법이 없으므로 <b>UGC 커버가 전부 깨진 이미지</b>가 된다. 깨진 이미지는
 	 * 서버에서 아무 소리도 내지 않는다.
@@ -166,7 +172,8 @@ public class StoryCatalogFacade {
 		});
 
 		String sql = """
-				SELECT s.id, s.title, s.cover_url, s.short_desc, s.author_type, s.created_at AS ordered_at,
+				SELECT s.id, s.title, COALESCE(s.cover_image_key, s.cover_url) AS cover_image_key,
+				       s.short_desc, s.author_type, s.created_at AS ordered_at,
 				       s.visibility, s.review_status, s.published_at
 				FROM story s
 				WHERE s.author_ref = :author
@@ -179,7 +186,7 @@ public class StoryCatalogFacade {
 
 		List<MyStoryRow> rows = this.jdbc.sql(sql).params(params)
 				.query((rs, rowNum) -> new MyStoryRow(rs.getObject("id", UUID.class), rs.getString("title"),
-						rs.getString("cover_url"), rs.getString("author_type"), rs.getString("visibility"),
+						rs.getString("cover_image_key"), rs.getString("author_type"), rs.getString("visibility"),
 						rs.getString("review_status"), rs.getTimestamp("ordered_at").toInstant()))
 				.list();
 
@@ -195,7 +202,7 @@ public class StoryCatalogFacade {
 		List<MyStoryView> stories = page.stream().map(row -> {
 			var when = times.getOrDefault(row.id(), StoryReviewTimes.NONE);
 			return new MyStoryView(row.id(), draftIds.get(row.id()), row.title(),
-					imageUrlOf(row.coverUrl(), row.authorType(), row.reviewStatus()),
+					imageUrlOf(row.coverImageKey(), row.authorType(), row.reviewStatus()),
 					row.visibility(), reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt(),
 					when.submittedAt(), when.reviewedAt());
 		}).toList();
@@ -214,7 +221,7 @@ public class StoryCatalogFacade {
 		return "auto_rejected".equals(stored) ? "rejected" : stored;
 	}
 
-	private record MyStoryRow(UUID id, String title, String coverUrl, String authorType, String visibility,
+	private record MyStoryRow(UUID id, String title, String coverImageKey, String authorType, String visibility,
 			String reviewStatus, java.time.Instant createdAt) {
 	}
 
@@ -328,20 +335,23 @@ public class StoryCatalogFacade {
 	 * <p>{@code persona_prompt} 를 읽지 않는다 — 프롬프트의 재료이지 화면의 것이 아니다.
 	 *
 	 * <p><b>초상도 커버와 같은 판정을 지난다</b> (#378, §13-79). 같은 컬럼 관행을 물려받았으므로
-	 * UGC 작품의 {@code portrait_url} 에도 <b>객체 키</b>가 들어 있다 (#315) — 여기를 두고
+	 * UGC 작품의 {@code portrait_image_key} 에도 <b>객체 키</b>가 들어 있다 (#315) — 여기를 두고
 	 * 커버만 고치면 <b>같은 작품의 커버는 뜨고 인물만 깨진다.</b>
 	 */
 	private List<CharacterCardView> charactersOf(UUID storyVersionId, String authorType,
 			String reviewStatus) {
 		return this.jdbc.sql("""
-						SELECT id, name, role, portrait_url, one_line FROM character
+						SELECT id, name, role,
+								COALESCE(portrait_image_key, portrait_url) AS portrait_image_key,
+								one_line
+						FROM character
 						WHERE story_version_id = :id AND is_visible_in_detail = TRUE
 						ORDER BY display_order
 						""")
 				.param("id", storyVersionId)
 				.query((rs, rowNum) -> new CharacterCardView(rs.getObject("id", UUID.class),
 						rs.getString("name"), rs.getString("role"),
-						imageUrlOf(rs.getString("portrait_url"), authorType, reviewStatus),
+						imageUrlOf(rs.getString("portrait_image_key"), authorType, reviewStatus),
 						rs.getString("one_line")))
 				.list();
 	}
@@ -432,7 +442,8 @@ public class StoryCatalogFacade {
 
 		Map<UUID, StoryBriefView> byVersion = new HashMap<>();
 		this.jdbc.sql("""
-						SELECT v.id AS version_id, s.id AS story_id, s.title, s.cover_url,
+						SELECT v.id AS version_id, s.id AS story_id, s.title,
+						       COALESCE(s.cover_image_key, s.cover_url) AS cover_image_key,
 						       s.author_type, s.review_status
 						FROM story_version v JOIN story s ON s.id = v.story_id
 						WHERE v.id IN (:ids) AND s.review_status <> 'deleted'
@@ -442,7 +453,7 @@ public class StoryCatalogFacade {
 					UUID versionId = rs.getObject("version_id", UUID.class);
 					return new StoryBriefView(versionId, rs.getObject("story_id", UUID.class),
 							rs.getString("title"),
-							imageUrlOf(rs.getString("cover_url"), rs.getString("author_type"),
+							imageUrlOf(rs.getString("cover_image_key"), rs.getString("author_type"),
 									rs.getString("review_status")),
 							chapters.getOrDefault(versionId, List.of()));
 				})
@@ -472,7 +483,7 @@ public class StoryCatalogFacade {
 		List<Row> rows = this.jdbc.sql(sql(section, after.isPresent()))
 				.params(params(section, after, size + 1))
 				.query((rs, rowNum) -> new Row(rs.getObject("id", UUID.class), rs.getString("title"),
-						rs.getString("cover_url"), rs.getString("short_desc"), rs.getString("author_type"),
+						rs.getString("cover_image_key"), rs.getString("short_desc"), rs.getString("author_type"),
 						rs.getString("review_status"), rs.getString("author_display_name"),
 						rs.getTimestamp("published_at").toInstant()))
 				.list();
@@ -487,7 +498,7 @@ public class StoryCatalogFacade {
 			// 이 목록은 approved 만 담지만 (sql 의 WHERE) 상태를 읽어서 넘긴다 — 조건을 상수로
 			// 적어 두면 그 WHERE 가 바뀌는 날 여기가 조용히 어긋난다 (#378).
 			cards.add(new StoryCardView(row.id(), row.title(),
-					imageUrlOf(row.coverUrl(), row.authorType(), row.reviewStatus()),
+					imageUrlOf(row.coverImageKey(), row.authorType(), row.reviewStatus()),
 					genresByStory.getOrDefault(row.id(), List.of()), row.shortDesc(),
 					row.publishedAt().isAfter(newSince), row.authorType(), row.authorDisplayName()));
 		}
@@ -539,7 +550,8 @@ public class StoryCatalogFacade {
 		// 조인 조건에 author_type 이 들어 있는 것이 의도다. 공식 작품의 author_ref 가 어떤
 		// 경위로든 채워져 있어도 닉네임이 실리지 않는다 — DB 는 그 조합을 막지 않는다.
 		String base = """
-				SELECT s.id, s.title, s.cover_url, s.short_desc, s.author_type, s.review_status,
+				SELECT s.id, s.title, COALESCE(s.cover_image_key, s.cover_url) AS cover_image_key,
+				       s.short_desc, s.author_type, s.review_status,
 				       s.published_at, ap.display_name AS author_display_name
 				FROM story s
 				LEFT JOIN author_profile ap
@@ -579,7 +591,7 @@ public class StoryCatalogFacade {
 		return params;
 	}
 
-	private record Row(UUID id, String title, String coverUrl, String shortDesc, String authorType,
+	private record Row(UUID id, String title, String coverImageKey, String shortDesc, String authorType,
 			String reviewStatus, String authorDisplayName, Instant publishedAt) {
 	}
 

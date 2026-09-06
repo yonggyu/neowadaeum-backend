@@ -65,7 +65,7 @@ class SubmissionFieldCoverageTests {
 			"coverImageKey", "업로드가 확정한 객체 키다 (#315). 작성자가 쓴 문장이 아니다",
 			"chapters[].entryConditionJson", "서버가 템플릿에서 조립한다 (R7.16, §13-69)",
 			"endings[].conditionJson", "같은 이유다 — 작성자가 보낸 것은 고른 것뿐이다",
-			"characters[].portraitUrl", "업로드가 확정한 객체 키다 (#315)");
+			"characters[].portraitImageKey", "업로드가 확정한 객체 키다 (#315)");
 
 	/**
 	 * <b>새 값은 둘 중 한 목록에 적혀야 한다.</b>
@@ -227,7 +227,7 @@ class SubmissionFieldCoverageTests {
 	private static StoryDefinition definitionOfMarks() {
 		return definitionWith(new StoryDefinition.Character(1, mark("characters[].name"),
 				mark("characters[].oneLine"), mark("characters[].personaPrompt"),
-				mark("characters[].portraitUrl"), true));
+				mark("characters[].portraitImageKey"), true));
 	}
 
 	/**
