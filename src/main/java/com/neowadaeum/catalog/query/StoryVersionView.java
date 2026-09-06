@@ -49,7 +49,7 @@ public record StoryVersionView(
 	/**
 	 * {@code character} 중 <b>프롬프트에 들어가는 것만</b>.
 	 *
-	 * <p>{@code portrait_url} · {@code one_line} · {@code is_visible_in_detail} 은 작품 상세
+	 * <p>{@code portrait_image_key} · {@code one_line} · {@code is_visible_in_detail} 은 작품 상세
 	 * 화면의 것이지 프롬프트의 것이 아니다 (B-16). 여기에 담으면 매 턴 예산을 먹는다.
 	 *
 	 * @param name    작중 이름. 회원 정보가 아니라 작품 데이터다
