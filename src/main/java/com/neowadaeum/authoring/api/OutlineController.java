@@ -91,7 +91,9 @@ public class OutlineController {
 			return this.drafter.draft(new OutlineDraftRequest(worldPrompt, CHAPTERS, ENDINGS));
 		}
 		catch (OutlineDraftFailedException ex) {
-			throw new ApiException(ErrorCode.PROVIDER_ERROR);
+			// 원인을 붙인다 (§13-86). 응답은 그대로다 — 본문은 ErrorCode 로만 만들어진다(S-6).
+			// 늘어나는 것은 5xx 로그이고, 거기 실리는 것은 타입 이름의 사슬까지다.
+			throw new ApiException(ErrorCode.PROVIDER_ERROR, ex);
 		}
 	}
 

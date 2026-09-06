@@ -5,6 +5,7 @@ import com.neowadaeum.common.support.TokenCounter;
 import com.neowadaeum.common.support.RecentTurnsProperties;
 import com.neowadaeum.play.domain.StorySummary;
 import com.neowadaeum.play.domain.Turn;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import com.neowadaeum.play.port.SummarizationPort;
 import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.play.repository.StorySummaryRepository;
@@ -121,8 +122,10 @@ public class StorySummarizer {
 			compressed = this.summarizer.summarize(new SummaryRequest(previous, digests, SummaryBudget.MAX_TOKENS));
 		}
 		catch (RuntimeException ex) {
-			// 원문도 응답 원문도 남기지 않는다 (S-3). 남기는 것은 "이번 턴에는 못 옮겼다"까지다.
-			log.warn("summary compression failed; the next turn will try the same window again (R4.6)");
+			// 원문도 응답 원문도 남기지 않는다 (S-3). 요약 실패는 사용자 에러로 올라가지 않으므로
+			// 이 한 줄이 유일한 흔적이다 — 타입 사슬까지는 남긴다 (§13-86).
+			log.warn("summary compression failed; the next turn will try the same window again (R4.6) cause={}",
+					ProviderCallFailedException.typeChainOf(ex));
 			return null;
 		}
 
@@ -142,7 +145,8 @@ public class StorySummarizer {
 			return recompressed;
 		}
 		catch (RuntimeException ex) {
-			log.warn("summary recompression failed; storing the first compression (R4.5)");
+			log.warn("summary recompression failed; storing the first compression (R4.5) cause={}",
+					ProviderCallFailedException.typeChainOf(ex));
 			return compressed;
 		}
 	}

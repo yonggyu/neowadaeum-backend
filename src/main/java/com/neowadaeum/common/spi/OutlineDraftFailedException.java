@@ -17,7 +17,17 @@ package com.neowadaeum.common.spi;
  */
 public class OutlineDraftFailedException extends RuntimeException {
 
+	/**
+	 * <b>원인은 벤더 예외가 아니라 우리 예외여야 한다</b> (§13-86). 이 예외는 던져지는 자리에서
+	 * 잡히지 않으면 {@code GlobalExceptionHandler} 의 5xx 로그로 <b>스택트레이스째</b> 나가고,
+	 * 그때 원인의 {@code getMessage()} 도 함께 인쇄된다 — 벤더 예외를 붙이면 S-3 가 거기서 깨진다.
+	 * 벤더 예외가 올라온 경우에는 아래 생성자로 타입 이름의 사슬만 남긴다.
+	 */
 	public OutlineDraftFailedException(String message, Throwable cause) {
 		super(message, cause);
+	}
+
+	public OutlineDraftFailedException(String message) {
+		super(message);
 	}
 }

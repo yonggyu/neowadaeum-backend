@@ -1,6 +1,7 @@
 package com.neowadaeum.ai.schema;
 
 import com.neowadaeum.play.port.ParagraphType;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -83,8 +84,10 @@ public class TurnOutputParser {
 			return JSON.readTree(raw);
 		}
 		catch (JacksonException ex) {
-			// 원문을 메시지에 넣지 않는다 (S-3). 원인 예외에도 값이 실릴 수 있어 붙이지 않는다.
-			throw new TurnOutputSchemaException("response is not valid JSON");
+			// 원문을 메시지에 넣지 않는다 (S-3). 원인 예외에도 값이 실릴 수 있어 붙이지 않고,
+			// 대신 타입 이름의 사슬만 남긴다 (§13-86) — 파서가 무엇을 던졌는지는 진단에 필요하다.
+			throw new TurnOutputSchemaException("response is not valid JSON",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 	}
 

@@ -211,8 +211,10 @@ public class AnthropicStoryProvider implements StoryProvider {
 		catch (RestClientException ex) {
 			record(AiPurpose.TURN, body, null, startedAt, null);
 			// 원문을 메시지에 넣지 않는다 (S-3). RestClient 의 예외는 본문 일부를 담을 수 있어
-			// 원인으로도 붙이지 않는다 — 예외는 로그로 흐른다.
-			throw new ProviderCallFailedException("anthropic call failed");
+			// 원인으로도 붙이지 않는다 — 예외는 로그로 흐른다. 남기는 것은 타입 이름의
+			// 사슬까지이며, 그것으로 무엇이 끊겼는지는 읽힌다 (§13-86).
+			throw new ProviderCallFailedException("anthropic call failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		record(AiPurpose.TURN, body, response, startedAt, null);
@@ -365,7 +367,8 @@ public class AnthropicStoryProvider implements StoryProvider {
 		}
 		catch (RestClientException ex) {
 			record(AiPurpose.SAFETY, body, null, startedAt, null);
-			throw new ProviderCallFailedException("anthropic safety classification failed");
+			throw new ProviderCallFailedException("anthropic safety classification failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		Set<SafetyCategory> categories;
@@ -449,7 +452,8 @@ public class AnthropicStoryProvider implements StoryProvider {
 		}
 		catch (RestClientException ex) {
 			record(AiPurpose.SUMMARY, body, null, startedAt, null);
-			throw new ProviderCallFailedException("anthropic summary call failed");
+			throw new ProviderCallFailedException("anthropic summary call failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		record(AiPurpose.SUMMARY, body, response, startedAt, null);
@@ -519,7 +523,8 @@ public class AnthropicStoryProvider implements StoryProvider {
 		}
 		catch (RestClientException ex) {
 			record(AiPurpose.OUTLINE, body, null, startedAt, null);
-			throw new ProviderCallFailedException("anthropic outline call failed");
+			throw new ProviderCallFailedException("anthropic outline call failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		record(AiPurpose.OUTLINE, body, response, startedAt, null);
