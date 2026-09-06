@@ -2585,6 +2585,28 @@ components:
             Footer 가 상시 표시하므로 이 응답이 함께 싣는다 — 화면마다 `/landing` 을 다시 부르지 않는다.
           x-implemented-by: '#289'
 
+    CoverImage:
+      type: [string, 'null']
+      description: |
+        **화면이 `<img src>` 에 그대로 넣는 값이다** (#378, §13-79). 2:3 비율.
+
+        **이 필드에 무엇이 들어 있었는지가 문제였다.** 공식 작품의 커버는 실제 주소였지만 UGC
+        작품에는 **객체 키**가 실려 나갔고 (#357, §13-72), 화면은 그 둘을 구분할 방법이 없어
+        **UGC 커버가 전부 깨진 이미지**가 됐다 — 깨진 이미지는 서버에서 아무 소리도 내지 않는다.
+
+        지금은 **언제나 열리는 URL 이거나 `null`** 이다. 승인된 UGC 작품의 커버는 서버가
+        **서명 URL** 을 만들어 싣는다. 경계는 *"승인됐는가"* 이며 그것은 I-8 이 그은 선이다 —
+        서명 URL 은 그 객체의 출입증이라 수명 동안 게이트 없이 열리므로 **승인 전 이미지에는
+        발급되지 않는다** (§13-78, 그쪽은 서버가 바이트를 중계한다).
+
+        **`null` 인 경우 셋.** 커버를 올리지 않았거나, 아직 승인되지 않은 UGC 이거나
+        (`getMyStories` 에서 일어난다 — 그 커버는 원고 경로에서 본다), 저장소 설정이 없는
+        배포다.
+
+        **이 값을 담은 응답을 캐시하지 않는다.** 서명은 응답을 조립할 때 함께 만들어지므로
+        (프론트가 따로 묻게 하지 않는다) **URL 은 응답보다 먼저 만료된다** — 캐시된 목록은
+        만료된 URL 을 그대로 들고 있고, 그때 화면은 다시 깨진 이미지를 그린다.
+
     StoryCard:
       type: object
       required: [storyId, title, coverImage, genres, shortDescription, isNew, authorType, authorDisplayName]
@@ -2595,8 +2617,7 @@ components:
         title:
           type: string
         coverImage:
-          type: [string, 'null']
-          description: 2:3 비율
+          $ref: '#/components/schemas/CoverImage'
         genres:
           type: array
           items:
@@ -2638,7 +2659,7 @@ components:
         title:
           type: string
         coverImage:
-          type: [string, 'null']
+          $ref: '#/components/schemas/CoverImage'
         chapterNo:
           type: integer
         chapterTitle:
@@ -2729,9 +2750,23 @@ components:
         role:
           type: [string, 'null']
         portraitImage:
-          type: [string, 'null']
+          $ref: '#/components/schemas/PortraitImage'
         oneLine:
           type: [string, 'null']
+
+    PortraitImage:
+      type: [string, 'null']
+      description: |
+        인물 초상. **화면이 `<img src>` 에 그대로 넣는 값이다** (#378, §13-79).
+
+        **값을 정하는 규칙은 `CoverImage` 와 같은 하나다** — 승인된 UGC 작품의 초상은 서버가
+        **서명 URL** 로 싣고, 공식 작품의 값은 그대로 나가며, **이 값을 담은 응답을 캐시하지
+        않는다.** 그 판정과 근거는 `CoverImage` 에 적혀 있고 여기서 되풀이하지 않는다 — 같은
+        문장을 두 곳에 두면 반드시 한쪽이 낡는다.
+
+        **스키마를 합치지 않은 이유**는 값의 규칙이 아니라 **필드의 뜻**이 다르기 때문이다.
+        `CoverImage` 는 2:3 비율의 작품 커버이고 이것은 인물 한 명의 초상이며, **`null` 인 조건도
+        다르다** — 초상을 올리지 않은 인물이 정상이다 (커버와 달리 작품마다 여럿이다).
 
     MySessionBrief:
       type: object
@@ -3058,7 +3093,7 @@ components:
         title:
           type: string
         coverImage:
-          type: [string, 'null']
+          $ref: '#/components/schemas/CoverImage'
         status:
           type: string
           enum: [active, completed]
@@ -3114,7 +3149,7 @@ components:
         title:
           type: string
         coverImage:
-          type: [string, 'null']
+          $ref: '#/components/schemas/CoverImage'
         visibility:
           $ref: '#/components/schemas/Visibility'
         reviewStatus:
@@ -3215,8 +3250,11 @@ components:
         coverImage:
           type: [string, 'null']
           description: |
-            `commitDraftImage` 가 확정한 **객체 키** (#315). URL 이 아니다 — 버킷은 비공개이며
-            읽기 URL 은 서버가 그때그때 서명한다 (I-8).
+            `commitDraftImage` 가 확정한 **객체 키** (#315). URL 이 아니다 — 버킷은 비공개다.
+
+            **읽는 응답의 `coverImage` 와 이름은 같고 값의 종류가 다르다** (§13-79). 이쪽은
+            작성자가 서버에 적어 넣는 키이고, 그쪽은 화면이 `<img src>` 에 넣는 URL 이다.
+            승인 전 이 키의 이미지를 보는 길은 `readDraftImage` 의 중계다 (§13-78).
         worldIntro:
           type: string
           description: 독자에게 보이는 세계관 소개. `StoryDetail.worldIntro` 와 같은 값이다
@@ -3786,7 +3824,7 @@ components:
         title:
           type: string
         coverImage:
-          type: [string, 'null']
+          $ref: '#/components/schemas/CoverImage'
 
     # ── §14 Admin ────────────────────────────────────────────
     AdminSessionListResponse:

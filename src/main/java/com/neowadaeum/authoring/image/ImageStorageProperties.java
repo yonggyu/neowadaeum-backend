@@ -19,13 +19,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param accessKey 접근 키. <b>로그에 남기지 않는다</b> (S-3)
  * @param secretKey 비밀 키. <b>로그에 남기지 않는다</b> (S-3)
  * @param uploadUrlTtl 업로드 URL 수명. 길수록 유출된 URL 이 오래 살아 있다
+ * @param readUrlTtl <b>승인된 작품</b>의 읽기 URL 수명 (#378, §13-79). 카드가 화면에 머무는
+ *     시간보다 길어야 하고, 유출됐을 때의 창보다는 짧아야 한다 — 그 균형은 배포마다 다르므로
+ *     코드가 정하지 않는다. <b>승인 전 이미지에는 이 URL 이 발급되지 않는다</b> (I-8, §13-78)
  */
 @ConfigurationProperties("app.image-storage")
 public record ImageStorageProperties(String endpoint, String region, String bucket,
-		String accessKey, String secretKey, Duration uploadUrlTtl) {
+		String accessKey, String secretKey, Duration uploadUrlTtl, Duration readUrlTtl) {
 
 	public ImageStorageProperties {
 		uploadUrlTtl = (uploadUrlTtl != null) ? uploadUrlTtl : Duration.ofMinutes(10);
+		readUrlTtl = (readUrlTtl != null) ? readUrlTtl : Duration.ofMinutes(15);
 		int present = count(endpoint) + count(region) + count(bucket) + count(accessKey)
 				+ count(secretKey);
 		if (present != 0 && present != 5) {
