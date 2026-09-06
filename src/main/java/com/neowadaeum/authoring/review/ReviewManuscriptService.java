@@ -33,9 +33,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <p><b>기록이 원문보다 먼저다.</b> 순서를 뒤집으면 <b>읽고 나서 기록에 실패한</b> 열람이 생기고,
  * 그것이 곧 기록되지 않는 열람 경로다.
  *
- * <p><b>이미지 읽기 URL 을 발급하지 않는다</b> (#368, I-8). 커버는 객체 키로만 나간다 — 승인 전
- * 이미지를 누구에게 어떤 조건으로 여는가는 <b>결정이 필요한 문제</b>이고 (§13-77), 검수 화면을
- * 채우려고 그 문을 조용히 여는 것이 I-8 이 막는 바로 그것이다.
+ * <p><b>이미지 읽기 URL 을 발급하지 않는다</b> (#377, I-8). 커버와 초상은 <b>객체 키</b>로 나가고,
+ * 검수자는 그 키로 {@link ReviewImageService} 에 바이트를 <b>중계</b>받는다 (§13-78). 서명 URL 을
+ * 실으면 그것이 관리자 게이트(S-4) 밖에서 열리므로, 승인 전 UGC 에는 내주지 않는다.
  *
  * <p><b>없는 작품에 대한 열람은 남기지 않는다</b> — 작품을 먼저 찾는다. 순서를 뒤집으면 감사
  * 로그가 존재하지 않는 작품으로 채워진다 ({@code AdminDebugController} 와 같은 이유다).
@@ -111,7 +111,7 @@ public class ReviewManuscriptService {
 		return new ReviewManuscript(storyId, judged.title(), judged.shortDesc(), judged.worldIntro(),
 				header.reviewStatus(), header.visibility(), header.createdAt(),
 				displayNameOf(header.authorRef()), version.worldPrompt(), genresOf(genres),
-				judged.coverImageKey(), charactersOf(version), chaptersOf(version),
+				judged.coverImageKey(), charactersOf(versionId), chaptersOf(version),
 				endingsOf(versionId, version), autoCheckOf(storyId),
 				draft.map(StoryDraft::getPreviewedAt).orElse(null), previewTurnsOf(draft));
 	}
@@ -146,11 +146,17 @@ public class ReviewManuscriptService {
 		return (authorRef == null) ? null : this.authors.findDisplayName(authorRef).orElse(null);
 	}
 
-	private static List<ReviewManuscript.ManuscriptCharacter> charactersOf(StoryVersionView version) {
+	/**
+	 * 인물은 <b>버전이 든 한 벌</b>에서 읽는다 (#377, §13-78).
+	 *
+	 * <p>턴 파이프라인이 읽는 조회에는 초상 키가 없다 — 매 턴 예산에 얹힐 값이 아니기 때문이다.
+	 * 검수는 반대이므로 (R8.5) 초상까지 담은 조회를 따로 부른다.
+	 */
+	private List<ReviewManuscript.ManuscriptCharacter> charactersOf(UUID versionId) {
 		List<ReviewManuscript.ManuscriptCharacter> characters = new ArrayList<>();
-		for (StoryVersionView.CharacterView character : version.characters()) {
+		for (StoryPublisher.VersionCharacter character : this.publisher.versionCharactersOf(versionId)) {
 			characters.add(new ReviewManuscript.ManuscriptCharacter(character.name(),
-					character.persona()));
+					character.persona(), character.portraitImageKey()));
 		}
 		return characters;
 	}

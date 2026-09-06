@@ -496,6 +496,150 @@ class AdminReviewApiIntegrationTests extends ContainerTestBase {
 				.isEmpty();
 	}
 
+	/**
+	 * <b>#377 · §13-78 — 검수자가 승인하는 이미지를 실제로 본다.</b>
+	 *
+	 * <p>커버는 15세 등급 판정의 대상이고 (R8.5) 이미지는 블록리스트가 볼 수 없는 종류라
+	 * <b>사람 말고는 판정할 주체가 없다</b>. 바이트가 오지 않으면 검수는 키 문자열을 보고
+	 * 누르는 절차가 된다.
+	 *
+	 * <p><b>서명 URL 이 아니라 중계다</b> — 응답은 바이트이고, {@code Content-Type} 은 버킷이
+	 * 말한 것이 아니라 <b>발급이 서명한 형식</b>이다 (§13-65).
+	 */
+	@Test
+	void S13_78_the_reviewer_reads_the_cover_bytes() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String key = coverKeyOf(storyId);
+		stubImageGet(200, "text/html", new byte[] { 7, 7 });
+
+		this.mvc.perform(reviewImage(storyId, key, stepUpToken()))
+				.andExpect(status().isOk())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+						.contentType("image/jpeg"))
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+						.string("Cache-Control", "private, no-store"))
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+						.bytes(new byte[] { 7, 7 }));
+	}
+
+	/**
+	 * <b>이미지 열람은 원고 열람과 다른 자원으로 남는다</b> (R12.3, S-5, §13-78).
+	 *
+	 * <p>같게 두면 검수 상세 한 번이 <b>원고 열람 여러 줄</b>로 부풀고, 정작 "누가 이 원고를
+	 * 열었는가"가 그 안에 묻힌다. 남는 식별자는 <b>객체 키의 마지막 마디</b>다 — 이미지는
+	 * 자기 행을 갖지 않는다.
+	 */
+	@Test
+	void R12_3_reading_a_review_image_is_audited_as_its_own_resource() throws Exception {
+		UUID adminUserId = givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String key = coverKeyOf(storyId);
+		stubImageGet(200, "image/jpeg", new byte[] { 1 });
+
+		this.mvc.perform(reviewImage(storyId, key, stepUpToken())).andExpect(status().isOk());
+
+		UUID imageId = UUID.fromString(key.substring(key.lastIndexOf('/') + 1, key.lastIndexOf('.')));
+		assertThat(this.accessLogs.findByResourceAndResourceIdOrderByCreatedAtDesc("draft_image",
+				imageId, Limit.of(10)))
+				.singleElement()
+				.satisfies(log -> assertThat(log.getAdminUserId()).isEqualTo(adminUserId));
+		assertThat(this.accessLogs.findByResourceAndResourceIdOrderByCreatedAtDesc("story_draft",
+				storyId, Limit.of(10))).isEmpty();
+	}
+
+	/**
+	 * <b>관리자라는 사실이 아무 객체나 꺼낼 수 있다는 뜻은 아니다</b> (I-8).
+	 *
+	 * <p>키가 원고 id 를 들고 있으므로 (§13-65) 그 판정은 문법 판정이 된다 — 다른 작품의 키를
+	 * 이 문으로 넘기면 {@code 400} 이다.
+	 */
+	@Test
+	void I8_a_key_of_another_story_is_refused() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String elsewhere = "drafts/" + UUID.randomUUID() + "/cover/" + UUID.randomUUID() + ".jpg";
+
+		this.mvc.perform(reviewImage(storyId, elsewhere, stepUpToken()))
+				.andExpect(status().isBadRequest());
+	}
+
+	/**
+	 * <b>이 문에도 관리자 게이트가 서 있다</b> (S-4, I-8).
+	 *
+	 * <p>여기 열리는 것은 <b>아직 아무도 보지 못한 작품의 이미지</b>다 — 게이트가 없으면
+	 * 승인 전 UGC 가 새는 것과 같다. 서명 URL 을 쓰지 않기로 한 이유가 바로 이 게이트다.
+	 */
+	@Test
+	void SEC4_reading_a_review_image_requires_the_admin_gate() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String key = coverKeyOf(storyId);
+
+		this.mvc.perform(get("/api/v1/admin/reviews/%s/images".formatted(storyId))
+				.with(asPlayer(ADMIN_PLAYER_REF)).param("objectKey", key))
+				.andExpect(status().isForbidden());
+	}
+
+	/**
+	 * <b>커버를 올리지 않은 원고가 정상이다</b> (§13-68, §13-78).
+	 *
+	 * <p>없는 이미지의 404 는 <b>그 한 장의 사실</b>이며, 검수 상세는 자기 응답을 그대로 내놓는다.
+	 */
+	@Test
+	void S13_68_a_missing_image_does_not_kill_the_manuscript() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+		String key = coverKeyOf(storyId);
+		stubImageGet(404, "application/xml", new byte[0]);
+		String stepUp = stepUpToken();
+
+		this.mvc.perform(reviewImage(storyId, key, stepUp)).andExpect(status().isNotFound());
+
+		this.mvc.perform(manuscript(storyId, stepUp)).andExpect(status().isOk());
+	}
+
+	/**
+	 * <b>인물 초상도 키로 온다</b> (#377, §13-78).
+	 *
+	 * <p>커버와 <b>같은 자리의 같은 결정</b>이다 — 나눠서 답하면 이미지 채널이 둘이 되고
+	 * 수명·감사가 갈라진다. 올리지 않은 초상은 {@code null} 이며 그것이 사실이다.
+	 */
+	@Test
+	void S13_78_the_manuscript_declares_the_portrait_key() throws Exception {
+		givenAdmin();
+		UUID storyId = givenPublicSubmission();
+
+		this.mvc.perform(manuscript(storyId, stepUpToken()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.characters[0].portraitImageKey").isEmpty());
+	}
+
+	/** 이 작품을 발행한 원고가 만들 법한 커버 키. 그 원고의 것이어야 문법 판정을 통과한다. */
+	private String coverKeyOf(UUID storyId) {
+		UUID draftId = this.drafts.findFirstByStoryIdOrderByUpdatedAtDesc(storyId).orElseThrow()
+				.getId();
+		return "drafts/%s/cover/%s.jpg".formatted(draftId,
+				UUID.fromString("00000000-0000-4000-8000-0000000000c1"));
+	}
+
+	private void stubImageGet(int status, String contentType, byte[] body) {
+		com.neowadaeum.TestcontainersConfiguration.IMAGE_STORAGE.resetAll();
+		com.neowadaeum.TestcontainersConfiguration.IMAGE_STORAGE.stubFor(
+				com.github.tomakehurst.wiremock.client.WireMock.get(
+						com.github.tomakehurst.wiremock.client.WireMock.anyUrl())
+						.willReturn(com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+								.withStatus(status).withHeader("Content-Type", contentType)
+								.withBody(body)));
+	}
+
+	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder reviewImage(
+			UUID storyId, String objectKey, String stepUp) {
+		return get("/api/v1/admin/reviews/%s/images".formatted(storyId))
+				.with(asPlayer(ADMIN_PLAYER_REF)).header(AdminAccessGuard.STEP_UP_HEADER, stepUp)
+				.param("objectKey", objectKey);
+	}
+
 	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder manuscript(
 			UUID storyId, String stepUp) {
 		return get("/api/v1/admin/reviews/%s".formatted(storyId)).with(asPlayer(ADMIN_PLAYER_REF))
