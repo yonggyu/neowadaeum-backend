@@ -16,8 +16,8 @@
 
 [STATE_VOCABULARY]
 stateChanges 에 쓸 수 있는 이름입니다. 없는 이름은 서버가 버립니다.
-정수 델타 = affinity.dohyun, affinity.yuna
-flags.add / flags.remove = met_yuna, shared_lunch
+numeric = affinity.dohyun, affinity.yuna
+flags = met_yuna, shared_lunch
 
 [SUMMARY]
 주인공은 유나와 두 번 마주쳤고, 두 번 다 말을 걸지 못했다.
@@ -34,7 +34,7 @@ JSON 객체 하나만 출력. 설명·코드펜스 금지.
 {"speakerName": string|null,
  "paragraphs": [{"type": "dialogue"|"narration", "text": string}],
  "choices": [{"order": number, "text": string}],
- "stateChanges": object,
+ "stateChanges": {"<numeric>": number, "flags.add": [string], "flags.remove": [string], "inventory.add": [string], "inventory.remove": [string], "location": string, "timeOfDay": string},
  "chapterAdvanceSuggested": boolean,
  "endingSuggested": string|null}
 paragraphs 3~5개, text 120자 내외. choices 1~4개, order 는 1부터.

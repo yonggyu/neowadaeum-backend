@@ -1,5 +1,6 @@
 package com.neowadaeum.play.engine;
 
+import com.neowadaeum.play.port.StateChangeOperator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,17 +17,9 @@ import tools.jackson.databind.JsonNode;
  * §13-9 의 "이 외 키는 무시"에 걸려 {@link #ignoredKeys()} 로 빠진다. 무시하는 코드를 쓰는 대신
  * 담을 곳을 만들지 않았다.
  *
- * <p>허용 연산자는 §13-9 가 정한 일곱 가지다.
- *
- * <pre>
- * &lt;numericPath&gt;: delta      예) "affinity.yuna": 2
- * flags.add:      []
- * flags.remove:   []
- * inventory.add:  []
- * inventory.remove: []
- * location:       "강의실"
- * timeOfDay:      "오후"
- * </pre>
+ * <p><b>허용 연산자 목록을 여기에 다시 적지 않는다</b> (§13-82). §13-9 가 정한 일곱 가지는
+ * {@link StateChangeOperator} 가 소유하며, 모델에게 그 표기를 말하는 {@code OUTPUT SPEC} 도
+ * 같은 열거를 읽는다 — 목록이 두 곳에 있으면 갈라지고, <b>갈라진 결과는 예외가 아니라 침묵</b>이다.
  */
 public record StateChanges(
 		Map<String, Integer> numericDeltas,
@@ -37,18 +30,6 @@ public record StateChanges(
 		String location,
 		String timeOfDay,
 		List<String> ignoredKeys) {
-
-	private static final String FLAGS_ADD = "flags.add";
-
-	private static final String FLAGS_REMOVE = "flags.remove";
-
-	private static final String INVENTORY_ADD = "inventory.add";
-
-	private static final String INVENTORY_REMOVE = "inventory.remove";
-
-	private static final String LOCATION = "location";
-
-	private static final String TIME_OF_DAY = "timeOfDay";
 
 	public StateChanges {
 		numericDeltas = Map.copyOf(numericDeltas == null ? Map.of() : numericDeltas);
@@ -89,23 +70,26 @@ public record StateChanges(
 		node.propertyStream().forEach(entry -> {
 			String key = entry.getKey();
 			JsonNode value = entry.getValue();
+			StateChangeOperator operator = StateChangeOperator.of(key);
 
-			switch (key) {
+			if (operator == null) {
+				// §13-9 — 연산자 이름이 아닌 키는 수치 델타로만 해석한다. 정수가 아니면 무시한다.
+				if (value.isIntegralNumber()) {
+					deltas.put(key, value.asInt());
+				}
+				else {
+					ignored.add(key);
+				}
+				return;
+			}
+
+			switch (operator) {
 				case FLAGS_ADD -> collectStrings(value, flagsAdded, key, ignored);
 				case FLAGS_REMOVE -> collectStrings(value, flagsRemoved, key, ignored);
 				case INVENTORY_ADD -> collectStrings(value, itemsAdded, key, ignored);
 				case INVENTORY_REMOVE -> collectStrings(value, itemsRemoved, key, ignored);
 				case LOCATION -> scalars[0] = readText(value, key, ignored);
 				case TIME_OF_DAY -> scalars[1] = readText(value, key, ignored);
-				default -> {
-					// §13-9 — 그 외 키는 수치 델타로만 해석한다. 정수가 아니면 무시한다.
-					if (value.isIntegralNumber()) {
-						deltas.put(key, value.asInt());
-					}
-					else {
-						ignored.add(key);
-					}
-				}
 			}
 		});
 

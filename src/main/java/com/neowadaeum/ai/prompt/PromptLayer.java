@@ -79,20 +79,29 @@ public enum PromptLayer {
 		GAME_STATE(300),
 
 		/**
-		 * 선언된 이름 목록 (§13-76 {@code [결정 필요]}).
+		 * 선언된 이름 목록 (§13-76 {@code [결정 필요]}, §13-82).
 		 *
-		 * <p><b>총 예산 4,000 과 나머지 묶음 합계 3,800 의 차이가 정확히 이만큼이다.</b> 그래서 이
-		 * 레이어는 <b>§4.3 의 어느 숫자도 밀어내지 않는다</b> — {@code GAME_STATE}(300)에 얹었다면
-		 * 같은 이름이 두 레이어에 실리므로 오늘 도는 작품의 여유가 절반이 된다.
+		 * <p><b>200 에서 175 로 줄었다</b> (§13-82). 이 레이어가 인쇄하던 연산자 표기가
+		 * {@code OUTPUT SPEC} 으로 갔고, <b>예산은 문구를 따라간다</b> — 총합 4,000 은 그대로이므로
+		 * {@link #INSTRUCTION} 이 같은 만큼 늘었다. §4.3 의 다른 숫자는 여전히 손대지 않는다.
+		 *
+		 * <p><b>이름의 자리는 오히려 넓어졌다.</b> 갈래 머리표가
+		 * {@code flags.add / flags.remove} 에서 {@code flags} 로 짧아졌기 때문이다 — 줄어든 것은
+		 * 상한이지 <b>이름이 쓸 수 있는 몫</b>이 아니다.
 		 */
-		STATE_VOCABULARY(200),
+		STATE_VOCABULARY(175),
 
 		SUMMARY(SummaryBudget.MAX_TOKENS),
 
 		RECENT_TURNS(1_500),
 
-		/** USER ACTION + OUTPUT SPEC. */
-		INSTRUCTION(200);
+		/**
+		 * USER ACTION + OUTPUT SPEC.
+		 *
+		 * <p><b>200 에서 225 로 늘었다</b> (§13-82). {@code stateChanges} 의 연산자 표기가 여기로
+		 * 왔고, 늘어난 25 는 {@link #STATE_VOCABULARY} 에서 온 것이다 — <b>총합 4,000 은 그대로다.</b>
+		 */
+		INSTRUCTION(225);
 
 		private final int maxTokens;
 
