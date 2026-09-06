@@ -54,13 +54,26 @@ class CatalogSeedTests extends ContainerTestBase {
 
 	// ── §2.3 원문 대조 ───────────────────────────────────────
 
-	/** §2.3 {@code story} — 컬럼 이름과 구성이 원문 그대로여야 한다. I-19 상 age_rating 은 원문에도 없다. */
+	/**
+	 * §2.3 {@code story} — 컬럼 이름과 구성이 원문 그대로여야 한다. I-19 상 age_rating 은
+	 * 원문에도 없다.
+	 *
+	 * <p><b>{@code pending_visibility} 는 원문에 없다</b> (#391, §13-83). 이미지가 있는 원고가
+	 * {@code public} 이 아닐 때도 사람을 기다리기 시작하면서, <b>통과가 열 자리</b>와
+	 * <b>반려됐을 때 돌아갈 자리</b>가 서로 다른 값이 됐다 — 한 컬럼이 둘을 답하면 통과가
+	 * 작성자가 고르지 않은 넓이로 작품을 연다 (I-8).
+	 *
+	 * <p><b>{@code cover_url} 과 {@code cover_image_key} 가 함께 있다</b> (#396, §13-85). 이름을
+	 * 고치는 중이며 무중단 배포는 겹쳐 도는 두 버전을 전제하므로, 옛 컬럼은 <b>다음 배포에서</b>
+	 * 지운다 — 그때 이 목록에서도 함께 빠진다.
+	 */
 	@Test
 	void S2_3_story_columns_match_the_requirement_source() throws SQLException {
 		assertThat(columns("story")).containsExactlyInAnyOrder(
-				"id", "slug", "title", "cover_url", "hero_url", "short_desc", "description",
+				"id", "slug", "title", "cover_image_key", "cover_url", "hero_url",
+				"short_desc", "description",
 				"world_intro", "author_type", "author_ref", "visibility", "review_status",
-				"current_version_id", "published_at", "created_at");
+				"current_version_id", "published_at", "created_at", "pending_visibility");
 	}
 
 	/**
@@ -77,14 +90,15 @@ class CatalogSeedTests extends ContainerTestBase {
 		assertThat(columns("story_version")).containsExactlyInAnyOrder(
 				"id", "story_id", "version_no", "world_prompt", "choice_policy",
 				"state_schema", "state_template_key", "published_at",
-				"title", "short_desc", "world_intro", "cover_url");
+				"title", "short_desc", "world_intro", "cover_image_key", "cover_url");
 	}
 
 	/** §2.3 {@code character} + §13-1 — 원문 컬럼에 {@code story_version_id} 가 더해진다. */
 	@Test
 	void S2_3_character_columns_match_the_requirement_source() throws SQLException {
 		assertThat(columns("character")).containsExactlyInAnyOrder(
-				"id", "story_version_id", "story_id", "name", "role", "portrait_url", "one_line",
+				"id", "story_version_id", "story_id", "name", "role", "portrait_image_key",
+				"portrait_url", "one_line",
 				"persona_prompt", "display_order", "is_visible_in_detail");
 	}
 

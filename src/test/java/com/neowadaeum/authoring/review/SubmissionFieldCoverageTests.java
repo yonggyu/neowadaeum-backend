@@ -41,7 +41,13 @@ class SubmissionFieldCoverageTests {
 	private static final java.util.regex.Pattern INDEXED_PATH =
 			java.util.regex.Pattern.compile("^([A-Za-z]+)\\[(\\d+)\\]");
 
-	/** L1 이 거는 것. <b>{@link #R8_5_every_screened_text_reaches_the_screen()} 이 값으로 확인한다.</b> */
+	/**
+	 * L1 이 거는 것. <b>{@link #R8_5_every_screened_text_reaches_the_screen()} 이 값으로
+	 * 확인한다.</b>
+	 *
+	 * <p><b>{@code endings[]} 의 둘은 작성자가 적은 엔딩에만 걸린다</b> (§13-84, #397) —
+	 * 서버가 더하는 기본 엔딩은 작성자가 쓴 것이 아니다 (§13-16).
+	 */
 	private static final List<String> SCREENED = List.of("title", "shortDesc", "worldIntro",
 			"worldPrompt", "chapters[].title", "chapters[].summarySeed", "endings[].label",
 			"endings[].epilogueText", "characters[].name", "characters[].oneLine",
@@ -59,7 +65,7 @@ class SubmissionFieldCoverageTests {
 			"coverImageKey", "업로드가 확정한 객체 키다 (#315). 작성자가 쓴 문장이 아니다",
 			"chapters[].entryConditionJson", "서버가 템플릿에서 조립한다 (R7.16, §13-69)",
 			"endings[].conditionJson", "같은 이유다 — 작성자가 보낸 것은 고른 것뿐이다",
-			"characters[].portraitUrl", "업로드가 확정한 객체 키다 (#315)");
+			"characters[].portraitImageKey", "업로드가 확정한 객체 키다 (#315)");
 
 	/**
 	 * <b>새 값은 둘 중 한 목록에 적혀야 한다.</b>
@@ -177,6 +183,25 @@ class SubmissionFieldCoverageTests {
 	}
 
 	/**
+	 * <b>서버가 더하는 기본 엔딩은 걸지 않는다</b> (§13-84, #397).
+	 *
+	 * <p>{@code NOT_AUTHOR_TEXT} 와 같은 종류다 — 작성자가 쓰지 않은 것은 걸지 않는다. 그
+	 * 라벨은 §13-16 이 더하는 <b>서버 상수</b>이고, 그것을 가리키는 경로는 <b>작성 화면에 없는
+	 * 줄</b>을 가리킨다.
+	 *
+	 * <p><b>자리도 밀리지 않는다.</b> 작성자가 적은 엔딩이 둘이면 경로는 0 과 1 뿐이다 —
+	 * 기본 엔딩을 건너뛴 자리를 비워 두면 화면이 없는 줄에 밑줄을 긋는다 (§13-81).
+	 */
+	@Test
+	void S13_84_the_default_ending_the_server_adds_is_not_screened() {
+		Map<String, String> fields = SubmissionService.fieldsOf(definitionOfTwoRows(), Set.of());
+
+		assertThat(fields).doesNotContainKey("endings[2].label")
+				.doesNotContainKey("endings[2].epilogueText");
+		assertThat(fields.values()).as("서버 상수는 판정 대상이 아니다").doesNotContain("끝");
+	}
+
+	/**
 	 * <b>대신 발행된 한 줄 소개를 두 번 걸지 않는다</b> (§13-71).
 	 *
 	 * <p>페르소나가 비어 있으면 한 줄 소개가 그 자리로 발행된다. 같은 문장을 두 자리에 걸면
@@ -202,7 +227,7 @@ class SubmissionFieldCoverageTests {
 	private static StoryDefinition definitionOfMarks() {
 		return definitionWith(new StoryDefinition.Character(1, mark("characters[].name"),
 				mark("characters[].oneLine"), mark("characters[].personaPrompt"),
-				mark("characters[].portraitUrl"), true));
+				mark("characters[].portraitImageKey"), true));
 	}
 
 	/**

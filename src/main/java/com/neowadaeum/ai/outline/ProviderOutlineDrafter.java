@@ -3,10 +3,13 @@ package com.neowadaeum.ai.outline;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
 import com.neowadaeum.ai.provider.StoryProvider;
+import com.neowadaeum.ai.schema.OutlineOutputSchemaException;
 import com.neowadaeum.common.spi.OutlineDraft;
 import com.neowadaeum.common.spi.OutlineDraftFailedException;
 import com.neowadaeum.common.spi.OutlineDraftRequest;
 import com.neowadaeum.common.spi.OutlineDrafter;
+import com.neowadaeum.play.port.GenerationTimedOutException;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -42,9 +45,16 @@ public class ProviderOutlineDrafter implements OutlineDrafter {
 			result = this.provider.draftOutline(new OutlineRequest(request.worldPrompt(),
 					request.chapterCount(), request.endingCount()));
 		}
-		catch (RuntimeException ex) {
-			// 원인은 로그와 ai_call_log 가 갖는다. 여기서 하는 일은 경계를 넘길 이름을 주는 것뿐이다.
+		catch (ProviderCallFailedException | GenerationTimedOutException | OutlineOutputSchemaException ex) {
+			// 우리 예외만 원인으로 붙인다. 셋 다 메시지에 벤더 데이터를 담지 않는 것이
+			// 생성자로 보장되므로(§13-86), 스택트레이스가 로그로 나가도 새는 것이 없다.
 			throw new OutlineDraftFailedException("outline draft failed", ex);
+		}
+		catch (RuntimeException ex) {
+			// 여기 오는 것은 어댑터가 감싸지 못한 예외다 — 벤더 것일 수 있으므로 붙이지 않고
+			// 타입 이름의 사슬만 남긴다 (§13-86).
+			throw new OutlineDraftFailedException(
+					"outline draft failed cause=" + ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		List<OutlineDraft.Chapter> chapters = new ArrayList<>();

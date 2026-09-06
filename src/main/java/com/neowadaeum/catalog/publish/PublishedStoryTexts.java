@@ -184,8 +184,11 @@ public class PublishedStoryTexts {
 				.query((java.sql.ResultSet rs) -> collect(byVersion, rs,
 						texts(rs.getString("title"), rs.getString("summary_seed"))));
 
+		// §13-84 (#397) — 서버가 더하는 기본 엔딩은 빼고 읽는다. 라벨이 서버 상수이므로
+		// (§13-16) 그것이 걸리는 날 **모든 UGC 작품이 같은 문자열로 함께 내려간다.**
+		// 제출 검수가 그 행을 걸지 않는 것과 같은 판단이다 (SubmissionService).
 		this.jdbc.sql("SELECT story_version_id, label, epilogue_text FROM ending_def "
-						+ "WHERE story_version_id IN (:ids)")
+						+ "WHERE story_version_id IN (:ids) AND NOT is_default")
 				.param("ids", versionIds)
 				.query((java.sql.ResultSet rs) -> collect(byVersion, rs,
 						texts(rs.getString("label"), rs.getString("epilogue_text"))));

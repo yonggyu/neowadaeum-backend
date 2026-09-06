@@ -231,11 +231,7 @@ public class SubmissionService {
 			fields.put("chapters[%d].title".formatted(index), chapter.title());
 			fields.put("chapters[%d].summarySeed".formatted(index), chapter.summarySeed());
 		}
-		for (int index = 0; index < definition.endings().size(); index++) {
-			StoryDefinition.Ending ending = definition.endings().get(index);
-			fields.put("endings[%d].label".formatted(index), ending.label());
-			fields.put("endings[%d].epilogueText".formatted(index), ending.epilogueText());
-		}
+		putAuthorEndings(fields, definition.endings());
 		putCharacters(fields, definition.characters());
 		// 플래그는 이름뿐이고 문장이 아니다. 짧다는 이유로 다르게 보지 않는다 (§13-75) —
 		// 판정이 둘이 되면 무른 쪽이 곧 길이 된다.
@@ -245,6 +241,34 @@ public class SubmissionService {
 		}
 		fields.values().removeIf(java.util.Objects::isNull);
 		return fields;
+	}
+
+	/**
+	 * <b>작성자가 적은 엔딩만 건다</b> (§13-84, #397).
+	 *
+	 * <p>발행 정의의 엔딩 목록에는 §13-16 이 더하는 <b>기본 엔딩</b>이 섞여 있다 — 라벨은
+	 * 서버 상수이고 에필로그는 없다. 그것을 걸면 두 가지가 어긋난다: <b>작성자가 쓰지 않은
+	 * 문자열이 판정 대상이 되고</b> ({@code NOT_AUTHOR_TEXT} 와 같은 종류다), 그 경로가
+	 * 가리키는 자리는 <b>작성 화면에 없는 줄</b>이다.
+	 *
+	 * <p><b>값의 모양으로 알아내지 않는다.</b> 라벨을 상수와 비교하면 그 문구를 고치는 날
+	 * 조용히 어긋난다 — 발행 정의가 {@code isDefault} 로 이미 답하고 있고, DB 도 같은 값으로
+	 * 그 행을 하나로 강제한다 (R2.2).
+	 *
+	 * <p><b>자리는 작성자의 줄이다.</b> 기본 엔딩을 건너뛴 만큼 뒤로 밀지 않는다 — 경로는
+	 * 밑줄을 그을 자리를 가리키는 값이고 (§13-81), 화면에는 작성자가 적은 엔딩만 있다.
+	 */
+	private static void putAuthorEndings(Map<String, String> fields,
+			List<StoryDefinition.Ending> endings) {
+		int row = 0;
+		for (StoryDefinition.Ending ending : endings) {
+			if (ending.isDefault()) {
+				continue;
+			}
+			fields.put("endings[%d].label".formatted(row), ending.label());
+			fields.put("endings[%d].epilogueText".formatted(row), ending.epilogueText());
+			row++;
+		}
 	}
 
 	/**
@@ -285,6 +309,13 @@ public class SubmissionService {
 	/**
 	 * 자동 검수를 통과했다.
 	 *
+	 * <p><b>이미지가 있는 원고도 열리지 않는다</b> (§13-83, #391). L0 · L1 · L3 는 전부 문자열을
+	 * 보고 — 정규화 뒤 블록리스트 대조이며 2단 분류기도 문장을 읽는다 — <b>이미지는 그 어느
+	 * 것도 지나지 않는다.</b> 커버는 15세 등급 판정의 대상이고 (R8.5) 초상은 타인의 상세
+	 * 화면에 뜬다 (I-8). <b>판정 주체가 사람뿐이면 사람이 볼 때까지 게시하지 않는 것이
+	 * 그 사실과 맞는 유일한 처리다</b> — 자동 판정기를 붙이는 것은 I-12 · I-13 을 이미지로
+	 * 확장하는 별개의 결정이다.
+	 *
 	 * <p><b>{@code public} 은 여기서 열리지 않는다</b> (R8.6) — {@code in_review} 로 두고 사람을
 	 * 기다린다. 그동안 <b>아무도 그 작품을 볼 수 없다</b>: R2.3 의 타인 조회 조건이
 	 * {@code approved} <b>AND</b> {@code visibility <> private} 이므로 {@code in_review} 하나로
@@ -302,7 +333,7 @@ public class SubmissionService {
 	 */
 	private SubmissionOutcome approve(UUID existingStoryId, StoryDefinition definition,
 			String stateSchema, Visibility visibility) {
-		boolean needsHuman = visibility == Visibility.PUBLIC;
+		boolean needsHuman = visibility == Visibility.PUBLIC || carriesAnImage(definition);
 		ReviewStatus status = needsHuman ? ReviewStatus.IN_REVIEW : ReviewStatus.APPROVED;
 
 		return this.transactions.execute(status2 -> {
@@ -310,9 +341,15 @@ public class SubmissionService {
 			StoryPublisher.PublishedVersion published = (existingStoryId == null)
 					? this.publisher.publishNew(definition, stateSchema)
 					: this.publisher.publishRevision(existingStoryId, definition, stateSchema);
-			this.publisher.applyReview(published.storyId(), status.columnValue(),
-					effective.columnValue());
-			if (!needsHuman) {
+			if (needsHuman) {
+				// §13-83 — 돌아갈 자리와 열 자리를 함께 적는다. 이미지가 있는 원고는
+				// public 이 아닐 때도 여기로 오므로, 통과가 여는 값이 더 이상 하나가 아니다.
+				this.publisher.awaitReview(published.storyId(), effective.columnValue(),
+						visibility.columnValue());
+			}
+			else {
+				this.publisher.applyReview(published.storyId(), status.columnValue(),
+						effective.columnValue());
 				// R8.8 — 승인이 곧 게시다. 인간 검수가 남았으면 아직 현재 버전이 아니다.
 				this.publisher.markCurrent(published.storyId(), published.versionId());
 			}
@@ -323,6 +360,28 @@ public class SubmissionService {
 			return new SubmissionOutcome(published.storyId(), status, effective, List.of(),
 					this.timeline.of(published.storyId()));
 		});
+	}
+
+	/**
+	 * <b>이 원고가 이미지를 나르는가</b> (§13-83, #391).
+	 *
+	 * <p>커버와 초상 둘 다 본다. 한쪽만 보면 다른 쪽이 <b>검수 없이 나가는 길</b>이 되고,
+	 * 초상은 커버보다 오히려 많다 — 인물 수만큼 있다.
+	 *
+	 * <p><b>가시성으로 가르지 않는다.</b> {@code private} 만 예외로 두면 그 작품을
+	 * {@code unlisted} 로 넓히는 길이 사람을 지나지 않는다 ({@link StoryVisibilityService} 의
+	 * 넓히는 방향은 승격이 아니다) — 예외가 곧 세탁 경로가 된다.
+	 *
+	 * <p><b>값이 무엇인지는 보지 않는다.</b> 이 값은 업로드가 확정한 객체 키이고 (#315)
+	 * 여기서 묻는 것은 <b>이 작품이 사람만 판정할 수 있는 것을 실었는가</b> 하나다.
+	 */
+	private static boolean carriesAnImage(StoryDefinition definition) {
+		return present(definition.coverImageKey())
+				|| definition.characters().stream().anyMatch(character -> present(character.portraitImageKey()));
+	}
+
+	private static boolean present(String objectKey) {
+		return objectKey != null && !objectKey.isBlank();
 	}
 
 	/**
