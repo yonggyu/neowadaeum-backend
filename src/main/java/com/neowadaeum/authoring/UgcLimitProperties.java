@@ -21,19 +21,28 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param previewsPerDay 계정당 일일 미리보기. 한 번이 <b>임시 작품 하나와 AI 호출 셋</b>이다
  * @param storiesPerAuthor 계정당 작품 개수. <b>제출된 것만 센다</b> — 미리보기가 만드는
  *     {@code draft} 작품은 매번 늘어나고(§13-37) 파기는 B-61 이 가져간다
+ * @param chaptersPerStory 작품 하나의 챕터 개수 (§13-81, #380). {@code storiesPerAuthor} 가
+ *     <b>작품 수</b>를 세는 값이라면 이것은 <b>작품 하나의 크기</b>를 센다 — L1 은 챕터마다
+ *     필드를 펼쳐 한 번에 판정기에 넘기므로, 여기가 비면 원고 하나가 제출 한 번의 비용을 정한다
+ * @param endingsPerStory 작품 하나의 엔딩 개수 (§13-81, #380). 챕터와 같은 이유이며 같은 축이다
  */
 @ConfigurationProperties("app.ugc")
 public record UgcLimitProperties(Integer outlinePerDay, Integer previewsPerDay,
-		Integer storiesPerAuthor) {
+		Integer storiesPerAuthor, Integer chaptersPerStory, Integer endingsPerStory) {
 
 	public UgcLimitProperties {
 		outlinePerDay = (outlinePerDay != null) ? outlinePerDay : 20;
 		previewsPerDay = (previewsPerDay != null) ? previewsPerDay : 10;
 		storiesPerAuthor = (storiesPerAuthor != null) ? storiesPerAuthor : 30;
+		// §13-81 `[결정 필요]` — 원문 대조를 하지 못했다 (`docs/internal/` 이 이 환경에 없다).
+		// 32 는 기본 채택안이다: 마법사로 사람이 쓰는 원고가 닿지 않는 자리에 울타리를 두되,
+		// **울타리가 있다는 사실이 코드에 적혀 있게** 한다 — 지금 없는 것은 값이 아니라 그 사실이다.
+		chaptersPerStory = (chaptersPerStory != null) ? chaptersPerStory : 32;
+		endingsPerStory = (endingsPerStory != null) ? endingsPerStory : 32;
 	}
 
 	/** 설정을 띄우지 않는 테스트가 쓴다. */
 	public static UgcLimitProperties defaults() {
-		return new UgcLimitProperties(null, null, null);
+		return new UgcLimitProperties(null, null, null, null, null);
 	}
 }

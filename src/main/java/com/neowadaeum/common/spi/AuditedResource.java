@@ -13,7 +13,20 @@ public enum AuditedResource {
 	AI_CALL_LOG("ai_call_log"),
 
 	/** 검수 전 UGC 원고. 작성자 말고는 볼 수 없어야 하는 것이다 (I-8). */
-	STORY_DRAFT("story_draft");
+	STORY_DRAFT("story_draft"),
+
+	/**
+	 * 승인 전 원고에 붙은 이미지 하나 (#377, §13-78).
+	 *
+	 * <p><b>{@link #STORY_DRAFT} 와 나눈 것이 결정이다.</b> 검수 상세를 한 번 열면 이미지 요청이
+	 * 여러 건 따라오므로, 같은 자원으로 두면 <b>원고 열람 한 줄이 이미지 수만큼 부풀고</b> 정작
+	 * "누가 이 원고를 열었는가"가 그 안에 묻힌다. 나누면 자원 종류가 하나 늘지만, 늘어난 그것이
+	 * <b>어떤 이미지를 봤는가</b>를 답한다 — 이미지는 15세 등급 판정의 대상이다 (R8.5).
+	 *
+	 * <p>남는 {@code resource_id} 는 <b>객체 키의 마지막 마디</b>다. 이미지는 자기 행을 갖지
+	 * 않으므로 그것이 이미지 하나를 가리키는 유일한 식별자다.
+	 */
+	DRAFT_IMAGE("draft_image");
 
 	private final String columnValue;
 

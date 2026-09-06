@@ -90,13 +90,18 @@ app:
   # 다섯이 전부 없으면 부팅은 되고 업로드 발급만 실패한다(로컬·CI 는 저장소를 갖지 않는다).
   #
   # 실제 엔드포인트·버킷명·자격증명을 이 파일에 적지 않는다 (S-11). 환경변수로만 넣는다.
-  # upload-url-ttl 은 코드가 기본값(10분)을 갖는다 — 배포마다 정할 값이 아니다.
   image-storage:
     endpoint: ${IMAGE_STORAGE_ENDPOINT}
     region: ${IMAGE_STORAGE_REGION}
     bucket: ${IMAGE_STORAGE_BUCKET}
     access-key: ${IMAGE_STORAGE_ACCESS_KEY}
     secret-key: ${IMAGE_STORAGE_SECRET_KEY}
+    # URL 수명 둘. 값이 없으면 코드가 업로드 10분 · 읽기 15분을 쓴다 (#315, #378).
+    # 같은 균형을 재지 않으므로 하나로 합치지 않는다 — 업로드는 한 번의 동작이고,
+    # 읽기는 카드가 화면에 머무는 동안 계속된다. 길수록 유출된 URL 이 오래 살아 있다.
+    # **읽기 URL 은 승인된 작품에만 발급된다** (I-8) — 승인 전 이미지는 서버가 중계한다.
+    # upload-url-ttl: 10m
+    # read-url-ttl: 15m
 
 # ── 배치 (R2.7, I-20, #159) ──────────────────────────────────
 # 도달률은 배치 갱신이다 — 조회 경로가 계산하지 않는다 (I-20).

@@ -3,6 +3,7 @@ package com.neowadaeum.authoring.review;
 import com.neowadaeum.authoring.UgcLimitProperties;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.DraftStoryDefinition;
+import com.neowadaeum.authoring.draft.DraftScaleGate;
 import com.neowadaeum.authoring.draft.DraftVocabularyGate;
 import com.neowadaeum.authoring.draft.StoryDraft;
 import com.neowadaeum.authoring.precheck.PrecheckFinding;
@@ -48,6 +49,9 @@ public class SubmissionService {
 	/** §13-76 — 저장 게이트를 지나오지 않은 원고를 위한 두 번째 자리 (#367). */
 	private final DraftVocabularyGate vocabulary;
 
+	/** §13-81 — 같은 자리, 다른 축 (#380). 이쪽은 이 제출이 만들 필드 지도의 크기를 잰다. */
+	private final DraftScaleGate scale;
+
 	private final PrecheckScreen screen;
 
 	private final StoryPublisher publisher;
@@ -63,12 +67,14 @@ public class SubmissionService {
 
 	private final TransactionTemplate transactions;
 
-	public SubmissionService(DraftService drafts, DraftVocabularyGate vocabulary, PrecheckScreen screen,
-			StoryPublisher publisher, StoryReviewRepository reviews, StoryReviewTimeline timeline,
+	public SubmissionService(DraftService drafts, DraftVocabularyGate vocabulary,
+			DraftScaleGate scale, PrecheckScreen screen, StoryPublisher publisher,
+			StoryReviewRepository reviews, StoryReviewTimeline timeline,
 			UgcLimitProperties limits, Clock clock,
 			PlatformTransactionManager catalogTransactionManager) {
 		this.drafts = drafts;
 		this.vocabulary = vocabulary;
+		this.scale = scale;
 		this.screen = screen;
 		this.publisher = publisher;
 		this.reviews = reviews;
@@ -90,7 +96,14 @@ public class SubmissionService {
 		// §13-76 — 저장 게이트가 붙기 전에 저장된 원고가 여기로 온다 (#367). 승인은 곧 게시이고
 		// 세션은 버전에 고정되므로 (I-4), 넘긴 어휘가 통과하면 그 작품은 **모든 턴에서** 실패한다.
 		// 반려가 아직 작성자의 문제인 마지막 자리가 여기다.
-		this.vocabulary.verify(DraftStoryDefinition.validateConditions(draft.getPayload()));
+		DraftStoryDefinition.Declared declared = DraftStoryDefinition
+				.validateConditions(draft.getPayload());
+		this.vocabulary.verify(declared.vocabulary());
+
+		// §13-81 — 그리고 이 원고가 **검수 한 번의 크기**를 정하지 못하게 한다 (#380). 앞의
+		// 게이트는 프롬프트 예산을 재므로 챕터·엔딩은 그대로 지나간다 — 아래 fieldsOf 가 펼치는
+		// 지도는 그 개수에 비례하고, 상한이 없으면 원고 하나가 제출 한 번의 비용을 정한다.
+		this.scale.verify(declared);
 
 		// #326 — 작품 정의와 상태 스키마가 함께 나온다. 조건이 보는 이름과 화이트리스트에
 		// 선언되는 이름은 같은 목록이어야 한다.
@@ -198,6 +211,12 @@ public class SubmissionService {
 	 * <p><b>경로는 작성 화면의 이름이다</b> ({@code characters[0].persona}) — 밑줄을 그을 자리를
 	 * 가리키는 값이므로 발행물의 이름({@code personaPrompt})이 아니라 원고 계약의 이름을 쓴다.
 	 *
+	 * <p><b>자리는 배열의 순서다 — 한 파일에 표기가 하나뿐이다</b> (§13-81, #379). 챕터·엔딩은
+	 * 도메인 번호({@code chapterNo}, 1부터)를 넣었고 인물·플래그는 배열의 자리(0부터)를 넣어
+	 * <b>같은 목록 안에 두 규칙</b>이 있었다. 계약이 정한 표기는 배열의 자리이고 {@code precheck}
+	 * (L0)도 그 표기로 답한다 — 갈라진 채 경로를 밖으로 내보내는 날, 작성자는 <b>2챕터를 고치라는
+	 * 말을 듣고 1챕터를 본다.</b>
+	 *
 	 * @param flags 원고가 선언한 플래그 이름 (#362). <b>정의에는 없고 원고에만 있다</b> —
 	 *     화이트리스트로 발행될 뿐이지만 매 턴 {@code GAME_STATE} 로 나가는 작성자 입력이다
 	 */
@@ -207,16 +226,16 @@ public class SubmissionService {
 		fields.put("shortDesc", definition.shortDesc());
 		fields.put("worldIntro", definition.worldIntro());
 		fields.put("worldPrompt", definition.worldPrompt());
-		definition.chapters().forEach(chapter -> {
-			fields.put("chapters[%d].title".formatted(chapter.chapterNo()), chapter.title());
-			fields.put("chapters[%d].summarySeed".formatted(chapter.chapterNo()),
-					chapter.summarySeed());
-		});
-		definition.endings().forEach(ending -> {
-			fields.put("endings[%d].label".formatted(ending.endingNo()), ending.label());
-			fields.put("endings[%d].epilogueText".formatted(ending.endingNo()),
-					ending.epilogueText());
-		});
+		for (int index = 0; index < definition.chapters().size(); index++) {
+			StoryDefinition.Chapter chapter = definition.chapters().get(index);
+			fields.put("chapters[%d].title".formatted(index), chapter.title());
+			fields.put("chapters[%d].summarySeed".formatted(index), chapter.summarySeed());
+		}
+		for (int index = 0; index < definition.endings().size(); index++) {
+			StoryDefinition.Ending ending = definition.endings().get(index);
+			fields.put("endings[%d].label".formatted(index), ending.label());
+			fields.put("endings[%d].epilogueText".formatted(index), ending.epilogueText());
+		}
 		putCharacters(fields, definition.characters());
 		// 플래그는 이름뿐이고 문장이 아니다. 짧다는 이유로 다르게 보지 않는다 (§13-75) —
 		// 판정이 둘이 되면 무른 쪽이 곧 길이 된다.

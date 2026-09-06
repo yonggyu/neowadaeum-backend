@@ -5,7 +5,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.client.WireMock.delete;
 import static com.github.tomakehurst.wiremock.client.WireMock.head;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -146,6 +149,97 @@ class DraftImageApiIntegrationTests extends ContainerTestBase {
 				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
 		assertThat(body).doesNotContain("http").doesNotContain("X-Amz");
+	}
+
+	/**
+	 * <b>작성자가 자기가 올린 것을 다시 본다</b> (#377, §13-78).
+	 *
+	 * <p>올리고 나면 확인할 방법이 없었다 — 이 문이 없으면 작성자는 자기 커버가 무엇인지
+	 * 모른 채 제출한다.
+	 */
+	@Test
+	void S13_78_the_author_reads_their_own_image() throws Exception {
+		UUID draftId = createDraft(ContainerTestBase.TEST_PLAYER_REF);
+		String key = issuedKey(draftId);
+		stubGet(200, "image/png", new byte[] { 1, 2, 3 });
+
+		this.mvc.perform(read(draftId, key, ContainerTestBase.TEST_PLAYER_REF))
+				.andExpect(status().isOk())
+				.andExpect(content().contentType("image/png"))
+				.andExpect(header().string("Cache-Control", "private, no-store"))
+				.andExpect(content().bytes(new byte[] { 1, 2, 3 }));
+	}
+
+	/**
+	 * <b>{@code Content-Type} 은 키가 정한다</b> (§13-65, §13-78).
+	 *
+	 * <p>저장소가 기록한 값을 그대로 흘리면 <b>버킷이 응답 헤더를 정하게</b> 되고, 그때
+	 * 브라우저가 그 바이트를 무엇으로 해석하는지를 서버가 더 이상 결정하지 않는다.
+	 */
+	@Test
+	void S13_78_the_content_type_comes_from_the_signed_format_not_the_bucket() throws Exception {
+		UUID draftId = createDraft(ContainerTestBase.TEST_PLAYER_REF);
+		String key = issuedKey(draftId);
+		stubGet(200, "text/html", new byte[] { 9 });
+
+		this.mvc.perform(read(draftId, key, ContainerTestBase.TEST_PLAYER_REF))
+				.andExpect(status().isOk())
+				.andExpect(content().contentType("image/png"));
+	}
+
+	/** <b>남의 원고는 없는 것과 구분되지 않는다</b> (I-8). 이미지 경로에서도 같다. */
+	@Test
+	void I8_another_authors_image_is_not_found() throws Exception {
+		UUID draftId = createDraft(ContainerTestBase.TEST_PLAYER_REF);
+		String key = issuedKey(draftId);
+
+		this.mvc.perform(read(draftId, key, OTHER_PLAYER)).andExpect(status().isNotFound());
+	}
+
+	/**
+	 * <b>이 원고의 키만 읽는다</b> (I-8).
+	 *
+	 * <p>자기 원고를 갖고 있다는 사실이 <b>아무 키나 열 수 있다</b>는 뜻은 아니다 — 허용하면
+	 * 남의 원고 이미지를 자기 경로로 끌어올 수 있다.
+	 */
+	@Test
+	void I8_a_key_of_another_draft_is_refused_on_read() throws Exception {
+		UUID mine = createDraft(ContainerTestBase.TEST_PLAYER_REF);
+		String theirs = "drafts/" + UUID.randomUUID() + "/cover/" + UUID.randomUUID() + ".png";
+
+		this.mvc.perform(read(mine, theirs, ContainerTestBase.TEST_PLAYER_REF))
+				.andExpect(status().isBadRequest());
+	}
+
+	/**
+	 * <b>커버를 올리지 않은 원고가 정상이다</b> (§13-68, §13-78).
+	 *
+	 * <p>없는 이미지의 404 는 <b>그 한 장의 사실</b>이며, 원고를 여는 다른 응답을 죽이지 않는다.
+	 */
+	@Test
+	void S13_68_a_missing_image_is_a_404_of_its_own() throws Exception {
+		UUID draftId = createDraft(ContainerTestBase.TEST_PLAYER_REF);
+		String key = issuedKey(draftId);
+		stubGet(404, "application/xml", new byte[0]);
+
+		this.mvc.perform(read(draftId, key, ContainerTestBase.TEST_PLAYER_REF))
+				.andExpect(status().isNotFound());
+
+		this.mvc.perform(get("/api/v1/authoring/drafts/{draftId}", draftId)
+				.with(asPlayer(ContainerTestBase.TEST_PLAYER_REF))).andExpect(status().isOk());
+	}
+
+	private void stubGet(int status, String contentType, byte[] body) {
+		TestcontainersConfiguration.IMAGE_STORAGE.stubFor(
+				com.github.tomakehurst.wiremock.client.WireMock.get(anyUrl())
+						.willReturn(aResponse().withStatus(status)
+								.withHeader("Content-Type", contentType).withBody(body)));
+	}
+
+	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder read(
+			UUID draftId, String objectKey, UUID player) {
+		return get("/api/v1/authoring/drafts/{draftId}/images", draftId).with(asPlayer(player))
+				.param("objectKey", objectKey);
 	}
 
 	private String issuedKey(UUID draftId) throws Exception {

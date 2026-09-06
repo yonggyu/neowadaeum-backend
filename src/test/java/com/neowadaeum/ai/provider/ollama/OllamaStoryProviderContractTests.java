@@ -12,6 +12,7 @@ import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.GenerationBudgets;
+import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.provider.SchemaRetryingStoryProvider;
 import com.neowadaeum.play.port.SummaryRequest;
 import com.neowadaeum.ai.schema.TurnOutputParser;
@@ -32,7 +33,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -67,8 +67,10 @@ class OllamaStoryProviderContractTests {
 		OllamaProperties properties = new OllamaProperties("http://localhost:" + this.server.port(),
 				new OllamaProperties.Models("llama3.1", "llama3.2:1b", "llama-guard3", null));
 
+		// 운영과 같은 RestClient 를 쓴다 (#374 · #93). 손으로 만들면 요청 팩토리와 타임아웃이
+		// 운영과 갈라지고, 그 차이는 테스트가 통과하는 방식으로 숨는다.
 		this.provider = new OllamaStoryProvider(
-				RestClient.builder().baseUrl(properties.baseUrl()).build(), properties,
+				OllamaProviderConfiguration.restClient(properties, new ProviderProperties(null, null)), properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
 				new TurnOutputParser(), this.recorded::add);
 	}

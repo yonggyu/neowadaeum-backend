@@ -68,6 +68,20 @@ public final class DraftStoryDefinition {
 	}
 
 	/**
+	 * 저장 시점의 게이트들이 함께 보는 <b>한 번의 읽기</b> (§13-76, §13-81).
+	 *
+	 * <p>두 게이트는 <b>서로 다른 축</b>을 잰다 — {@link DraftVocabularyGate} 는 선언된 이름이
+	 * 만들 프롬프트 어휘 블록을, {@link DraftScaleGate} 는 이 원고가 정하는 검수 한 번의 크기를
+	 * 본다. 그래서 둘 다 필요하고, <b>같은 원고</b>를 보아야 한다: 각자 파싱하면 두 게이트가
+	 * 서로 다른 것을 보는 자리가 생긴다.
+	 *
+	 * @param chapterCount 원고가 적은 챕터 수. <b>서버가 더하는 기본 엔딩은 세지 않는다</b> —
+	 *     상한은 작성자가 지울 수 있는 것에만 걸린다
+	 */
+	public record Declared(DraftStateSchema vocabulary, int chapterCount, int endingCount) {
+	}
+
+	/**
 	 * @throws ApiException {@code VALIDATION_ERROR} — 발행에 필요한 것이 빠졌거나, 조건이
 	 *     원고에 선언되지 않은 이름을 가리킨다. 어느 단계가 남았는지는 작성자가 화면에서 안다
 	 */
@@ -108,17 +122,18 @@ public final class DraftStoryDefinition {
 	 * <p><b>여기서 나머지를 보지 않는다.</b> 아직 채우지 않은 단계가 있는 것은 정상이며
 	 * (5단계 저장, R8.3), 제목이 없다고 저장을 막으면 <b>작성 중인 원고를 저장할 수 없다.</b>
 	 *
-	 * <p><b>읽은 선언을 돌려준다</b> (§13-76). 저장 시점의 게이트가 둘이고 둘 다 같은 목록을
-	 * 본다 — 다시 파싱하면 <b>두 게이트가 서로 다른 것을 볼 수 있는 자리</b>가 생긴다.
+	 * <p><b>읽은 것을 돌려준다</b> (§13-76, §13-81). 저장 시점의 게이트가 둘이고 둘 다 이 한 번의
+	 * 읽기를 본다 — 다시 파싱하면 <b>두 게이트가 서로 다른 것을 볼 수 있는 자리</b>가 생긴다.
 	 *
-	 * @return 이 원고가 선언한 이름. {@link DraftVocabularyGate} 가 이어서 본다
+	 * @return 이 원고가 선언한 이름과 <b>그 원고의 크기</b>. {@link DraftVocabularyGate} 와
+	 *     {@link DraftScaleGate} 가 이어서 본다
 	 */
-	public static DraftStateSchema validateConditions(String payload) {
+	public static Declared validateConditions(String payload) {
 		JsonNode root = parse(payload);
 		DraftStateSchema schema = DraftStateSchema.from(root);
 		root.path("chapters").forEach(chapter -> conditionOf(chapter, schema));
 		root.path("endings").forEach(ending -> conditionOf(ending, schema));
-		return schema;
+		return new Declared(schema, root.path("chapters").size(), root.path("endings").size());
 	}
 
 	/**

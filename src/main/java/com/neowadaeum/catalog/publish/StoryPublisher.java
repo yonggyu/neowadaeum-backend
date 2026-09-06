@@ -477,6 +477,38 @@ public class StoryPublisher {
 	}
 
 	/**
+	 * 그 버전이 <b>심사받은</b> 등장인물 (#377, §13-78).
+	 *
+	 * <p><b>턴 파이프라인이 읽는 한 벌에는 초상이 없다.</b> {@code StoryVersionView.CharacterView}
+	 * 는 프롬프트에 들어가는 것만 담으며, 초상은 매 턴 예산에 얹힐 값이 아니다 (§15).
+	 *
+	 * <p><b>검수는 반대다.</b> 커버와 초상은 15세 등급 판정의 대상이고 (R8.5), 검수자가 그 키를
+	 * 모르면 <b>무엇을 열어 봐야 하는지</b>를 알 수 없다 — 그래서 여기서만 따로 읽는다.
+	 *
+	 * @return {@code display_order} 순. 프롬프트가 인물을 늘어놓는 순서와 같다
+	 */
+	@Transactional(value = "catalogTransactionManager", readOnly = true)
+	public List<VersionCharacter> versionCharactersOf(UUID storyVersionId) {
+		return this.jdbc.sql("""
+						SELECT name, persona_prompt, portrait_url FROM character
+						WHERE story_version_id = ? ORDER BY display_order
+						""")
+				.param(storyVersionId)
+				.query((rs, rowNum) -> new VersionCharacter(rs.getString("name"),
+						rs.getString("persona_prompt"), rs.getString("portrait_url")))
+				.list();
+	}
+
+	/**
+	 * 등장인물 한 명 (#377).
+	 *
+	 * @param portraitImageKey 초상의 <b>객체 키</b>이며 URL 이 아니다 (#315, §13-72). 올리지
+	 *     않았으면 {@code null} 이다 — 초상 없는 인물이 정상이다
+	 */
+	public record VersionCharacter(String name, String persona, String portraitImageKey) {
+	}
+
+	/**
 	 * 엔딩의 에필로그 원문 (#316, §13-61).
 	 *
 	 * <p><b>턴 파이프라인이 읽는 한 벌에는 없는 값이다.</b> {@code StoryVersionView.EndingView}

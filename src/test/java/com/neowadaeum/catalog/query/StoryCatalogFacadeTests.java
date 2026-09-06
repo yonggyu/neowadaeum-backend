@@ -52,13 +52,46 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	@Autowired
 	private com.neowadaeum.common.spi.StoryDraftLinkQuery draftLinks;
 
+	/** #378 — 승인된 UGC 커버의 서명은 버킷 설정을 가진 모듈이 한다. 파사드는 계약만 안다. */
+	@Autowired
+	private com.neowadaeum.common.spi.ImageReadUrlSigner coverUrls;
+
+	/** 커버 키. <b>가상의 문자열이며</b> 그 자체로는 아무것도 열지 못한다 (S-11, #315). */
+	private static final String COVER_KEY = "drafts/00000000-0000-4000-8000-0000000000d0/cover/"
+			+ "00000000-0000-4000-8000-0000000000d1.jpg";
+
+	/** 공식 시드가 이미 들고 있는 <b>실제 주소</b> 자리 (S-11 — 가상의 호스트다). */
+	private static final String OFFICIAL_COVER_URL = "https://cover.invalid/official.jpg";
+
+	/** 초상 키. 커버와 <b>같은 버킷에 같은 방식으로</b> 올라간다 (§13-65, S-11: 가상의 문자열). */
+	private static final String PORTRAIT_KEY = "drafts/00000000-0000-4000-8000-0000000000d0/"
+			+ "portrait/00000000-0000-4000-8000-0000000000d2.png";
+
+	/** 공식 작품의 초상은 이미 실제 주소다 (S-11 — 가상의 호스트다). */
+	private static final String OFFICIAL_PORTRAIT_URL = "https://cover.invalid/official-portrait.png";
+
 	private final List<UUID> created = new java.util.ArrayList<>();
+
+	private final List<UUID> createdVersions = new java.util.ArrayList<>();
 
 	private final List<UUID> createdProfiles = new java.util.ArrayList<>();
 
 	@AfterEach
 	void removeCreated() throws SQLException {
 		try (Connection connection = this.dataSource.getConnection()) {
+			// 인물이 버전을, 버전이 작품을 참조한다 — 순서를 뒤집으면 FK 가 막는다.
+			for (UUID id : this.createdVersions) {
+				try (PreparedStatement statement = connection
+						.prepareStatement("DELETE FROM character WHERE story_version_id = ?")) {
+					statement.setObject(1, id);
+					statement.executeUpdate();
+				}
+				try (PreparedStatement statement = connection
+						.prepareStatement("DELETE FROM story_version WHERE id = ?")) {
+					statement.setObject(1, id);
+					statement.executeUpdate();
+				}
+			}
 			for (UUID id : this.created) {
 				try (PreparedStatement statement = connection
 						.prepareStatement("DELETE FROM story WHERE id = ?")) {
@@ -74,6 +107,7 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 				}
 			}
 		}
+		this.createdVersions.clear();
 		this.created.clear();
 		this.createdProfiles.clear();
 	}
@@ -282,7 +316,7 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 
 		AtomicInteger statements = new AtomicInteger();
 		StoryCatalogFacade counted = new StoryCatalogFacade(countingDataSource(statements), this.clock,
-				this.reviewTimes, this.draftLinks);
+				this.reviewTimes, this.draftLinks, this.coverUrls);
 
 		statements.set(0);
 		counted.cards(section("community"), null, 2);
@@ -359,6 +393,206 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	 * <p>이 오버로드는 항상 {@code authorType = "user"}로만 불린다. 무작위 {@code UUID}는
 	 * 개별 단언과 무관하고, 제약(R13.1)을 만족시키는 것이 목적이다.
 	 */
+	/**
+	 * <b>#378 · §13-79 — 승인된 UGC 커버는 열리는 URL 로 나간다.</b>
+	 *
+	 * <p>이 필드에는 <b>두 종류의 값</b>이 실려 나가고 있었다 — 공식 작품은 실제 주소, UGC 는
+	 * 객체 키 (#357, §13-72). 화면은 그 둘을 구분할 방법이 없으므로 <b>UGC 커버가 전부 깨진
+	 * 이미지</b>가 됐고, <b>깨진 이미지는 서버에서 아무 소리도 내지 않는다.</b>
+	 *
+	 * <p><b>있어야 할 것만 단언하면 키가 그대로 나가도 통과한다</b> (S-11) — 그래서 키가
+	 * <b>그 자체로</b> 오지 않는다는 것을 함께 건다.
+	 */
+	@Test
+	void S13_79_an_approved_user_cover_comes_back_signed() {
+		UUID storyId = insertStory("user", "public", "approved");
+		setCover(storyId, COVER_KEY);
+
+		StoryCardView card = this.facade.cards(section("community"), null, null).stories().stream()
+				.filter(story -> story.storyId().equals(storyId)).findFirst().orElseThrow();
+
+		assertThat(card.coverImage()).isNotEqualTo(COVER_KEY).startsWith("http")
+				.contains("X-Amz-Signature").contains("X-Amz-Expires=900");
+	}
+
+	/**
+	 * <b>공식 작품의 값은 건드리지 않는다</b> (#378).
+	 *
+	 * <p>그 컬럼에는 이미 <b>실제 주소</b>가 들어 있다. 서명하려 들면 주소를 객체 키로 착각한
+	 * 서명이 나가고, 지금 멀쩡한 커버가 깨진다 — <b>무엇이 UGC 인지는 {@code author_type} 이
+	 * 안다.</b> 값의 모양으로 갈라내는 것은 추측이며, 추측은 시드가 바뀌는 날 조용히 틀린다.
+	 */
+	@Test
+	void S13_79_an_official_cover_is_passed_through() {
+		// 공식 작품은 author_ref 를 갖지 않는다 — story_author_type_ref_check 가 그 조합을 막는다.
+		UUID storyId = insertStory("official", "public", "approved", null);
+		setCover(storyId, OFFICIAL_COVER_URL);
+
+		StoryCardView card = this.facade.cards(section("recommended"), null, null).stories().stream()
+				.filter(story -> story.storyId().equals(storyId)).findFirst().orElseThrow();
+
+		assertThat(card.coverImage()).isEqualTo(OFFICIAL_COVER_URL);
+	}
+
+	/**
+	 * <b>승인 전 커버에는 서명하지 않는다</b> (I-8, §13-78).
+	 *
+	 * <p>서명 URL 은 그 객체의 <b>출입증</b>이라 수명 동안 게이트 없이 열린다 — 경계는
+	 * <i>"승인됐는가"</i> 이며 그것은 I-8 이 그은 선이다. "내 작품"은 이 파사드에서 <b>승인 전
+	 * 작품이 보이는 유일한 자리</b>이므로 그 선이 실제로 갈리는 곳도 여기다.
+	 *
+	 * <p>키를 대신 내보내지도 않는다 — 그러면 한 필드가 다시 두 종류의 값을 나른다. 작성자는
+	 * 원고 경로에서 중계로 본다 (§13-78).
+	 */
+	@Test
+	void I8_a_cover_awaiting_review_is_not_signed() {
+		UUID authorRef = UUID.randomUUID();
+		UUID storyId = insertStory("user", "private", "pending", authorRef);
+		setCover(storyId, COVER_KEY);
+
+		MyStoryView mine = this.facade.mine(authorRef, null, null).stories().stream()
+				.filter(story -> story.storyId().equals(storyId)).findFirst().orElseThrow();
+
+		assertThat(mine.coverImage()).isNull();
+	}
+
+	/** 승인된 뒤에는 작성자의 목록에서도 열린다 — 같은 판정이 한 곳에 있다 (#378). */
+	@Test
+	void S13_79_my_stories_sign_an_approved_cover() {
+		UUID authorRef = UUID.randomUUID();
+		UUID storyId = insertStory("user", "public", "approved", authorRef);
+		setCover(storyId, COVER_KEY);
+
+		MyStoryView mine = this.facade.mine(authorRef, null, null).stories().stream()
+				.filter(story -> story.storyId().equals(storyId)).findFirst().orElseThrow();
+
+		assertThat(mine.coverImage()).startsWith("http").contains("X-Amz-Signature");
+	}
+
+	/**
+	 * <b>이어하기 카드도 같은 값을 받는다</b> (#378).
+	 *
+	 * <p>세션 항목의 커버는 이 조회에서 온다 — 목록만 고치고 여기를 두면 <b>같은 작품이 화면에
+	 * 따라 깨진다.</b>
+	 */
+	@Test
+	void S13_79_the_continue_card_signs_an_approved_cover() {
+		UUID storyId = insertStory("user", "public", "approved");
+		setCover(storyId, COVER_KEY);
+		UUID versionId = insertVersion(storyId);
+
+		assertThat(this.facade.briefs(List.of(versionId)).get(versionId).coverImage())
+				.startsWith("http").contains("X-Amz-Signature");
+	}
+
+	/**
+	 * <b>#378 · §13-79 — 인물 초상도 같은 판정을 지난다.</b>
+	 *
+	 * <p>초상은 커버와 <b>같은 버킷에 같은 방식으로</b> 올라가고 (§13-65) 같은 컬럼 관행을
+	 * 물려받았다 — 커버만 고치면 <b>같은 작품의 커버는 뜨고 인물만 깨진</b> 상태가 남으며,
+	 * 그것은 "승인 후 이미지는 서명해서 낸다"가 반쪽만 참인 상태다.
+	 */
+	@Test
+	void S13_79_an_approved_user_portrait_comes_back_signed() {
+		UUID storyId = insertStory("user", "public", "approved");
+		UUID versionId = insertVersion(storyId);
+		setCurrentVersion(storyId, versionId);
+		insertCharacter(storyId, versionId, PORTRAIT_KEY);
+
+		CharacterCardView character = this.facade.detail(storyId).orElseThrow().characters()
+				.getFirst();
+
+		assertThat(character.portraitImage()).isNotEqualTo(PORTRAIT_KEY).startsWith("http")
+				.contains("X-Amz-Signature").contains("X-Amz-Expires=900");
+	}
+
+	/**
+	 * <b>공식 작품의 초상은 건드리지 않는다</b> (#378).
+	 *
+	 * <p>커버와 같은 이유다 — 그 값은 이미 <b>실제 주소</b>이며, 서명하려 들면 주소를 객체 키로
+	 * 착각한 서명이 나가고 <b>지금 멀쩡한 초상이 깨진다.</b> 무엇이 UGC 인지는
+	 * {@code author_type} 이 안다.
+	 */
+	@Test
+	void S13_79_an_official_portrait_is_passed_through() {
+		UUID storyId = insertStory("official", "public", "approved", null);
+		UUID versionId = insertVersion(storyId);
+		setCurrentVersion(storyId, versionId);
+		insertCharacter(storyId, versionId, OFFICIAL_PORTRAIT_URL);
+
+		assertThat(this.facade.detail(storyId).orElseThrow().characters().getFirst().portraitImage())
+				.isEqualTo(OFFICIAL_PORTRAIT_URL);
+	}
+
+	/** 상세에 보이는 인물 하나. <b>초상 값은 가상의 문자열이다</b> (S-11). */
+	private void insertCharacter(UUID storyId, UUID versionId, String portraitUrl) {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection.prepareStatement("""
+						INSERT INTO character (id, story_version_id, story_id, name, role,
+								portrait_url, one_line, persona_prompt, display_order,
+								is_visible_in_detail)
+						VALUES (?, ?, ?, '유나', '친구', ?, '한 줄', '페르소나', 1, TRUE)
+						""")) {
+			statement.setObject(1, UUID.randomUUID());
+			statement.setObject(2, versionId);
+			statement.setObject(3, storyId);
+			statement.setString(4, portraitUrl);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
+
+	/** 상세는 {@code current_version_id} 를 기준으로 읽는다 (R2.1) — 그 자리를 실제 버전으로 맞춘다. */
+	private void setCurrentVersion(UUID storyId, UUID versionId) {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection
+						.prepareStatement("UPDATE story SET current_version_id = ? WHERE id = ?")) {
+			statement.setObject(1, versionId);
+			statement.setObject(2, storyId);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
+
+	/** 커버 키를 그 작품에 붙인다. <b>가상의 문자열이다</b> (S-11). */
+	private void setCover(UUID storyId, String coverUrl) {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection
+						.prepareStatement("UPDATE story SET cover_url = ? WHERE id = ?")) {
+			statement.setString(1, coverUrl);
+			statement.setObject(2, storyId);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
+
+	/** 이어하기 카드가 매달리는 버전 하나 (I-4). 세션은 이 버전에 고정된다. */
+	private UUID insertVersion(UUID storyId) {
+		UUID versionId = UUID.randomUUID();
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection.prepareStatement("""
+						INSERT INTO story_version (id, story_id, version_no, world_prompt,
+								choice_policy, state_schema, state_template_key, published_at)
+						VALUES (?, ?, 1, '세계관', '{}'::jsonb, '{}'::jsonb, 'flag', ?)
+						""")) {
+			statement.setObject(1, versionId);
+			statement.setObject(2, storyId);
+			statement.setTimestamp(3, java.sql.Timestamp.from(PUBLISHED));
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
+		this.createdVersions.add(versionId);
+		return versionId;
+	}
+
 	private UUID insertStory(String authorType, String visibility, String reviewStatus) {
 		return insertStory(authorType, visibility, reviewStatus, UUID.randomUUID());
 	}

@@ -59,6 +59,10 @@ public class PromptAssembler {
 	 * 몫이 됐다 — 새 레이어가 <b>기존 묶음에서 뜯어 오지 않게</b> 하는 유일한 자리였다. 그 여유를
 	 * "형식 문자열의 몫"이라 적어 두었지만 레이어 머리글은 애초에 합계에 세지 않는다
 	 * ({@link AssembledPrompt#render()} 가 붙인다).
+	 *
+	 * <p><b>그래서 묶음 하나를 늘리려면 다른 하나가 줄어야 한다</b> (§13-82). 연산자 표기가
+	 * {@code OUTPUT SPEC} 으로 옮겨 갈 때 {@code INSTRUCTION} 과 {@code STATE VOCABULARY} 가 25 씩
+	 * 맞바뀐 것이 그 예다 — 이 상수는 <b>움직이지 않는다.</b>
 	 */
 	public static final int TOTAL_BUDGET_TOKENS = 4_000;
 

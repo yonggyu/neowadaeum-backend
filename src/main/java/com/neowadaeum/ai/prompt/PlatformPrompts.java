@@ -1,5 +1,6 @@
 package com.neowadaeum.ai.prompt;
 
+import com.neowadaeum.play.port.StateChangeOperator;
 import java.util.List;
 
 /**
@@ -13,13 +14,14 @@ import java.util.List;
  *
  * <p><b>§4.3 이 두 문구의 예산을 이미 다 써 놓았다.</b> {@code SYSTEM} 은 {@code FOUNDATION}(1,200)을
  * 작품 레이어와 나눠 쓰는데 R4.9 가 UGC 몫으로 1,000 을 하드 제한한다 — 남는 것이 <b>200</b> 이다.
- * {@code OUTPUT SPEC} 은 {@code INSTRUCTION}(200)을 {@code USER ACTION} 과 나눈다.
+ * {@code OUTPUT SPEC} 은 {@code INSTRUCTION}(225)을 {@code USER ACTION} 과 나눈다 — 연산자 표기가
+ * 이 문구로 오면서 그 묶음이 25 만큼 늘었고, 같은 만큼 {@code STATE VOCABULARY} 에서 왔다 (§13-82).
  *
  * <p>그래서 <b>설명을 한국어 산문으로 늘어놓지 않는다.</b> 같은 내용이라도 ASCII 는 한글의 1/5 값이라,
  * 출력 형식은 문장이 아니라 <b>JSON 골격</b>으로 보여 주는 편이 예산 안에 들어온다. 이 제약은
  * {@code PlatformPromptBudgetTests} 가 지킨다 — 문구를 늘리면 그 테스트가 먼저 빨개진다.
  *
- * <p><b>{@code STATE VOCABULARY} 는 머리글만 이 제약을 받는다</b> (§13-76). 그 묶음 200 중 나머지는
+ * <p><b>{@code STATE VOCABULARY} 는 머리글만 이 제약을 받는다</b> (§13-76). 그 묶음 175 중 나머지는
  * 작품이 선언한 이름의 몫이므로, 머리글이 길어지면 <b>이름이 들어갈 자리가 줄어든다.</b>
  *
  * <p><b>S-11 — 이 레포는 공개다.</b> 여기에는 등급과 형식 지시만 둔다. 차단 목록의 실제 항목이나
@@ -46,16 +48,41 @@ public final class PlatformPrompts {
 	 *
 	 * <p>{@code choiceId} · {@code disabled} · {@code chapter} · {@code turn} 을 요구하지 않는다 —
 	 * 서버가 발급하고 판정하는 값이며 (I-1, I-9, I-11), 모델에게 물으면 그 값이 돌아온다.
+	 *
+	 * <p><b>{@code stateChanges} 의 연산자 표기는 여기가 정본이다</b> (§13-82). 출력 스키마를 말하는
+	 * 자리가 원래 여기이며, {@code object} 한 줄만 적어 두었던 동안 모델은 이름뿐 아니라 <b>표기까지
+	 * 맞혀야</b> 했다 (#375). 어긋난 표기는 병합되지 않고 경고만 남으므로 (R4.1) 그 실패는 예외가
+	 * 아니라 <b>"상태가 가끔 안 바뀐다"</b> 로만 보인다.
+	 *
+	 * <p><b>표기를 여기에 손으로 적지 않는다.</b> {@link StateChangeOperator} 가 목록을 소유하고
+	 * 파서도 같은 열거를 읽는다 — 손으로 적으면 이 이슈가 다른 모양으로 돌아온다.
 	 */
 	public static final String OUTPUT_SPEC = """
 			JSON 객체 하나만 출력. 설명·코드펜스 금지.
 			{"speakerName": string|null,
 			 "paragraphs": [{"type": "dialogue"|"narration", "text": string}],
 			 "choices": [{"order": number, "text": string}],
-			 "stateChanges": object,
+			 "stateChanges": {%s},
 			 "chapterAdvanceSuggested": boolean,
 			 "endingSuggested": string|null}
-			paragraphs 3~5개, text 120자 내외. choices 1~4개, order 는 1부터.""";
+			paragraphs 3~5개, text 120자 내외. choices 1~4개, order 는 1부터."""
+			.formatted(stateChangesShape());
+
+	/**
+	 * {@code stateChanges} 의 연산자 표기를 만든다 (§13-82).
+	 *
+	 * <p><b>순서는 {@link StateChangeOperator} 의 선언 순서다.</b> 수치 델타가 앞에 오는 것은 그것만
+	 * 키가 고정되어 있지 않기 때문이다 — 자리표시자를 먼저 보여 주지 않으면 뒤의 고정 키들이
+	 * <b>가능한 키의 전부</b>로 읽힌다.
+	 */
+	private static String stateChangesShape() {
+		StringBuilder shape = new StringBuilder("\"<%s>\": %s"
+				.formatted(StateChangeOperator.NUMERIC, StateChangeOperator.NUMERIC_WIRE_SHAPE));
+		for (StateChangeOperator operator : StateChangeOperator.values()) {
+			shape.append(", \"").append(operator.key()).append("\": ").append(operator.wireShape());
+		}
+		return shape.toString();
+	}
 
 	/**
 	 * {@code STATE VOCABULARY} 의 머리글 (§13-76, #367).
@@ -74,14 +101,17 @@ public final class PlatformPrompts {
 	/**
 	 * 선언된 이름을 {@code STATE VOCABULARY} 레이어로 찍는다 (§13-76).
 	 *
-	 * <p><b>왜 조립기가 아니라 여기인가.</b> 이 레이어는 플랫폼 레이어다 (I-7). 머리글과 연산자
-	 * 표기를 조립기가 조금, 여기가 조금 나눠 가지면 <b>플랫폼 문구가 어디까지인지</b>가 흐려지고,
-	 * 그때 작품 데이터가 문장 사이로 들어올 자리가 생긴다. 여기서 나가는 것은 <b>완성된 블록</b>
-	 * 하나이며 조립기는 그것을 넣을 뿐이다.
+	 * <p><b>왜 조립기가 아니라 여기인가.</b> 이 레이어는 플랫폼 레이어다 (I-7). 머리글을 조립기가
+	 * 조금, 여기가 조금 나눠 가지면 <b>플랫폼 문구가 어디까지인지</b>가 흐려지고, 그때 작품 데이터가
+	 * 문장 사이로 들어올 자리가 생긴다. 여기서 나가는 것은 <b>완성된 블록</b> 하나이며 조립기는
+	 * 그것을 넣을 뿐이다.
 	 *
-	 * <p><b>연산자 표기를 함께 적는다.</b> 이름만 주면 모델은 그 이름을 어떤 키로 감싸야 하는지를
-	 * 다시 추측해야 하고, 추측이 어긋나면 {@code ignoredKeys} 로 빠져 <b>이름을 맞힌 것과 같은
-	 * 결과</b>가 된다.
+	 * <p><b>연산자 표기를 적지 않는다</b> (§13-82). 이 레이어가 답하는 물음은 <b>"어떤 이름을 쓸 수
+	 * 있는가"</b> 하나이며, <b>"어떤 표기로 쓰는가"</b> 는 {@link #OUTPUT_SPEC} 의 몫이다 — 같은
+	 * 사실을 두 자리가 말하면 한쪽만 고치는 날 모델이 모순된 지시를 받는다 (#375).
+	 *
+	 * <p><b>갈래 머리표는 연산자 키에서 끌어온다.</b> {@code flags} 라는 머리표와 {@code flags.add}
+	 * 라는 연산자가 같은 낱말을 써야 모델이 둘을 이을 수 있다.
 	 *
 	 * @return 선언된 이름이 하나도 없으면 {@code null} — 레이어를 통째로 뺀다. 빈 블록도 토큰을 쓰고,
 	 *     <b>빈 목록은 "아무것도 못 바꾼다"</b> 는 사실을 말해 줄 이유가 없다
@@ -92,18 +122,18 @@ public final class PlatformPrompts {
 		}
 
 		StringBuilder text = new StringBuilder(STATE_VOCABULARY_HEADER);
-		appendNames(text, "정수 델타", vocabulary.numerics());
-		appendNames(text, "flags.add / flags.remove", vocabulary.flags());
-		appendNames(text, "inventory.add / inventory.remove", vocabulary.inventory());
+		appendNames(text, StateChangeOperator.NUMERIC, vocabulary.numerics());
+		appendNames(text, StateChangeOperator.FLAGS_ADD.namespace(), vocabulary.flags());
+		appendNames(text, StateChangeOperator.INVENTORY_ADD.namespace(), vocabulary.inventory());
 		return text.toString();
 	}
 
-	/** 비어 있는 갈래는 줄을 만들지 않는다. 쓸 수 없는 연산자를 알려 줄 이유가 없다. */
-	private static void appendNames(StringBuilder text, String operator, List<String> names) {
+	/** 비어 있는 갈래는 줄을 만들지 않는다. 선언되지 않은 갈래를 알려 줄 이유가 없다. */
+	private static void appendNames(StringBuilder text, String label, List<String> names) {
 		if (names.isEmpty()) {
 			return;
 		}
-		text.append("\n").append(operator).append(" = ").append(String.join(", ", names));
+		text.append("\n").append(label).append(" = ").append(String.join(", ", names));
 	}
 
 	/**
