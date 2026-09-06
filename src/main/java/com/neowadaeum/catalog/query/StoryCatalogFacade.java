@@ -102,6 +102,10 @@ public class StoryCatalogFacade {
 	/**
 	 * 화면이 {@code <img src>} 에 넣을 수 있는 값 (#378, §13-79).
 	 *
+	 * <p><b>커버와 인물 초상이 같은 판정을 쓴다.</b> 둘은 같은 버킷에 같은 방식으로 올라가고
+	 * (§13-65) 같은 컬럼 관행을 물려받았다 — 판정을 나누면 <b>커버는 고쳐지고 초상은 깨진</b>
+	 * 상태가 생기며, 그것이 이 이슈가 발견될 때의 모양이었다.
+	 *
 	 * <p><b>한 필드가 두 종류의 값을 나르고 있었다.</b> 공식 시드 작품의 {@code cover_url} 에는
 	 * 실제 주소가 들어 있지만, UGC 작품에는 <b>객체 키</b>가 들어 있다 (#357, §13-72) — 화면은
 	 * 그것을 구분할 방법이 없으므로 <b>UGC 커버가 전부 깨진 이미지</b>가 된다. 깨진 이미지는
@@ -114,11 +118,11 @@ public class StoryCatalogFacade {
 	 * 게이트 없이 열린다 — 승인 전 이미지에 그것을 내주면 #377 이 세운 경계가 무의미해진다.
 	 * 승인 전 커버는 {@code null} 로 나가고, 작성자는 원고 경로에서 중계로 본다.
 	 */
-	private String coverImageOf(String coverUrl, String authorType, String reviewStatus) {
+	private String imageUrlOf(String storedValue, String authorType, String reviewStatus) {
 		if (!"user".equals(authorType)) {
-			return coverUrl;
+			return storedValue;
 		}
-		return "approved".equals(reviewStatus) ? this.coverUrls.signRead(coverUrl).orElse(null) : null;
+		return "approved".equals(reviewStatus) ? this.coverUrls.signRead(storedValue).orElse(null) : null;
 	}
 
 	/** 화면이 보여 줄 장르 목록. {@code display_order} 가 유일하므로 순서가 결정론이다. */
@@ -186,7 +190,7 @@ public class StoryCatalogFacade {
 		List<MyStoryView> stories = page.stream().map(row -> {
 			var when = times.getOrDefault(row.id(), StoryReviewTimes.NONE);
 			return new MyStoryView(row.id(), draftIds.get(row.id()), row.title(),
-					coverImageOf(row.coverUrl(), row.authorType(), row.reviewStatus()),
+					imageUrlOf(row.coverUrl(), row.authorType(), row.reviewStatus()),
 					row.visibility(), reviewStatusFor(row.reviewStatus()), List.of(), row.createdAt(),
 					when.submittedAt(), when.reviewedAt());
 		}).toList();
@@ -282,7 +286,7 @@ public class StoryCatalogFacade {
 	public Optional<StoryDetailView> detail(UUID storyId) {
 		Optional<DetailRow> row = this.jdbc.sql("""
 						SELECT s.id, s.title, s.hero_url, s.description, s.world_intro, s.author_type,
-						       s.author_ref, s.current_version_id
+						       s.review_status, s.author_ref, s.current_version_id
 						FROM story s
 						WHERE s.id = :storyId
 						  AND s.review_status = 'approved'
@@ -293,7 +297,7 @@ public class StoryCatalogFacade {
 				.param("storyId", storyId)
 				.query((rs, rowNum) -> new DetailRow(rs.getString("title"), rs.getString("hero_url"),
 						rs.getString("description"), rs.getString("world_intro"), rs.getString("author_type"),
-						rs.getObject("author_ref", UUID.class),
+						rs.getString("review_status"), rs.getObject("author_ref", UUID.class),
 						rs.getObject("current_version_id", UUID.class)))
 				.optional();
 
@@ -309,15 +313,20 @@ public class StoryCatalogFacade {
 				// R7.11 — 시크릿은 세지 않는다. 개수만으로도 존재가 새면 안 된다.
 				countOf("SELECT COUNT(*) FROM ending_def WHERE story_version_id = :id AND is_secret = FALSE",
 						versionId),
-				charactersOf(versionId)));
+				charactersOf(versionId, detail.authorType(), detail.reviewStatus())));
 	}
 
 	/**
 	 * 상세에 보이는 인물만 (§13.3).
 	 *
 	 * <p>{@code persona_prompt} 를 읽지 않는다 — 프롬프트의 재료이지 화면의 것이 아니다.
+	 *
+	 * <p><b>초상도 커버와 같은 판정을 지난다</b> (#378, §13-79). 같은 컬럼 관행을 물려받았으므로
+	 * UGC 작품의 {@code portrait_url} 에도 <b>객체 키</b>가 들어 있다 (#315) — 여기를 두고
+	 * 커버만 고치면 <b>같은 작품의 커버는 뜨고 인물만 깨진다.</b>
 	 */
-	private List<CharacterCardView> charactersOf(UUID storyVersionId) {
+	private List<CharacterCardView> charactersOf(UUID storyVersionId, String authorType,
+			String reviewStatus) {
 		return this.jdbc.sql("""
 						SELECT id, name, role, portrait_url, one_line FROM character
 						WHERE story_version_id = :id AND is_visible_in_detail = TRUE
@@ -325,7 +334,8 @@ public class StoryCatalogFacade {
 						""")
 				.param("id", storyVersionId)
 				.query((rs, rowNum) -> new CharacterCardView(rs.getObject("id", UUID.class),
-						rs.getString("name"), rs.getString("role"), rs.getString("portrait_url"),
+						rs.getString("name"), rs.getString("role"),
+						imageUrlOf(rs.getString("portrait_url"), authorType, reviewStatus),
 						rs.getString("one_line")))
 				.list();
 	}
@@ -357,7 +367,7 @@ public class StoryCatalogFacade {
 	}
 
 	private record DetailRow(String title, String heroUrl, String description, String worldIntro,
-			String authorType, UUID authorRef, UUID currentVersionId) {
+			String authorType, String reviewStatus, UUID authorRef, UUID currentVersionId) {
 	}
 
 	/**
@@ -426,7 +436,7 @@ public class StoryCatalogFacade {
 					UUID versionId = rs.getObject("version_id", UUID.class);
 					return new StoryBriefView(versionId, rs.getObject("story_id", UUID.class),
 							rs.getString("title"),
-							coverImageOf(rs.getString("cover_url"), rs.getString("author_type"),
+							imageUrlOf(rs.getString("cover_url"), rs.getString("author_type"),
 									rs.getString("review_status")),
 							chapters.getOrDefault(versionId, List.of()));
 				})
@@ -471,7 +481,7 @@ public class StoryCatalogFacade {
 			// 이 목록은 approved 만 담지만 (sql 의 WHERE) 상태를 읽어서 넘긴다 — 조건을 상수로
 			// 적어 두면 그 WHERE 가 바뀌는 날 여기가 조용히 어긋난다 (#378).
 			cards.add(new StoryCardView(row.id(), row.title(),
-					coverImageOf(row.coverUrl(), row.authorType(), row.reviewStatus()),
+					imageUrlOf(row.coverUrl(), row.authorType(), row.reviewStatus()),
 					genresByStory.getOrDefault(row.id(), List.of()), row.shortDesc(),
 					row.publishedAt().isAfter(newSince), row.authorType(), row.authorDisplayName()));
 		}

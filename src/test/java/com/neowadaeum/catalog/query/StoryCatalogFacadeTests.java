@@ -63,6 +63,13 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	/** 공식 시드가 이미 들고 있는 <b>실제 주소</b> 자리 (S-11 — 가상의 호스트다). */
 	private static final String OFFICIAL_COVER_URL = "https://cover.invalid/official.jpg";
 
+	/** 초상 키. 커버와 <b>같은 버킷에 같은 방식으로</b> 올라간다 (§13-65, S-11: 가상의 문자열). */
+	private static final String PORTRAIT_KEY = "drafts/00000000-0000-4000-8000-0000000000d0/"
+			+ "portrait/00000000-0000-4000-8000-0000000000d2.png";
+
+	/** 공식 작품의 초상은 이미 실제 주소다 (S-11 — 가상의 호스트다). */
+	private static final String OFFICIAL_PORTRAIT_URL = "https://cover.invalid/official-portrait.png";
+
 	private final List<UUID> created = new java.util.ArrayList<>();
 
 	private final List<UUID> createdVersions = new java.util.ArrayList<>();
@@ -72,8 +79,13 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	@AfterEach
 	void removeCreated() throws SQLException {
 		try (Connection connection = this.dataSource.getConnection()) {
-			// 버전이 작품을 참조한다 — 순서를 뒤집으면 FK 가 막는다.
+			// 인물이 버전을, 버전이 작품을 참조한다 — 순서를 뒤집으면 FK 가 막는다.
 			for (UUID id : this.createdVersions) {
+				try (PreparedStatement statement = connection
+						.prepareStatement("DELETE FROM character WHERE story_version_id = ?")) {
+					statement.setObject(1, id);
+					statement.executeUpdate();
+				}
 				try (PreparedStatement statement = connection
 						.prepareStatement("DELETE FROM story_version WHERE id = ?")) {
 					statement.setObject(1, id);
@@ -471,6 +483,79 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 
 		assertThat(this.facade.briefs(List.of(versionId)).get(versionId).coverImage())
 				.startsWith("http").contains("X-Amz-Signature");
+	}
+
+	/**
+	 * <b>#378 · §13-79 — 인물 초상도 같은 판정을 지난다.</b>
+	 *
+	 * <p>초상은 커버와 <b>같은 버킷에 같은 방식으로</b> 올라가고 (§13-65) 같은 컬럼 관행을
+	 * 물려받았다 — 커버만 고치면 <b>같은 작품의 커버는 뜨고 인물만 깨진</b> 상태가 남으며,
+	 * 그것은 "승인 후 이미지는 서명해서 낸다"가 반쪽만 참인 상태다.
+	 */
+	@Test
+	void S13_79_an_approved_user_portrait_comes_back_signed() {
+		UUID storyId = insertStory("user", "public", "approved");
+		UUID versionId = insertVersion(storyId);
+		setCurrentVersion(storyId, versionId);
+		insertCharacter(storyId, versionId, PORTRAIT_KEY);
+
+		CharacterCardView character = this.facade.detail(storyId).orElseThrow().characters()
+				.getFirst();
+
+		assertThat(character.portraitImage()).isNotEqualTo(PORTRAIT_KEY).startsWith("http")
+				.contains("X-Amz-Signature").contains("X-Amz-Expires=900");
+	}
+
+	/**
+	 * <b>공식 작품의 초상은 건드리지 않는다</b> (#378).
+	 *
+	 * <p>커버와 같은 이유다 — 그 값은 이미 <b>실제 주소</b>이며, 서명하려 들면 주소를 객체 키로
+	 * 착각한 서명이 나가고 <b>지금 멀쩡한 초상이 깨진다.</b> 무엇이 UGC 인지는
+	 * {@code author_type} 이 안다.
+	 */
+	@Test
+	void S13_79_an_official_portrait_is_passed_through() {
+		UUID storyId = insertStory("official", "public", "approved", null);
+		UUID versionId = insertVersion(storyId);
+		setCurrentVersion(storyId, versionId);
+		insertCharacter(storyId, versionId, OFFICIAL_PORTRAIT_URL);
+
+		assertThat(this.facade.detail(storyId).orElseThrow().characters().getFirst().portraitImage())
+				.isEqualTo(OFFICIAL_PORTRAIT_URL);
+	}
+
+	/** 상세에 보이는 인물 하나. <b>초상 값은 가상의 문자열이다</b> (S-11). */
+	private void insertCharacter(UUID storyId, UUID versionId, String portraitUrl) {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection.prepareStatement("""
+						INSERT INTO character (id, story_version_id, story_id, name, role,
+								portrait_url, one_line, persona_prompt, display_order,
+								is_visible_in_detail)
+						VALUES (?, ?, ?, '유나', '친구', ?, '한 줄', '페르소나', 1, TRUE)
+						""")) {
+			statement.setObject(1, UUID.randomUUID());
+			statement.setObject(2, versionId);
+			statement.setObject(3, storyId);
+			statement.setString(4, portraitUrl);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
+
+	/** 상세는 {@code current_version_id} 를 기준으로 읽는다 (R2.1) — 그 자리를 실제 버전으로 맞춘다. */
+	private void setCurrentVersion(UUID storyId, UUID versionId) {
+		try (Connection connection = this.dataSource.getConnection();
+				PreparedStatement statement = connection
+						.prepareStatement("UPDATE story SET current_version_id = ? WHERE id = ?")) {
+			statement.setObject(1, versionId);
+			statement.setObject(2, storyId);
+			statement.executeUpdate();
+		}
+		catch (SQLException ex) {
+			throw new IllegalStateException(ex);
+		}
 	}
 
 	/** 커버 키를 그 작품에 붙인다. <b>가상의 문자열이다</b> (S-11). */
