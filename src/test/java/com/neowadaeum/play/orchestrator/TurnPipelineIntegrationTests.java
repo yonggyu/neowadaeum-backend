@@ -10,6 +10,7 @@ import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.ai.provider.StoryProvider;
 import com.neowadaeum.ai.provider.TurnOnlyStoryProvider;
 import com.neowadaeum.ai.schema.TurnOutputParser;
+import com.neowadaeum.play.port.GenerationContext;
 import com.neowadaeum.play.port.TurnRequest;
 import com.neowadaeum.play.port.GeneratedChoice;
 import com.neowadaeum.play.port.GeneratedParagraph;
@@ -23,6 +24,7 @@ import com.neowadaeum.play.engine.ChapterEngine;
 import com.neowadaeum.play.engine.EndingEngine;
 import com.neowadaeum.play.engine.GameState;
 import com.neowadaeum.play.engine.GameStateEngine;
+import com.neowadaeum.play.engine.StateSchema;
 import com.neowadaeum.play.repository.GameStateSnapshotRepository;
 import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.StorySummaryRepository;
@@ -222,6 +224,88 @@ class TurnPipelineIntegrationTests extends ContainerTestBase {
 
 		assertThat(state.turn()).isEqualTo(2);
 		assertThat(state.numerics()).containsKey("affinity.yuna");
+	}
+
+	// ── 어휘와 화이트리스트는 한 목록이다 (#381) ─────────────
+
+	/**
+	 * <b>R4.1 · §13-76 — 프롬프트가 내주는 이름과 엔진이 받아들이는 이름은 하나다</b> (#367, #381).
+	 *
+	 * <p>한 턴에는 {@code state_schema} 가 둘 있을 수 없다. 프롬프트에 실리는 어휘와 병합을
+	 * 허락하는 화이트리스트가 갈라지면 <b>모델이 내준 이름대로 답해도 엔진이 조용히 버린다</b> —
+	 * 그리고 그 이름을 가리키는 챕터·엔딩 조건은 영원히 거짓이 된다. 예외도 오류도 없고 증상은
+	 * <b>"상태가 가끔 안 바뀐다"</b> 하나뿐이라, 이 사실은 테스트가 아니면 아무 데서도 드러나지
+	 * 않는다.
+	 *
+	 * <p><b>조회 횟수를 세지 않는다.</b> 지키려는 것은 몇 번 읽는가가 아니라 <b>읽은 값이
+	 * 같은가</b>이고, 횟수 단언은 구현에 테스트를 못박는다 (#276, #294 가 같은 판단을 했다).
+	 * 그래서 양쪽 끝을 건다 — 작품이 선언한 목록이 <b>빠짐없이</b> 프롬프트에 닿고, 그 목록의
+	 * 이름을 그대로 제안하면 <b>하나도 남김없이</b> 상태가 된다.
+	 */
+	@Test
+	void R4_1_the_prompt_and_the_engine_see_one_state_schema() {
+		UUID sessionId = newSession();
+		java.util.List<GenerationContext.StateVocabulary> offered = new java.util.ArrayList<>();
+		StoryProvider echoing = new TurnOnlyStoryProvider() {
+			@Override
+			public String providerId() {
+				return "vocabulary-echo";
+			}
+
+			@Override
+			public GeneratedTurn generateTurn(TurnRequest request) {
+				GenerationContext.StateVocabulary vocabulary = request.context().stateVocabulary();
+				offered.add(vocabulary);
+				return new GeneratedTurn(List.of(GeneratedParagraph.narration("이름을 전부 써 보는 턴.")),
+						List.of(new GeneratedChoice(1, "계속한다")), proposeEveryName(vocabulary), false, null);
+			}
+		};
+
+		pipelineWith(echoing).advance(sessionId, null);
+
+		// ① 작품이 선언한 것이 프롬프트에 그대로 닿는다 (§13-76). 어휘가 비면 ② 는 아무것도
+		//    증명하지 못하므로, 목록 자체를 선언과 대조한다.
+		GenerationContext.StateVocabulary vocabulary = offered.getFirst();
+		StateSchema declared = StateSchema.from(
+				this.storyVersions.findByVersionId(SEED_VERSION).orElseThrow().stateSchema());
+		assertThat(declared.numerics()).as("이 시드는 수치를 선언한다 — 아니면 이 테스트가 비어 있다").isNotEmpty();
+		assertThat(declared.flags()).as("이 시드는 플래그를 선언한다").isNotEmpty();
+		assertThat(vocabulary.numerics())
+				.as("선언된 수치 이름이 프롬프트에 닿기 전에 사라졌다 (§13-76)")
+				.containsExactlyInAnyOrderElementsOf(declared.numerics().keySet());
+		assertThat(vocabulary.flags())
+				.as("선언된 플래그 이름이 프롬프트에 닿기 전에 사라졌다 (§13-76)")
+				.containsExactlyInAnyOrderElementsOf(declared.flags());
+		assertThat(vocabulary.inventory())
+				.containsExactlyInAnyOrderElementsOf(declared.inventory());
+
+		// ② 그 이름을 그대로 제안하면 엔진이 전부 받아들인다 (R4.1). 화이트리스트가 어휘와
+		//    갈라졌다면 여기서 조용히 빠진 이름이 나온다.
+		GameState state = this.snapshots
+				.findFirstBySessionIdAndDeletedAtIsNullOrderByTurnNoDesc(sessionId)
+				.map(snapshot -> GameState.from(JSON.readTree(snapshot.getState())))
+				.orElseThrow();
+
+		assertThat(state.numerics().keySet())
+				.as("프롬프트가 내준 수치 이름을 엔진이 버렸다 (R4.1, #367)")
+				.containsAll(vocabulary.numerics());
+		assertThat(state.flags())
+				.as("프롬프트가 내준 플래그 이름을 엔진이 버렸다 (R4.1, #367)")
+				.containsAll(vocabulary.flags());
+		assertThat(state.inventory())
+				.as("프롬프트가 내준 소지품 이름을 엔진이 버렸다 (R4.1, #367)")
+				.containsAll(vocabulary.inventory());
+	}
+
+	/** 어휘가 내준 이름을 <b>하나도 빼지 않고</b> 제안하는 {@code stateChanges} (§13-9 의 연산자). */
+	private static JsonNode proposeEveryName(GenerationContext.StateVocabulary vocabulary) {
+		var changes = JSON.createObjectNode();
+		vocabulary.numerics().forEach(path -> changes.put(path, 1));
+		var flags = changes.putArray("flags.add");
+		vocabulary.flags().forEach(flags::add);
+		var items = changes.putArray("inventory.add");
+		vocabulary.inventory().forEach(items::add);
+		return changes;
 	}
 
 	// ── AI 제안값 우회 방지 (tasks.md S-9 요구사항 1) ────────
