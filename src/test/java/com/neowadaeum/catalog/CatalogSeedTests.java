@@ -54,13 +54,21 @@ class CatalogSeedTests extends ContainerTestBase {
 
 	// ── §2.3 원문 대조 ───────────────────────────────────────
 
-	/** §2.3 {@code story} — 컬럼 이름과 구성이 원문 그대로여야 한다. I-19 상 age_rating 은 원문에도 없다. */
+	/**
+	 * §2.3 {@code story} — 컬럼 이름과 구성이 원문 그대로여야 한다. I-19 상 age_rating 은
+	 * 원문에도 없다.
+	 *
+	 * <p><b>{@code pending_visibility} 는 원문에 없다</b> (#391, §13-83). 이미지가 있는 원고가
+	 * {@code public} 이 아닐 때도 사람을 기다리기 시작하면서, <b>통과가 열 자리</b>와
+	 * <b>반려됐을 때 돌아갈 자리</b>가 서로 다른 값이 됐다 — 한 컬럼이 둘을 답하면 통과가
+	 * 작성자가 고르지 않은 넓이로 작품을 연다 (I-8).
+	 */
 	@Test
 	void S2_3_story_columns_match_the_requirement_source() throws SQLException {
 		assertThat(columns("story")).containsExactlyInAnyOrder(
 				"id", "slug", "title", "cover_url", "hero_url", "short_desc", "description",
 				"world_intro", "author_type", "author_ref", "visibility", "review_status",
-				"current_version_id", "published_at", "created_at");
+				"current_version_id", "published_at", "created_at", "pending_visibility");
 	}
 
 	/**

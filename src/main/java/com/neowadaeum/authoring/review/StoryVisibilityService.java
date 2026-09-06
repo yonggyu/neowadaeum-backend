@@ -102,8 +102,11 @@ public class StoryVisibilityService {
 			throw new ApiException(ErrorCode.VALIDATION_ERROR,
 					Map.of("reason", "promote_requires_unlisted"));
 		}
-		this.publisher.applyReview(storyId, ReviewStatus.IN_REVIEW.columnValue(),
-				current.columnValue());
+		// §13-83 — 남겨 두는 자리(current)와 통과가 열 자리(public)는 다른 사실이다. 여기서는
+		// 늘 public 이지만 그 값을 적어 두는 것은 제출 경로가 다른 값을 적기 시작했기
+		// 때문이다 (#391) — 읽는 쪽에 규칙이 둘이면 무른 쪽이 곧 길이 된다.
+		this.publisher.awaitReview(storyId, current.columnValue(),
+				Visibility.PUBLIC.columnValue());
 		this.reviews.save(StoryReview.of(storyId, ReviewStage.AUTO, ReviewVerdict.PASS, "[]", null,
 				null, Instant.now(this.clock)));
 		return new VisibilityOutcome(storyId, ReviewStatus.IN_REVIEW, current, null);
