@@ -8,6 +8,9 @@ import com.neowadaeum.authoring.blocklist.BlocklistKind;
 import com.neowadaeum.authoring.blocklist.BlocklistSeverity;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.StoryDraftRepository;
+import com.neowadaeum.play.domain.PlaySession;
+import com.neowadaeum.play.repository.PlaySessionRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -43,6 +46,9 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 			 "endings":[{"label":"좋은 끝","epilogueText":"잘 끝났다."}]}
 			""";
 
+	/** 이 클래스만 쓰는 플레이어 — 뒷정리가 남의 세션을 지우지 않는다. */
+	private static final UUID PLAYER_REF = UUID.fromString("00000000-0000-4000-8000-0000000000f3");
+
 	@Autowired
 	private UgcRescanner rescanner;
 
@@ -65,6 +71,9 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 	private BlocklistAdminService blocklist;
 
 	@Autowired
+	private PlaySessionRepository sessions;
+
+	@Autowired
 	@Qualifier("catalogDataSource")
 	private DataSource catalog;
 
@@ -72,9 +81,14 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 
 	@AfterEach
 	void clear() {
+		this.sessions.findAll().stream().filter(session -> PLAYER_REF.equals(session.getPlayerRef()))
+				.forEach(this.sessions::delete);
 		JdbcClient jdbc = JdbcClient.create(this.catalog);
 		this.reviews.deleteAll();
 		for (UUID storyId : this.stories) {
+			// 인물도 버전에 매달려 있다 (§13-1) — 남겨 두면 버전 삭제가 FK 로 막히고, 실패가
+			// **다음 테스트의 제출 반려**로 옮겨 붙는다 (블록리스트 뒷정리까지 못 간다).
+			jdbc.sql("DELETE FROM character WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("UPDATE story SET current_version_id = NULL WHERE id = ?").param(storyId).update();
@@ -193,6 +207,91 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 	}
 
 	/**
+	 * <b>인물의 페르소나도 대상이다</b> (R8.11, §13-80).
+	 *
+	 * <p>페르소나는 <b>매 턴 모델에게 들어간다</b> (인물 레이어). 제출 검수는 이것을 걸지만
+	 * (§13-75), 재스캔이 읽지 않으면 블록리스트가 갱신돼도 <b>이 문장만 옛 기준으로 남는다.</b>
+	 */
+	@Test
+	void R8_11_a_character_persona_is_rescanned() {
+		UUID storyId = givenApprovedStory(
+				payloadWith(characterOf("이웃", "옆자리에 앉는다.", FICTIONAL + " 을 닮았다.")));
+		registerFictionalEntry();
+
+		assertThat(this.rescanner.rescan()).isEqualTo(1);
+		assertThat(column(storyId, "review_status")).isEqualTo("suspended");
+	}
+
+	/** <b>인물 이름도 대상이다</b> — 타인의 상세 화면에 뜬다 (I-8, R8.11). */
+	@Test
+	void R8_11_a_character_name_is_rescanned() {
+		UUID storyId = givenApprovedStory(
+				payloadWith(characterOf(FICTIONAL, "옆자리에 앉는다.", "말수가 적다.")));
+		registerFictionalEntry();
+
+		assertThat(this.rescanner.rescan()).isEqualTo(1);
+		assertThat(column(storyId, "review_status")).isEqualTo("suspended");
+	}
+
+	/**
+	 * <b>선언된 플래그 이름도 대상이다</b> (R8.11, §13-80).
+	 *
+	 * <p>짧은 라벨을 본문과 다르게 보지 않는다 (§13-75) — 판정이 둘이 되면 무른 쪽이 곧 길이
+	 * 된다. 선언된 이름은 한 번 서면 매 턴 {@code GAME_STATE} 로 나간다 (§13-76).
+	 */
+	@Test
+	void R8_11_a_declared_flag_name_is_rescanned() {
+		UUID storyId = givenApprovedStory(payloadWith("\"flags\":[\"" + FICTIONAL + "만남\"]"));
+		registerFictionalEntry();
+
+		assertThat(this.rescanner.rescan()).isEqualTo(1);
+		assertThat(column(storyId, "review_status")).isEqualTo("suspended");
+	}
+
+	/**
+	 * <b>진행 중 세션이 붙든 옛 버전도 대상이다</b> (I-4, §13-80).
+	 *
+	 * <p>세션은 생성 시 버전에 고정되므로 개정 뒤에도 <b>옛 버전의 세계관을 매 턴 모델에
+	 * 싣는다.</b> 현재 버전만 훑으면 <b>읽히고 있는데 검사되지 않는 자리</b>가 남는다.
+	 */
+	@Test
+	void S13_80_a_version_an_active_session_pinned_is_rescanned() {
+		UUID authorRef = UUID.randomUUID();
+		UUID draftId = this.drafts.create(authorRef).getId();
+		UUID storyId = approve(authorRef, draftId,
+				CLEAN_PAYLOAD.replace("봄의 학교에서 시작한다.", FICTIONAL + " 이 나온다."));
+		UUID pinnedVersion = currentVersionOf(storyId);
+		approve(authorRef, draftId, CLEAN_PAYLOAD);
+		assertThat(currentVersionOf(storyId))
+				.as("개정이 새 버전을 만들지 않았다면 이 테스트는 아무것도 확인하지 못한다")
+				.isNotEqualTo(pinnedVersion);
+		givenActiveSessionOn(storyId, pinnedVersion);
+		registerFictionalEntry();
+
+		assertThat(this.rescanner.rescan()).isEqualTo(1);
+		assertThat(column(storyId, "review_status")).isEqualTo("suspended");
+	}
+
+	/**
+	 * <b>아무도 붙들지 않는 옛 버전은 대상이 아니다</b> (§13-80).
+	 *
+	 * <p>재스캔이 묻는 것은 <b>지금 읽히고 있는가</b>이다. 전량을 훑으면 작성자가 고쳐서 이미
+	 * 지나간 문장 때문에 <b>고친 작품이 내려간다.</b>
+	 */
+	@Test
+	void S13_80_an_old_version_no_session_holds_is_left_alone() {
+		UUID authorRef = UUID.randomUUID();
+		UUID draftId = this.drafts.create(authorRef).getId();
+		UUID storyId = approve(authorRef, draftId,
+				CLEAN_PAYLOAD.replace("봄의 학교에서 시작한다.", FICTIONAL + " 이 나온다."));
+		approve(authorRef, draftId, CLEAN_PAYLOAD);
+		registerFictionalEntry();
+
+		assertThat(this.rescanner.rescan()).isZero();
+		assertThat(column(storyId, "review_status")).isEqualTo("approved");
+	}
+
+	/**
 	 * 승인된 작품 하나.
 	 *
 	 * <p><b>여기서 단언한다.</b> 제출이 반려되면 {@code storyId} 가 비고, 그러면 실패가
@@ -200,14 +299,49 @@ class UgcRescanIntegrationTests extends ContainerTestBase {
 	 */
 	private UUID givenApprovedStory(String payload) {
 		UUID authorRef = UUID.randomUUID();
-		UUID draftId = this.drafts.create(authorRef).getId();
+		return approve(authorRef, this.drafts.create(authorRef).getId(), payload);
+	}
+
+	/**
+	 * 같은 원고를 다시 내면 <b>같은 작품에 새 버전이 얹힌다</b> (R8.8, B-56).
+	 *
+	 * <p>제출이 반려되면 {@code storyId} 가 비고, 그러면 실패가 <b>"재스캔이 동작하지 않는다"</b>
+	 * 로 보인다 — 원인은 제출 쪽인데.
+	 */
+	private UUID approve(UUID authorRef, UUID draftId, String payload) {
 		this.drafts.save(authorRef, draftId, 5, payload);
 		var outcome = this.submissions.submit(authorRef, draftId, Visibility.UNLISTED);
 		assertThat(outcome.reviewStatus())
 				.as("픽스처가 자동 검수에서 걸렸다 — 블록리스트가 비어 있어야 한다")
 				.isEqualTo(ReviewStatus.APPROVED);
-		this.stories.add(outcome.storyId());
+		if (!this.stories.contains(outcome.storyId())) {
+			this.stories.add(outcome.storyId());
+		}
 		return outcome.storyId();
+	}
+
+	/** 원고에 한 벌 더 얹는다. {@code endings} 앞이면 같은 객체의 어디든 같다. */
+	private static String payloadWith(String fragment) {
+		return CLEAN_PAYLOAD.replace("\"endings\":", fragment + ",\n \"endings\":");
+	}
+
+	private static String characterOf(String name, String oneLine, String persona) {
+		return "\"characters\":[{\"name\":\"%s\",\"oneLine\":\"%s\",\"persona\":\"%s\"}]".formatted(name,
+				oneLine, persona);
+	}
+
+	private void givenActiveSessionOn(UUID storyId, UUID versionId) {
+		this.sessions.saveAndFlush(PlaySession.start(PLAYER_REF, storyId, versionId, "fixed",
+				"scenario", false, Instant.now()));
+	}
+
+	private void registerFictionalEntry() {
+		this.blocklist.register(BlocklistKind.REAL_PERSON, FICTIONAL, BlocklistSeverity.BLOCK, "test");
+	}
+
+	private UUID currentVersionOf(UUID storyId) {
+		return JdbcClient.create(this.catalog).sql("SELECT current_version_id FROM story WHERE id = ?")
+				.param(storyId).query(UUID.class).optional().orElse(null);
 	}
 
 	private String column(UUID storyId, String name) {
