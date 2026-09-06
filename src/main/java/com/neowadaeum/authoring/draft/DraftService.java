@@ -36,14 +36,19 @@ public class DraftService {
 
 	private final DraftVocabularyGate vocabulary;
 
+	/** §13-81 — 어휘와 다른 축이다 (#380). 이쪽이 재는 것은 검수 한 번의 크기다. */
+	private final DraftScaleGate scale;
+
 	private final Clock clock;
 
 	private final TransactionTemplate transactions;
 
-	public DraftService(StoryDraftRepository drafts, DraftVocabularyGate vocabulary, Clock clock,
+	public DraftService(StoryDraftRepository drafts, DraftVocabularyGate vocabulary,
+			DraftScaleGate scale, Clock clock,
 			PlatformTransactionManager catalogTransactionManager) {
 		this.drafts = drafts;
 		this.vocabulary = vocabulary;
+		this.scale = scale;
 		this.clock = clock;
 		this.transactions = new TransactionTemplate(catalogTransactionManager);
 	}
@@ -81,7 +86,11 @@ public class DraftService {
 		// #326 — 고른 조건이 원고에 없는 이름을 가리키면 여기서 막는다. 발행까지 미루면
 		// 작성자는 **왜 그 엔딩이 안 나오는지**를 끝내 알지 못한다.
 		// §13-76 — 그 이름들이 프롬프트에 실릴 수 있는지도 같은 자리에서 본다 (#367).
-		this.vocabulary.verify(DraftStoryDefinition.validateConditions(payload));
+		DraftStoryDefinition.Declared declared = DraftStoryDefinition.validateConditions(payload);
+		this.vocabulary.verify(declared.vocabulary());
+		// §13-81 — 그리고 이 원고가 검수 한 번의 크기를 정하지 못하게 한다 (#380). 앞의 게이트가
+		// 재는 것은 프롬프트 예산이고 챕터·엔딩은 거기 실리지 않는다 — 세는 자리가 따로 필요하다.
+		this.scale.verify(declared);
 		return this.transactions.execute(status -> {
 			StoryDraft draft = requireOwned(authorRef, draftId);
 			if (draft.getSafetyState() == DraftSafetyState.BLOCKED && step > draft.getStep()) {

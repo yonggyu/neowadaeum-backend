@@ -3,6 +3,7 @@ package com.neowadaeum.authoring.review;
 import com.neowadaeum.authoring.UgcLimitProperties;
 import com.neowadaeum.authoring.draft.DraftService;
 import com.neowadaeum.authoring.draft.DraftStoryDefinition;
+import com.neowadaeum.authoring.draft.DraftScaleGate;
 import com.neowadaeum.authoring.draft.DraftVocabularyGate;
 import com.neowadaeum.authoring.draft.StoryDraft;
 import com.neowadaeum.authoring.precheck.PrecheckFinding;
@@ -48,6 +49,9 @@ public class SubmissionService {
 	/** §13-76 — 저장 게이트를 지나오지 않은 원고를 위한 두 번째 자리 (#367). */
 	private final DraftVocabularyGate vocabulary;
 
+	/** §13-81 — 같은 자리, 다른 축 (#380). 이쪽은 이 제출이 만들 필드 지도의 크기를 잰다. */
+	private final DraftScaleGate scale;
+
 	private final PrecheckScreen screen;
 
 	private final StoryPublisher publisher;
@@ -63,12 +67,14 @@ public class SubmissionService {
 
 	private final TransactionTemplate transactions;
 
-	public SubmissionService(DraftService drafts, DraftVocabularyGate vocabulary, PrecheckScreen screen,
-			StoryPublisher publisher, StoryReviewRepository reviews, StoryReviewTimeline timeline,
+	public SubmissionService(DraftService drafts, DraftVocabularyGate vocabulary,
+			DraftScaleGate scale, PrecheckScreen screen, StoryPublisher publisher,
+			StoryReviewRepository reviews, StoryReviewTimeline timeline,
 			UgcLimitProperties limits, Clock clock,
 			PlatformTransactionManager catalogTransactionManager) {
 		this.drafts = drafts;
 		this.vocabulary = vocabulary;
+		this.scale = scale;
 		this.screen = screen;
 		this.publisher = publisher;
 		this.reviews = reviews;
@@ -90,7 +96,14 @@ public class SubmissionService {
 		// §13-76 — 저장 게이트가 붙기 전에 저장된 원고가 여기로 온다 (#367). 승인은 곧 게시이고
 		// 세션은 버전에 고정되므로 (I-4), 넘긴 어휘가 통과하면 그 작품은 **모든 턴에서** 실패한다.
 		// 반려가 아직 작성자의 문제인 마지막 자리가 여기다.
-		this.vocabulary.verify(DraftStoryDefinition.validateConditions(draft.getPayload()));
+		DraftStoryDefinition.Declared declared = DraftStoryDefinition
+				.validateConditions(draft.getPayload());
+		this.vocabulary.verify(declared.vocabulary());
+
+		// §13-81 — 그리고 이 원고가 **검수 한 번의 크기**를 정하지 못하게 한다 (#380). 앞의
+		// 게이트는 프롬프트 예산을 재므로 챕터·엔딩은 그대로 지나간다 — 아래 fieldsOf 가 펼치는
+		// 지도는 그 개수에 비례하고, 상한이 없으면 원고 하나가 제출 한 번의 비용을 정한다.
+		this.scale.verify(declared);
 
 		// #326 — 작품 정의와 상태 스키마가 함께 나온다. 조건이 보는 이름과 화이트리스트에
 		// 선언되는 이름은 같은 목록이어야 한다.
