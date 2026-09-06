@@ -377,7 +377,7 @@ public class SubmissionService {
 	 */
 	private static boolean carriesAnImage(StoryDefinition definition) {
 		return present(definition.coverImageKey())
-				|| definition.characters().stream().anyMatch(character -> present(character.portraitUrl()));
+				|| definition.characters().stream().anyMatch(character -> present(character.portraitImageKey()));
 	}
 
 	private static boolean present(String objectKey) {

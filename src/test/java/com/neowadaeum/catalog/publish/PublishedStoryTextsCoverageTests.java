@@ -86,7 +86,12 @@ class PublishedStoryTextsCoverageTests extends ContainerTestBase {
 			Map.entry("ending_def.condition", "같은 이유다 — 작성자가 보낸 것은 고른 것뿐이다"),
 			Map.entry("ending_def.visual_url", "객체 키다 (#315). 이미지는 사람이 판정한다 (§13-83)"),
 			Map.entry("character.role", "발행 경로가 쓰지 않는다 — 원고 계약에 그 칸이 없다 (§13-70)"),
-			Map.entry("character.portrait_url", "업로드가 확정한 객체 키다 (#315, §13-83)"));
+			Map.entry("character.portrait_url", "업로드가 확정한 객체 키다 (#315, §13-83)"),
+			// 아래 셋은 위 세 컬럼의 개명분이다 (#396, §13-85). 개명이 끝날 때까지 옛 이름과
+			// 함께 서므로 같은 이유가 두 자리에 적힌다 — 옛 컬럼이 빠지는 날 이 줄만 남는다.
+			Map.entry("story.cover_image_key", "업로드가 확정한 객체 키다 (#315). 이미지는 사람이 판정한다 (§13-83)"),
+			Map.entry("story_version.cover_image_key", "같은 스냅샷이고, 그 값은 객체 키다 (§13-83)"),
+			Map.entry("character.portrait_image_key", "업로드가 확정한 객체 키다 (#315, §13-83)"));
 
 	@Autowired
 	private PublishedStoryTexts published;
