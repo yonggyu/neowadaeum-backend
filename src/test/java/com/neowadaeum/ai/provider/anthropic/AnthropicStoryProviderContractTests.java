@@ -35,7 +35,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -86,11 +85,7 @@ class AnthropicStoryProviderContractTests {
 				"http://localhost:" + this.server.port(), 4096, null);
 
 		this.provider = new AnthropicStoryProvider(
-				RestClient.builder()
-						.baseUrl(properties.baseUrl())
-						.defaultHeader("x-api-key", properties.apiKey())
-						.defaultHeader("anthropic-version", "2023-06-01")
-						.build(),
+				AnthropicProviderConfiguration.restClient(properties, new ProviderProperties(null, null)),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
 				new TurnOutputParser(),
@@ -111,11 +106,7 @@ class AnthropicStoryProviderContractTests {
 		AnthropicProperties properties = new AnthropicProperties("test-key", turnModel("claude-opus-5"),
 				"http://localhost:" + this.server.port(), 4096, pricing);
 		return new AnthropicStoryProvider(
-				RestClient.builder()
-						.baseUrl(properties.baseUrl())
-						.defaultHeader("x-api-key", properties.apiKey())
-						.defaultHeader("anthropic-version", "2023-06-01")
-						.build(),
+				AnthropicProviderConfiguration.restClient(properties, new ProviderProperties(null, null)),
 				properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
 				new TurnOutputParser(),

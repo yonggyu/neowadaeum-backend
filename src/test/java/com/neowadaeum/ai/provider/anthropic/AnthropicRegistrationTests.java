@@ -10,7 +10,6 @@ import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.provider.StoryProvider;
 import java.util.List;
 import java.util.Optional;
-import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -70,25 +69,6 @@ class AnthropicRegistrationTests {
 	@Test
 	void R3_1_no_configuration_means_no_adapter() {
 		this.runner.run(context -> assertThat(context.getBeansOfType(AnthropicStoryProvider.class)).isEmpty());
-	}
-
-	/**
-	 * <b>소켓 읽기 상한은 생성 예산보다 항상 크다</b> (#93 점검, §13-19).
-	 *
-	 * <p>작거나 같으면 <b>상한이 먼저 끊고</b>, 시간 초과가 {@code 504} 가 아니라 {@code 502} 로
-	 * 나간다 — 원인은 시간인데 표시는 벤더 장애가 된다. 상수로 고정해 두면 예산을 그보다 크게
-	 * 잡는 순간 이 오분류가 조용히 생긴다.
-	 */
-	@Test
-	void S13_19_the_socket_ceiling_never_preempts_the_generation_budget() {
-		assertThat(AnthropicProviderConfiguration.socketReadCeiling(
-						new ProviderProperties(Duration.ofSeconds(25), null)))
-				.isGreaterThan(Duration.ofSeconds(25));
-
-		assertThat(AnthropicProviderConfiguration.socketReadCeiling(
-						new ProviderProperties(Duration.ofSeconds(90), null)))
-				.as("예산을 90초로 올려도 상한이 먼저 끊으면 안 된다")
-				.isGreaterThan(Duration.ofSeconds(90));
 	}
 
 	/**

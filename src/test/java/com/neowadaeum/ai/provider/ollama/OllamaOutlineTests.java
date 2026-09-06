@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
@@ -13,6 +14,7 @@ import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
 import com.neowadaeum.ai.provider.OutlineRequest;
 import com.neowadaeum.ai.provider.OutlineResult;
+import com.neowadaeum.ai.provider.ProviderProperties;
 import com.neowadaeum.ai.schema.OutlineOutputSchemaException;
 import com.neowadaeum.ai.schema.TurnOutputParser;
 import com.neowadaeum.common.support.FixedTokenCounter;
@@ -24,7 +26,6 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -112,22 +113,40 @@ class OllamaOutlineTests {
 		});
 	}
 
-	/** <b>로컬 모델이라고 관대해지지 않는다.</b> Anthropic 과 같은 것을 거부한다. */
+	/**
+	 * <b>로컬 모델이라고 관대해지지 않는다.</b> Anthropic 과 같은 것을 거부한다.
+	 *
+	 * <p><b>응답을 받았다는 것부터 단언한다</b> (#374). 전송이 실패해도 이 테스트는 빨개지는데,
+	 * 그때 실패 메시지가 하는 말은 "스키마 예외를 기대했는데 호출 실패였다"뿐이다 — <b>이 테스트가
+	 * 무엇을 지키는지를 말하지 못한다.</b> 기록된 응답이 있는지를 먼저 보면 두 실패가 서로 다른
+	 * 자리에서 갈린다: 응답이 없으면 전송, 있으면 계약이다.
+	 */
 	@Test
 	void B52_a_violating_response_becomes_a_schema_exception() {
 		respondWith("초안을 만들어 드릴게요");
 
-		assertThatThrownBy(() -> this.provider.draftOutline(REQUEST))
-				.isInstanceOf(OutlineOutputSchemaException.class);
+		Throwable thrown = catchThrowable(() -> this.provider.draftOutline(REQUEST));
+
+		assertThat(this.recorded).singleElement().satisfies(log -> assertThat(log.responseRaw())
+				.as("응답이 기록되지 않았다면 이것은 계약 위반이 아니라 전송 실패다 (#374)")
+				.isNotNull());
+		assertThat(thrown).isInstanceOf(OutlineOutputSchemaException.class);
 	}
 
-	/** 호출 자체가 실패하면 <b>계약 위반이 아니다.</b> */
+	/**
+	 * 호출 자체가 실패하면 <b>계약 위반이 아니다.</b>
+	 *
+	 * <p>위 테스트와 짝이다. 두 실패의 경계를 예외 타입만이 아니라 <b>기록된 사실</b>로도 긋는다 —
+	 * 전송이 실패한 호출에는 남길 응답이 없다.
+	 */
 	@Test
 	void B52_a_transport_failure_is_not_a_schema_violation() {
 		this.server.stubFor(post(urlEqualTo("/api/chat")).willReturn(aResponse().withStatus(500)));
 
 		assertThatThrownBy(() -> this.provider.draftOutline(REQUEST))
 				.isInstanceOf(ProviderCallFailedException.class);
+		assertThat(this.recorded).singleElement()
+				.satisfies(log -> assertThat(log.responseRaw()).isNull());
 	}
 
 	/** 초안용 모델이 없으면 <b>턴 모델로 대신하지 않는다</b> (R3.6). */
@@ -140,11 +159,17 @@ class OllamaOutlineTests {
 				.isInstanceOf(ProviderCallFailedException.class);
 	}
 
+	/**
+	 * <b>운영과 같은 {@code RestClient} 를 쓴다</b> (#374).
+	 *
+	 * <p>손으로 만들면 요청 팩토리도 타임아웃도 운영과 갈라진다 — #93 이 Anthropic 에서 같은
+	 * 것을 고쳤고, 이쪽에는 그 규칙이 오지 않아 <b>전송이 테스트마다 다른 것</b>이 되어 있었다.
+	 */
 	private OllamaStoryProvider adapter(OllamaProperties.Models models) {
 		OllamaProperties properties =
 				new OllamaProperties("http://localhost:" + this.server.port(), models);
 		return new OllamaStoryProvider(
-				RestClient.builder().baseUrl(properties.baseUrl()).build(), properties,
+				OllamaProviderConfiguration.restClient(properties, new ProviderProperties(null, null)), properties,
 				new TurnPromptFactory(new PromptAssembler(new FixedTokenCounter(), RecentTurnsProperties.defaults())),
 				new TurnOutputParser(), this.recorded::add);
 	}
