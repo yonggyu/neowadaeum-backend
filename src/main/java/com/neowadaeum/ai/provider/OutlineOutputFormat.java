@@ -1,6 +1,7 @@
 package com.neowadaeum.ai.provider;
 
 import com.neowadaeum.ai.schema.OutlineOutputSchemaException;
+import com.neowadaeum.play.port.ProviderCallFailedException;
 import java.util.ArrayList;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
@@ -47,8 +48,11 @@ public final class OutlineOutputFormat {
 			parsed = JSON.readTree(text);
 		}
 		catch (RuntimeException ex) {
-			// 원문을 메시지에 담지 않는다 (S-3).
-			throw new OutlineOutputSchemaException("outline response is not json", ex);
+			// 원문을 메시지에 담지 않는다 (S-3). 원인 예외도 붙이지 않는다 (§13-86) — 파서는
+			// 어긋난 지점을 보이려고 메시지에 원문 조각을 인용하고, cause 로 붙이면 그것이
+			// 스택트레이스를 타고 로그로 나간다. 남기는 것은 타입 이름의 사슬까지다.
+			throw new OutlineOutputSchemaException("outline response is not json",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 		if (!parsed.isObject()) {
 			throw new OutlineOutputSchemaException("outline response is not a json object");

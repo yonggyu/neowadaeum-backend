@@ -104,7 +104,8 @@ public class OllamaStoryProvider implements StoryProvider {
 		}
 		catch (RestClientException ex) {
 			record(AiPurpose.TURN, body, null, startedAt, null);
-			throw new ProviderCallFailedException("ollama call failed");
+			throw new ProviderCallFailedException("ollama call failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		record(AiPurpose.TURN, body, response, startedAt, null);
@@ -211,7 +212,8 @@ public class OllamaStoryProvider implements StoryProvider {
 		}
 		catch (RestClientException ex) {
 			record(AiPurpose.SAFETY, body, null, startedAt, null);
-			throw new ProviderCallFailedException("ollama safety classification failed");
+			throw new ProviderCallFailedException("ollama safety classification failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		Set<SafetyCategory> categories;
@@ -278,7 +280,8 @@ public class OllamaStoryProvider implements StoryProvider {
 		}
 		catch (RestClientException ex) {
 			record(AiPurpose.SUMMARY, body, null, startedAt, null);
-			throw new ProviderCallFailedException("ollama summary call failed");
+			throw new ProviderCallFailedException("ollama summary call failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		record(AiPurpose.SUMMARY, body, response, startedAt, null);
@@ -330,7 +333,8 @@ public class OllamaStoryProvider implements StoryProvider {
 		}
 		catch (RestClientException ex) {
 			record(AiPurpose.OUTLINE, body, null, startedAt, null);
-			throw new ProviderCallFailedException("ollama outline call failed");
+			throw new ProviderCallFailedException("ollama outline call failed",
+					ProviderCallFailedException.typeChainOf(ex));
 		}
 
 		record(AiPurpose.OUTLINE, body, response, startedAt, null);

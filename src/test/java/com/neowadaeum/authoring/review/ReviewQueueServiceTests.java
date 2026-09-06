@@ -32,6 +32,15 @@ class ReviewQueueServiceTests extends ContainerTestBase {
 			 "endings":[{"label":"좋은 끝","epilogueText":"잘 끝났다."}]}
 			""";
 
+	/**
+	 * 이미지가 있는 원고 (§13-83, #391) — <b>{@code public} 이 아니어도 큐를 지난다.</b>
+	 *
+	 * <p>객체 키는 가상의 문자열이다 (S-11). 확인하는 것은 이미지의 내용이 아니라 <b>그것이
+	 * 있다는 사실이 길을 가르는가</b>다.
+	 */
+	private static final String PAYLOAD_WITH_COVER = PAYLOAD.replace("\"shortDescription\":",
+			"\"coverImage\":\"drafts/x/cover\",\"shortDescription\":");
+
 	private static final UUID REVIEWER_REF = UUID.fromString("00000000-0000-4000-8000-0000000000e1");
 
 	@Autowired
@@ -443,22 +452,68 @@ class ReviewQueueServiceTests extends ContainerTestBase {
 				.isEqualTo(ErrorCode.NOT_FOUND);
 	}
 
+	/**
+	 * <b>통과는 작성자가 요청한 자리를 연다</b> (§13-83, #391).
+	 *
+	 * <p>이미지가 있는 원고는 {@code public} 이 아니어도 큐를 지난다. 그때 통과가 여는 값을
+	 * 상태만 보고 정하면 <b>{@code unlisted} 를 고른 작성자의 작품이 공개된다</b> — 승인은
+	 * 곧 게시이고 (R8.8) 그 넓이는 작성자가 고른 것이어야 한다 (I-8).
+	 */
+	@Test
+	void S13_83_a_pass_opens_the_visibility_the_author_asked_for() {
+		UUID storyId = submit(Visibility.UNLISTED, PAYLOAD_WITH_COVER);
+
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.PASS, List.of(), null);
+
+		assertThat(column(storyId, "visibility")).isEqualTo("unlisted");
+		assertThat(column(storyId, "review_status")).isEqualTo("approved");
+		// R8.8 — 승인이 곧 게시다. 열었으면 현재 버전을 가리킨다.
+		assertThat(column(storyId, "current_version_id")).isNotNull();
+		// 회차가 끝났으므로 요청도 남지 않는다 — 남기면 다음 회차가 그것으로 연다.
+		assertThat(column(storyId, "pending_visibility")).isNull();
+	}
+
+	/**
+	 * <b>반려된 이미지 제출은 아무것도 열지 않는다</b> (§13-83, I-8).
+	 *
+	 * <p>처음 내는 작품은 아무에게도 보인 적이 없으므로 돌아갈 자리가 없다 — 요청한 자리로
+	 * 돌아가면 <b>반려가 곧 게시</b>가 된다.
+	 */
+	@Test
+	void S13_83_a_rejected_image_submission_opens_nothing() {
+		UUID storyId = submit(Visibility.UNLISTED, PAYLOAD_WITH_COVER);
+
+		this.queue.decide(REVIEWER_REF, storyId, ReviewVerdict.REJECT, List.of(), null);
+
+		assertThat(column(storyId, "review_status")).isEqualTo("rejected");
+		assertThat(column(storyId, "visibility")).isEqualTo("private");
+		assertThat(column(storyId, "pending_visibility")).isNull();
+	}
+
 	/** 타인이 보는 문. 여기서 비면 <b>아무도 그 작품에 닿지 못한다</b> (I-8, R2.3). */
 	private java.util.Optional<com.neowadaeum.catalog.query.StoryDetailView> stories(UUID storyId) {
 		return this.catalogQueries.detail(storyId);
 	}
 
 	private UUID submit(Visibility visibility) {
-		UUID draftId = givenDraft();
+		return submit(visibility, PAYLOAD);
+	}
+
+	private UUID submit(Visibility visibility, String payload) {
+		UUID draftId = givenDraft(payload);
 		var outcome = this.submissions.submit(authorOf(draftId), draftId, visibility);
 		this.stories.add(outcome.storyId());
 		return outcome.storyId();
 	}
 
 	private UUID givenDraft() {
+		return givenDraft(PAYLOAD);
+	}
+
+	private UUID givenDraft(String payload) {
 		UUID authorRef = UUID.randomUUID();
 		UUID draftId = this.drafts.create(authorRef).getId();
-		this.drafts.save(authorRef, draftId, 5, PAYLOAD);
+		this.drafts.save(authorRef, draftId, 5, payload);
 		return draftId;
 	}
 

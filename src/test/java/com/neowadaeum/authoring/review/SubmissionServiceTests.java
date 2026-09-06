@@ -67,6 +67,10 @@ class SubmissionServiceTests extends ContainerTestBase {
 		for (UUID storyId : this.stories) {
 			jdbc.sql("DELETE FROM chapter_def WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM ending_def WHERE story_id = ?").param(storyId).update();
+			// 인물은 버전을 FK 로 참조한다 (#350). 여기서 빠지면 아래 story_version 삭제가
+			// 예외를 내고, 그 예외가 뒷정리의 나머지를 건너뛰어 **실패가 다음 테스트로 옮겨
+			// 붙는다** — 그때 터지는 것은 이 테스트가 아니다.
+			jdbc.sql("DELETE FROM character WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("UPDATE story SET current_version_id = NULL WHERE id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM story_version WHERE story_id = ?").param(storyId).update();
 			jdbc.sql("DELETE FROM story WHERE id = ?").param(storyId).update();
@@ -192,8 +196,84 @@ class SubmissionServiceTests extends ContainerTestBase {
 		assertThat(outcome.storyId()).isNull();
 	}
 
+	/**
+	 * <b>커버가 있는 원고는 자동 승인되지 않는다</b> (§13-83, #391).
+	 *
+	 * <p>L0 · L1 · L3 는 전부 문자열을 본다 — <b>이미지는 그 어느 것도 지나지 않는다.</b>
+	 * 커버는 15세 등급 판정의 대상이므로 (R8.5) 판정 주체가 사람뿐이면 사람이 볼 때까지
+	 * 게시하지 않는 것이 그 사실과 맞는 처리다.
+	 *
+	 * <p><b>객체 키는 가상의 문자열이다</b> (S-11). 여기서 확인하는 것은 이미지의 내용이 아니라
+	 * <b>이미지가 있다는 사실이 길을 가르는가</b>다.
+	 */
+	@Test
+	void S13_83_a_cover_image_sends_the_submission_to_a_human() {
+		var outcome = submit(Visibility.UNLISTED,
+				PAYLOAD.replace("\"shortDescription\":",
+						"\"coverImage\":\"drafts/x/cover\",\"shortDescription\":"));
+
+		assertThat(outcome.reviewStatus()).isEqualTo(ReviewStatus.IN_REVIEW);
+		assertThat(column(outcome.storyId(), "current_version_id")).isNull();
+	}
+
+	/** <b>초상도 같다</b> (§13-83) — 인물 수만큼 있으므로 커버보다 오히려 많다. */
+	@Test
+	void S13_83_a_character_portrait_sends_the_submission_to_a_human() {
+		var outcome = submit(Visibility.UNLISTED, PAYLOAD.replace("\"chapters\":[",
+				"\"characters\":[{\"name\":\"연우\",\"portraitImage\":\"drafts/x/p\"}],\"chapters\":["));
+
+		assertThat(outcome.reviewStatus()).isEqualTo(ReviewStatus.IN_REVIEW);
+		assertThat(column(outcome.storyId(), "current_version_id")).isNull();
+	}
+
+	/**
+	 * <b>{@code private} 도 예외가 아니다</b> (§13-83).
+	 *
+	 * <p>{@code private} 만 자동으로 열어 두면 그 작품을 {@code unlisted} 로 넓히는 길이 사람을
+	 * 지나지 않는다 — 넓히는 방향은 승격이 아니어서 재검수를 열지 않기 때문이다. 예외가 곧
+	 * 세탁 경로가 된다.
+	 */
+	@Test
+	void S13_83_even_a_private_submission_with_an_image_waits_for_a_human() {
+		var outcome = submit(Visibility.PRIVATE,
+				PAYLOAD.replace("\"shortDescription\":",
+						"\"coverImage\":\"drafts/x/cover\",\"shortDescription\":"));
+
+		assertThat(outcome.reviewStatus()).isEqualTo(ReviewStatus.IN_REVIEW);
+	}
+
+	/**
+	 * <b>통과가 열 자리를 작품이 들고 간다</b> (§13-83).
+	 *
+	 * <p>지금까지 큐에 오는 길은 {@code public} 제출 하나여서 통과가 여는 값을 물어볼 필요가
+	 * 없었다. 이미지가 그 전제를 깼으므로 <b>작성자가 요청한 값</b>이 함께 적힌다 — 없으면
+	 * 통과가 작성자가 고르지 않은 넓이로 작품을 연다 (I-8).
+	 */
+	@Test
+	void S13_83_the_requested_visibility_is_recorded_for_the_human() {
+		var outcome = submit(Visibility.UNLISTED,
+				PAYLOAD.replace("\"shortDescription\":",
+						"\"coverImage\":\"drafts/x/cover\",\"shortDescription\":"));
+
+		assertThat(column(outcome.storyId(), "pending_visibility")).isEqualTo("unlisted");
+		// 돌아갈 자리는 그것과 다른 사실이다 — 처음 내는 작품은 아무에게도 보인 적이 없다.
+		assertThat(column(outcome.storyId(), "visibility")).isEqualTo("private");
+	}
+
+	/** <b>이미지가 없는 원고는 지금까지와 같다</b> (R8.6) — 요청도 적히지 않는다. */
+	@Test
+	void S13_83_a_manuscript_without_an_image_records_no_request() {
+		var outcome = submit(Visibility.UNLISTED);
+
+		assertThat(column(outcome.storyId(), "pending_visibility")).isNull();
+	}
+
 	private SubmissionService.SubmissionOutcome submit(Visibility visibility) {
-		UUID draftId = givenDraft(PAYLOAD);
+		return submit(visibility, PAYLOAD);
+	}
+
+	private SubmissionService.SubmissionOutcome submit(Visibility visibility, String payload) {
+		UUID draftId = givenDraft(payload);
 		var outcome = this.submissions.submit(authorOf(draftId), draftId, visibility);
 		if (outcome.storyId() != null) {
 			this.stories.add(outcome.storyId());

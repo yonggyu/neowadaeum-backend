@@ -105,13 +105,28 @@ class OutlineOutputFormatTests {
 				.isInstanceOf(OutlineOutputSchemaException.class);
 	}
 
-	/** <b>S-3 — 예외 메시지에 응답 원문을 담지 않는다.</b> 원문은 {@code ai_call_log} 만 갖는다. */
+	/**
+	 * <b>S-3 — 예외 메시지에 응답 원문을 담지 않는다.</b> 원문은 {@code ai_call_log} 만 갖는다.
+	 *
+	 * <p><b>메시지만 보던 단언은 절반이었다</b> (§13-86, #393). 이 자리는 JSON 파서의 실패를 받고,
+	 * 파서는 <b>어긋난 지점을 보이려고 메시지에 원문을 인용한다</b> — 그것을 {@code cause} 로 붙여
+	 * 두면 스택트레이스를 타고 로그로 나가는데 {@code hasMessageNotContaining} 은 통과했다. 예외가
+	 * 로그로 흐르는 방식 그대로, 스택트레이스를 렌더링해서 검사한다.
+	 */
 	@Test
-	void SEC3_the_violation_message_does_not_carry_the_response() {
+	void SEC3_the_violation_carries_the_response_neither_in_its_message_nor_in_a_cause() {
 		String secret = "이것은 응답 원문이며 로그로 새면 안 된다";
 
 		assertThatThrownBy(() -> OutlineOutputFormat.parse(secret, REQUEST))
 				.isInstanceOf(OutlineOutputSchemaException.class)
-				.hasMessageNotContaining(secret);
+				.hasMessageNotContaining(secret)
+				.satisfies(thrown -> assertThat(renderedStackTrace(thrown)).doesNotContain(secret));
+	}
+
+	/** 로그가 예외를 인쇄하는 방식 그대로 — 원인 사슬의 메시지까지 문자열로 만든다. */
+	private static String renderedStackTrace(Throwable thrown) {
+		java.io.StringWriter rendered = new java.io.StringWriter();
+		thrown.printStackTrace(new java.io.PrintWriter(rendered));
+		return rendered.toString();
 	}
 }

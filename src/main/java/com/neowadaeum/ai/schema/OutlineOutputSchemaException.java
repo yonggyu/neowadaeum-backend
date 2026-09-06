@@ -13,6 +13,11 @@ package com.neowadaeum.ai.schema;
  *
  * <p><b>S-3 — 메시지에 응답 원문을 담지 않는다.</b> 원문 보관은 {@code ai_call_log} 의 일이다.
  * 여기 남기는 것은 <b>무엇이 어긋났는지</b>까지다.
+ *
+ * <p><b>원인 예외도 붙이지 않는다</b> (§13-86). 이 예외를 만드는 자리는 JSON 파서의 실패를 받는
+ * 곳이고, 파서의 메시지는 <b>어긋난 지점을 보이려고 원문 조각을 인용한다</b> — 메시지만 검사하는
+ * 단언은 그것을 잡지 못한 채 통과한다. 남기는 것은 {@code ProviderCallFailedException} 과 같은
+ * <b>타입 이름의 사슬</b>뿐이다.
  */
 public class OutlineOutputSchemaException extends RuntimeException {
 
@@ -20,7 +25,11 @@ public class OutlineOutputSchemaException extends RuntimeException {
 		super(message);
 	}
 
-	public OutlineOutputSchemaException(String message, Throwable cause) {
-		super(message, cause);
+	/**
+	 * @param causeChain {@link com.neowadaeum.play.port.ProviderCallFailedException#typeChainOf}
+	 *     이 만든 타입 이름의 사슬. {@code Throwable} 을 받지 않는 것이 S-3 의 구조적 보장이다
+	 */
+	public OutlineOutputSchemaException(String message, String causeChain) {
+		super(message + " cause=" + causeChain);
 	}
 }
