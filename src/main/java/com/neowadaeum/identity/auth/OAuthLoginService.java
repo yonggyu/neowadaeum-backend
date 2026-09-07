@@ -3,6 +3,7 @@ package com.neowadaeum.identity.auth;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.identity.domain.OauthProvider;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -19,8 +20,19 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>nonce 의 발급과 소비가 둘 다 여기 있다</b> (§13-87). 대조가 저장소를 봐야 성립하므로
  * 토큰 검증기의 일이 아니고, 저장소 접근이므로 컨트롤러의 일도 아니다 — <b>유스케이스가 자기
- * 상태의 양 끝을 갖는다.</b> 소비는 <b>계정을 찾거나 만들기 전</b>이며, 그 뒤로 미루면 통과하지
- * 못할 요청이 회원 조회까지 간다.
+ * 상태의 양 끝을 갖는다.</b>
+ *
+ * <p><b>소비는 거절 판정을 전부 지난 뒤다</b> (§13-88, 이슈 #429). 그보다 앞에 두면 <b>계정도
+ * 토큰도 만들어지지 않은 거절이 nonce 를 태운다</b> — {@code CONSENT_REQUIRED} 를 받은 화면이
+ * 동의를 채워 같은 토큰으로 다시 보내면 {@code LOGIN_NONCE_INVALID} 를 만나고, <b>최초 가입이
+ * 어떤 순서로도 성립하지 않는다.</b> nonce 는 새 ID 토큰 안에만 들어갈 수 있으므로 화면이
+ * 우회할 수도 없다.
+ *
+ * <p><b>옮긴 것은 시점뿐이고 원자성은 그대로다</b> (§13-87). 소비는 여전히 <b>단 한 번의 원자적
+ * 삭제</b>이며 <b>계정 생성과 토큰 발급보다 앞</b>이다 — 같은 nonce 를 든 두 요청 중 토큰을 받는
+ * 쪽은 하나뿐이라는 성질이 이 재배치로 흔들리지 않는다. 대가는 <b>소비 앞에 회원 조회 하나가
+ * 붙는 것</b>이며, 그 자리에 닿으려면 이미 서명 검증을 통과한 ID 토큰이 있어야 하고 컨트롤러의
+ * IP 기준 한도가 그보다 앞에 걸려 있다 (S-8).
  */
 @Service
 public class OAuthLoginService {
@@ -76,9 +88,14 @@ public class OAuthLoginService {
 			throw new ApiException(ErrorCode.VALIDATION_ERROR);
 		}
 		VerifiedSocialIdentity verified = this.verifier.verify(idToken);
+		Optional<UUID> member = this.registrar.findPlayerRef(provider, verified.subject());
+		if (member.isEmpty()) {
+			// 최초 로그인이면 가입 판정이 먼저다 — 거절이 nonce 를 태우면 2차 요청이 통과할 길이 없다 (§13-88).
+			requireEligibleToSignUp(signup);
+		}
 		requireIssuedNonce(verified.nonce());
-		return this.tokens.issue(this.registrar.findPlayerRef(provider, verified.subject())
-				.orElseGet(() -> signUp(provider, verified, signup, ipHash)));
+		return this.tokens.issue(member.orElseGet(
+				() -> this.registrar.register(provider, verified, signup, ipHash)));
 	}
 
 	/**
@@ -100,16 +117,21 @@ public class OAuthLoginService {
 	}
 
 	/**
-	 * 최초 로그인 = 가입 (§4.1).
+	 * 최초 로그인 = 가입, 그 자격을 먼저 묻는다 (§4.1).
 	 *
 	 * <p><b>판정이 전부 계정 생성보다 앞에 있다.</b> 만 15세 미만이면 {@code user} 도
 	 * {@code oauth_identity} 도 만들어지지 않는다 (R10.2).
+	 *
+	 * <p><b>둘 다 요청 본문만 보고 끝난다</b> — 저장소도 외부 호출도 필요 없다. 그래서 이
+	 * 판정을 nonce 소비 앞에 두는 데 드는 비용이 없고, 거절당한 요청은 <b>서버에 아무 흔적도
+	 * 남기지 않은 채</b> 끝난다 (§13-88, 이슈 #429).
+	 *
+	 * <p><b>기존 회원에게는 부르지 않는다.</b> 그쪽은 이 값을 보내지 않으므로, 회원 조회로
+	 * 가르기 전에 부르면 <b>정상 로그인이 전부 {@code CONSENT_REQUIRED} 가 된다.</b>
 	 */
-	private UUID signUp(OauthProvider provider, VerifiedSocialIdentity verified, SignupInfo signup,
-			String ipHash) {
+	private void requireEligibleToSignUp(SignupInfo signup) {
 		signup.requireComplete();
 		this.ageGate.requireEligible(signup.birthDate());
-		return this.registrar.register(provider, verified, signup, ipHash);
 	}
 
 	/**

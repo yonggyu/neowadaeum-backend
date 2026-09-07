@@ -29,6 +29,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -452,20 +453,91 @@ class OAuthLoginServiceTests {
 	}
 
 	/**
-	 * <b>대조는 계정을 찾거나 만들기 전이다</b> (§13-87).
+	 * <b>소비는 여전히 계정 생성과 토큰 발급보다 앞이다</b> (§13-87, §13-88).
 	 *
-	 * <p>뒤로 미루면 통과하지 못할 요청이 회원 조회까지 간다.
+	 * <p>#429 가 옮긴 것은 <b>시점뿐이고 원자성이 아니다.</b> 소비가 계정 생성 뒤로 넘어가면
+	 * 같은 nonce 를 든 두 요청이 <b>둘 다 회원을 만들고 둘 다 토큰을 받는다</b> — 막으려던
+	 * 재생이 정확히 그 창으로 들어온다.
 	 */
 	@Test
-	void S13_87_the_nonce_is_consumed_before_any_account_lookup() {
-		given(this.verifier.verify("id-token"))
-				.willReturn(new VerifiedSocialIdentity("google-subject-1", "email-hash", "stale"));
-		given(this.nonces.consume("stale")).willReturn(false);
+	void S13_87_the_nonce_is_consumed_before_the_account_is_created() {
+		givenNewAccount();
+		given(this.nonces.consume(NONCE)).willReturn(false);
 
 		assertThatThrownBy(() -> this.service.login(OauthProvider.GOOGLE, "id-token", signup(), "ip-hash"))
-				.isInstanceOf(ApiException.class);
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.LOGIN_NONCE_INVALID);
 
-		verify(this.links, never()).findByProviderAndSubject(any(), any());
+		verify(this.users, never()).save(any(User.class));
+		verify(this.links, never()).save(any(OauthIdentity.class));
+		verify(this.consentLogs, never()).save(any(ConsentLog.class));
+	}
+
+	/**
+	 * <b>거절당한 가입은 nonce 를 태우지 않는다</b> (§13-88, 이슈 #429).
+	 *
+	 * <p>{@code CONSENT_REQUIRED} 는 <b>계정도 토큰도 만들어지지 않은 거절</b>이다. 그 자리에서
+	 * 소비하면 화면이 동의를 채워 같은 토큰으로 다시 보낼 때 {@code LOGIN_NONCE_INVALID} 를
+	 * 만난다 — nonce 는 새 ID 토큰 안에만 들어갈 수 있으므로 <b>화면이 우회할 수 없다.</b>
+	 */
+	@Test
+	void S13_88_a_rejected_signup_does_not_consume_the_nonce() {
+		givenNewAccount();
+
+		assertThatThrownBy(() -> this.service.login(OauthProvider.GOOGLE, "id-token",
+				new SignupInfo(null, List.of()), "ip-hash"))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.CONSENT_REQUIRED);
+
+		verify(this.nonces, never()).consume(any());
+	}
+
+	/** 연령 거절도 같은 자리다 — 계정을 만들지 않으므로 태울 것이 없다 (R10.2, §13-88). */
+	@Test
+	void S13_88_an_underage_rejection_does_not_consume_the_nonce() {
+		givenNewAccount();
+		SignupInfo tooYoung = new SignupInfo(LocalDate.of(2020, 1, 1), signup().consents());
+
+		assertThatThrownBy(() -> this.service.login(OauthProvider.GOOGLE, "id-token", tooYoung, "ip-hash"))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.AGE_RESTRICTED);
+
+		verify(this.nonces, never()).consume(any());
+	}
+
+	/**
+	 * <b>가입은 같은 nonce 로 두 번 간다 — 그리고 성립한다</b> (§13-88, 이슈 #429).
+	 *
+	 * <p>이것이 #429 가 실제 구글 계정으로 재현한 흐름이다. 무엇을 보내야 하는지는 서버에 물어야
+	 * 알 수 있고({@code CONSENT_REQUIRED} 가 그 물음의 답이다), 화면은 <b>같은 ID 토큰</b>을 들고
+	 * 동의 단계로 넘어간다. 1차가 nonce 를 태우면 2차는 어떤 순서로도 통과하지 못한다.
+	 *
+	 * <p><b>1회성을 그대로 재현한다</b> — 소비는 처음 한 번만 참이다. 1차에서 불렸다면 2차가
+	 * {@code LOGIN_NONCE_INVALID} 로 떨어지므로, 이 테스트는 호출 횟수가 아니라 <b>결과</b>로
+	 * 판정한다.
+	 */
+	@Test
+	void S13_88_the_signup_round_trip_completes_with_the_same_nonce() {
+		givenNewAccount();
+		AtomicBoolean unused = new AtomicBoolean(true);
+		given(this.nonces.consume(NONCE)).willAnswer(invocation -> unused.getAndSet(false));
+
+		assertThatThrownBy(() -> this.service.login(OauthProvider.GOOGLE, "id-token",
+				new SignupInfo(null, List.of()), "ip-hash"))
+				.as("1차 — 무엇이 필요한지 서버가 답한다")
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.CONSENT_REQUIRED);
+
+		AuthTokens issued = this.service.login(OauthProvider.GOOGLE, "id-token", signup(), "ip-hash");
+
+		assertThat(this.tokens.authenticate(issued.accessToken()))
+				.as("2차 — 같은 토큰·같은 nonce 로 가입이 성립한다")
+				.isNotNull();
+		verify(this.users).save(any(User.class));
 	}
 
 	/** 성공한 로그인은 그 값을 <b>소비한다</b> — 남겨 두면 1회성이 아니다. */
