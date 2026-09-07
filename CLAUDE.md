@@ -35,6 +35,8 @@ CLAUDE.md(헌법) > docs/corrections.md > docs/openapi.yaml > backend-requiremen
 ## 작업 시작 전
 
 1. **이슈 번호를 확인했는가.** 이슈 없이 코드를 쓰지 않는다. `git status` · 현재 브랜치를 먼저 본다.
+   **워크트리에서 시작했다면 `git fetch` 후 반드시 `origin/backend` 에서 분기한다** — 워크트리 HEAD 를 base 로 쓰지 않는다.
+   워크트리는 기본 브랜치(`main`)에서 만들어지는데, 이 레포의 `main` 은 **릴리스 후보**라 상시 `backend` 보다 뒤처지고 승격이 merge commit 이라 **히스토리가 갈라져 있다**(`git merge-base --is-ancestor origin/main origin/backend` 가 거짓이다). 특수한 것은 규칙이 아니라 이 레포의 브랜치 구조다 (`docs/git-workflow.md` §8.2 · 이슈 #421).
 2. **작업 번호(`B-xx`)를 확인했는가.** `docs/tasks.md`의 정의를 그대로 따른다. **정의에 없는 범위를 넓히지 않는다.**
 3. **불변 규칙을 위반하는가.** 불가피하면 코드를 쓰지 말고 먼저 보고한다.
 4. **`docs/corrections.md`의 `[결정 필요]` 항목에 손대는가.** 임의로 정하지 말고 기본 채택안을 따르되 PR 본문에 명시한다.
