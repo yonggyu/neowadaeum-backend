@@ -108,6 +108,8 @@ paths:
         - `birthDate` 또는 `consents[]` 누락 → `400 CONSENT_REQUIRED`
         - 만 15세 미만 → `403 AGE_RESTRICTED` (R10.2). **계정을 만들지 않는다**
         - 만 나이는 KST 기준으로 계산한다
+        - 정지 또는 탈퇴한 회원 → `403 FORBIDDEN` (R12.5, 이슈 #432). **어느 쪽인지 구분해
+          알리지 않는다** (S-6). `403` 에 두 코드가 실리므로 화면은 `error` 로 가른다 (F-4)
 
         **최초 로그인(가입)은 이 경로를 두 번 지난다** (§13-88, 이슈 #429). 계정이 처음인지도,
         무엇을 더 보내야 하는지도 **서버에 물어야 알 수 있기 때문**이다.
@@ -129,8 +131,8 @@ paths:
           → `401 LOGIN_NONCE_INVALID`. **넷을 구분해 알리지 않는다** (S-6)
         - **소비하는 것은 성공한 로그인뿐이다** (§13-88, 이슈 #429). 토큰을 받은 뒤 같은 ID
           토큰을 다시 보내면 막히므로 **성공한 로그인은 재시도 가능한 요청이 아니다**
-        - **거절은 소비하지 않는다.** `CONSENT_REQUIRED` 와 `AGE_RESTRICTED` 는 계정도 토큰도
-          만들지 않으므로 nonce 가 살아 있고, 같은 토큰으로 다시 보낼 수 있다.
+        - **거절은 소비하지 않는다.** `CONSENT_REQUIRED` · `AGE_RESTRICTED` · `FORBIDDEN` 은
+          계정도 토큰도 만들지 않으므로 nonce 가 살아 있고, 같은 토큰으로 다시 보낼 수 있다.
           **nonce 부터 다시 받아야 하는 것은 `401 LOGIN_NONCE_INVALID` 하나다**
 
         **MVP 는 Google 만 구현한다** (§13-11). Apple 은 상위 문서에 있으나 범위 밖이다.
@@ -168,7 +170,7 @@ paths:
         '401':
           $ref: '#/components/responses/LoginNonceInvalid'
         '403':
-          $ref: '#/components/responses/AgeRestricted'
+          $ref: '#/components/responses/LoginForbidden'
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
@@ -186,6 +188,9 @@ paths:
 
         - 쿠키가 없거나 유효하지 않다 → `401 UNAUTHENTICATED`
         - CSRF 토큰이 없거나 쿠키와 다르다 → `403 FORBIDDEN`
+        - 정지 또는 탈퇴한 회원이다 → `403 FORBIDDEN` (R12.5, 이슈 #432). **재발급은 회원이
+          아직 유효한지 묻는다** — 묻지 않으면 탈퇴가 다음 로그인부터 적용되는 신청이 된다.
+          CSRF 실패와 **같은 코드이며 구분해 알리지 않는다** (S-6)
 
         호출하는 쪽은 **자격 증명을 실어야 한다** (`credentials: 'include'`). 실지 않으면
         브라우저가 쿠키를 붙이지 않고, 응답의 `Set-Cookie` 도 버린다.
@@ -2301,16 +2306,31 @@ components:
             error: LOGIN_NONCE_INVALID
             message: 로그인을 다시 시도해 주세요.
             details: {}
-    AgeRestricted:
-      description: 만 15세 미만 (R10.2). 계정을 만들지 않는다
+    LoginForbidden:
+      description: |
+        **로그인의 `403` 에는 두 코드가 실린다** (이슈 #432). 클라이언트는 `error` 로 가른다 (F-4).
+
+        - `AGE_RESTRICTED` — 만 15세 미만 (R10.2). 계정을 만들지 않는다
+        - `FORBIDDEN` — 정지 또는 탈퇴한 회원이다 (R12.5). **정지인지 탈퇴인지 구분해 알리지
+          않는다** (S-6). 재발급(`refreshToken`)이 같은 규칙으로 같은 코드를 낸다 — 한쪽으로
+          막힌 회원이 다른 쪽으로 들어오지 않는다
+
+        둘 다 계정도 토큰도 만들지 않으므로 **로그인 nonce 를 소비하지 않는다** (§13-88).
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-          example:
-            error: AGE_RESTRICTED
-            message: 만 15세부터 이용할 수 있어요.
-            details: {}
+          examples:
+            ageRestricted:
+              value:
+                error: AGE_RESTRICTED
+                message: 만 15세부터 이용할 수 있어요.
+                details: {}
+            forbidden:
+              value:
+                error: FORBIDDEN
+                message: 이 작업을 수행할 권한이 없어요.
+                details: {}
     Forbidden:
       description: 소유자가 아니거나 지금 수행할 수 없는 작업이다
       content:
