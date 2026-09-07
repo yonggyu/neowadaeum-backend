@@ -9,6 +9,19 @@
 #    값이 없으면 부팅이 실패해야 한다. 조용히 잘못된 값으로 뜨는 것보다 낫다.
 # ─────────────────────────────────────────────────────────────
 spring:
+  # ── .env 를 설정으로 들인다 (로컬 전용, #428) ───────────────
+  # `.env` 는 docker-compose 만 읽는다. Boot 에는 dotenv 로더가 없으므로 이 줄이 없으면
+  # 아래의 모든 `${VAR}` 가 **리터럴 문자열로 남는다.** 그러면 예컨대 auth.jwt.secret 이
+  # `"${JWT_SECRET}"` 14바이트가 되어 "32바이트 미만"으로 부팅이 서고,
+  # **진짜 원인(.env 미로딩)은 메시지 어디에도 나오지 않는다.**
+  # README 대로 cp 한 설정이 그대로는 뜨지 않았던 이유가 이것이다.
+  #
+  # `[.properties]` 는 확장자 힌트다 — `.env` 는 KEY=VALUE 이므로 properties 로더가 읽는다.
+  # `optional:` 이라 파일이 없어도 이 줄 자체는 실패하지 않는다 — 배포는 `.env` 가 아니라
+  # 진짜 환경변수를 쓰고, 값이 없으면 그때 부팅이 서야 한다(§7.3).
+  config:
+    import: optional:file:./.env[.properties]
+
   application:
     name: neowadaeum-backend
 
