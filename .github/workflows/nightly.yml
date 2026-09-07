@@ -40,6 +40,16 @@ jobs:
           ref: backend
           persist-credentials: false
 
+      # 원장(#345)의 `커밋` 열은 **측정된 코드**를 가리켜야 한다.
+      #
+      # `GITHUB_SHA` 를 쓸 수 없다 — `schedule` 은 기본 브랜치의 워크플로 정의로 실행되므로
+      # 그 값은 **`main` 의 SHA** 이고, 위 체크아웃의 `ref` 를 따라가지 않는다. 두 브랜치가
+      # 갈라진 동안은 원장이 **재지 않은 커밋**을 가리키게 된다 (#416).
+      #
+      # 열의 모양은 여전히 테스트가 정한다. 여기서 넘기는 것은 *무엇을 쟀는가* 하나뿐이다.
+      - name: 측정 대상 커밋
+        run: echo "MEASURED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: JDK 21 (temurin) + Gradle 캐시
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -96,6 +106,7 @@ jobs:
               '**손으로 고치지 않는다** — 다음 회차가 이 본문을 통째로 다시 쓴다.',
               '판단이 달라진 회차만 `docs/perf/turn-latency.md` 로 옮겨 적는다.',
               '',
+              '`커밋` 은 **그 회차가 실제로 잰 코드**다 — nightly 는 `backend` 를 체크아웃한다 (#416).',
               '숫자는 **Provider 인위 지연을 뺀 서버 몫**이다. 전체 지연은 여기에 `Provider ms` 를 더한 값이다.',
               '조건 열(표본 · 동시성 · Provider ms)이 다른 회차는 **같은 열에서 비교하지 않는다.**',
               '',
