@@ -28,10 +28,10 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * B-12 DoD — <b>토큰 → 보호 API 접근</b>이 HTTP 로 성립한다 (#132, #34).
  *
- * <p><b>구글 왕복은 여기에 없다.</b> 실제 구글을 부르지 않는다는 규칙(테스트 규칙)과 컨텍스트를
- * 한 벌로 유지한다는 규칙(ContainerTestBase)이 함께 걸린다 — ID 토큰 검증은
- * {@code GoogleIdTokenVerifierTests} 가 고정 응답 서버로, 회원 생성 순서는
- * {@code OAuthLoginServiceTests} 가 각각 확인한다. <b>여기서 보는 것은 그 뒤부터다.</b>
+ * <p><b>구글 왕복은 여기에 없다 — 자리가 따로 있다</b> (이슈 #431).
+ * {@link SignupRoundTripIntegrationTests} 가 고정 응답 서버로 그 왕복을 HTTP 로 돈다.
+ * 실제 구글을 부르지 않는다는 규칙과 컨텍스트를 한 벌로 유지한다는 규칙은 그대로이며, 그
+ * 파일이 둘을 동시에 지키는 방법을 적어 두었다. <b>여기서 보는 것은 토큰을 받은 뒤부터다.</b>
  */
 class AuthEndToEndTests extends ContainerTestBase {
 

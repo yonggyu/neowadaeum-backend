@@ -1,6 +1,7 @@
 package com.neowadaeum;
 
 import com.neowadaeum.config.StoreSchema;
+import com.neowadaeum.identity.auth.FakeGoogle;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Locale;
@@ -205,6 +206,30 @@ public class TestcontainersConfiguration {
 	DynamicPropertyRegistrar adminTotpRegistrar() {
 		return registry -> registry.add("admin.totp.secret-key",
 				() -> Base64.getEncoder().encodeToString(new byte[32]));
+	}
+
+	/**
+	 * 구글 ID 토큰 검증을 고정 응답 서버로 돌린다 (§13-11, 이슈 #431).
+	 *
+	 * <p><b>실제 구글을 부르지 않는다</b>(테스트 규칙). 그렇다고 검증기를 목으로 갈아 끼우지도
+	 * 않는다 — 그러면 컨텍스트가 한 벌 더 뜨고({@link ContainerTestBase}) <b>검증기를 지나지
+	 * 않는 로그인</b>을 보게 된다. 바꾸는 것은 JWKS 주소 하나이며, 서명·발급자·대상·만료
+	 * 검증은 실물 그대로 돈다.
+	 *
+	 * <p><b>{@code client-id} 도 여기서 정한다.</b> {@code application.yml} 은 그것을
+	 * {@code ${GOOGLE_OAUTH_CLIENT_ID}} 로 두므로 값이 <b>실행 환경에 따라 달라진다</b> —
+	 * {@code .env} 가 있는 로컬과 없는 CI 가 서로 다른 {@code aud} 를 대조하게 되고, 그러면
+	 * 같은 테스트가 한쪽에서만 통과한다. <b>이 값은 테스트 전용이며 실제 클라이언트를
+	 * 가리키지 않는다</b> (S-11).
+	 *
+	 * @see com.neowadaeum.identity.auth.FakeGoogle
+	 */
+	@Bean
+	DynamicPropertyRegistrar googleOAuthRegistrar() {
+		return registry -> {
+			registry.add("security.oauth2.google.client-id", () -> FakeGoogle.CLIENT_ID);
+			registry.add("security.oauth2.google.jwk-set-uri", FakeGoogle::jwkSetUri);
+		};
 	}
 
 	/** DataSourceConfiguration 이 {@code currentSchema} 를 요구한다. 빠지면 부팅이 실패한다. */
