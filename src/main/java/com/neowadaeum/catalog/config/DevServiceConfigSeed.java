@@ -61,8 +61,13 @@ public class DevServiceConfigSeed implements ApplicationRunner {
 	 */
 	static final String PLACEHOLDER_VERSION = "dev-placeholder";
 
-	/** 사람 눈이 잡는 표지. 문구는 이것으로 <b>시작한다</b>. */
-	static final String PLACEHOLDER_MARK = "[개발용 자리표시 · 실제 약관 아님]";
+	/**
+	 * 사람 눈이 잡는 표지. 문구는 이것으로 <b>시작한다</b>.
+	 *
+	 * <p>표지가 붙는 곳은 고지 문구뿐이다 — 약관 쪽은 판본만 있고 문구가 없으므로 그 판본이
+	 * 스스로 말한다.
+	 */
+	static final String PLACEHOLDER_MARK = "[개발용 자리표시 · 실제 고지 문구 아님]";
 
 	/**
 	 * <b>운영 문구가 아니다.</b> 실제 고지 문구와 약관 주소는 이 저장소에 넣지 않는다 (S-11).
