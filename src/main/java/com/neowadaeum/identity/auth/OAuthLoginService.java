@@ -126,8 +126,8 @@ public class OAuthLoginService {
 	 * 판정을 nonce 소비 앞에 두는 데 드는 비용이 없고, 거절당한 요청은 <b>서버에 아무 흔적도
 	 * 남기지 않은 채</b> 끝난다 (§13-88, 이슈 #429).
 	 *
-	 * <p><b>기존 회원에게는 부르지 않는다.</b> 기존 회원은 이 값을 보내지 않으므로, 여기까지
-	 * 오면 정상 로그인이 전부 {@code CONSENT_REQUIRED} 가 된다.
+	 * <p><b>기존 회원에게는 부르지 않는다.</b> 그쪽은 이 값을 보내지 않으므로, 회원 조회로
+	 * 가르기 전에 부르면 <b>정상 로그인이 전부 {@code CONSENT_REQUIRED} 가 된다.</b>
 	 */
 	private void requireEligibleToSignUp(SignupInfo signup) {
 		signup.requireComplete();
