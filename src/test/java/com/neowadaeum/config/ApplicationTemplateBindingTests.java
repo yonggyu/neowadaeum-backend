@@ -1,6 +1,7 @@
 package com.neowadaeum.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -47,12 +48,25 @@ import org.yaml.snakeyaml.Yaml;
  * 낡은 목록을 사람이 대조하는 것이 #419 를 만든 방식이다. 여기서는 {@code com.neowadaeum} 을
  * 스캔해 {@link ConfigurationProperties} 접두사를 그때그때 읽는다.
  *
+ * <p><b>같은 성질의 두 번째 실패가 #428 이다.</b> 자리는 맞아도 값이 도착하지 않을 수 있다 —
+ * 템플릿에 {@code spring.config.import} 가 없으면 {@code .env} 가 로딩되지 않아 모든
+ * {@code ${VAR}} 가 리터럴로 남고, 그 실패는 "시크릿이 짧다"로 나타나 원인을 가리지 않는다.
+ * 그리고 그 한 줄은 <b>개발자의 로컬 사본에만</b> 3개월을 살아 있었다 — {@code application.yml} 은
+ * 추적되지 않아 앞서 나가도 diff 가 보이지 않기 때문이다. 그래서 이 클래스가 보는 것은 셋이다:
+ * 키의 <b>위치</b>(#419) · 값의 <b>도착</b>(#428) · 로컬 사본의 <b>표류</b>(#428).
+ *
  * <p>컨테이너를 쓰지 않는다 — 파일과 클래스패스만 본다. 빠른 루프(`./gradlew test`)에서 매 PR 마다
  * 돈다.
  */
 class ApplicationTemplateBindingTests {
 
 	private static final String TEMPLATE = "/application.yml.template";
+
+	/**
+	 * 템플릿을 복사해 만든 로컬 설정. <b>추적되지 않으므로 없을 수 있다</b> — CI 가 그렇다. 있을
+	 * 때만 대조하고, 대조하는 것은 <b>키뿐이다</b> (S-11).
+	 */
+	private static final String LOCAL_COPY = "/application.yml";
 
 	private static final String BASE_PACKAGE = "com.neowadaeum";
 
@@ -78,7 +92,7 @@ class ApplicationTemplateBindingTests {
 		boundPrefixes().forEach(prefix -> boundRoots.add(prefix.split("\\.", 2)[0]));
 
 		List<String> orphans = new ArrayList<>();
-		for (Map<String, Object> document : documents()) {
+		for (Map<String, Object> document : documents(TEMPLATE)) {
 			for (String root : document.keySet()) {
 				String key = canonical(root);
 				if (!FRAMEWORK_ROOTS.contains(key) && !boundRoots.contains(key)) {
@@ -114,7 +128,7 @@ class ApplicationTemplateBindingTests {
 		Set<String> prefixes = boundPrefixes();
 
 		List<String> unbound = new ArrayList<>();
-		for (Map<String, Object> document : documents()) {
+		for (Map<String, Object> document : documents(TEMPLATE)) {
 			Map<String, Object> leaves = new LinkedHashMap<>();
 			flatten("", document, leaves);
 			for (String path : leaves.keySet()) {
@@ -193,6 +207,102 @@ class ApplicationTemplateBindingTests {
 	}
 
 	/**
+	 * §7.3 — 템플릿은 {@code .env} 를 설정으로 들이는 줄을 가져야 한다 (#428).
+	 *
+	 * <p><b>자리가 맞는 것과 값이 도착하는 것은 다른 문제다.</b> {@code .env} 는 docker-compose 만
+	 * 읽고 Boot 에는 dotenv 로더가 없다. 이 줄이 없으면 템플릿이 쓴 모든 {@code ${VAR}} 가 리터럴
+	 * 문자열로 남고, 그것은 "값이 비었다"가 아니라 <b>"값이 들어 있다"</b>로 읽힌다 — 예컨대
+	 * {@code auth.jwt.secret} 은 14바이트짜리 문자열이 되어 "32바이트 미만"으로 부팅을 세운다.
+	 * 읽는 사람은 {@code .env} 의 그 항목을 확인하러 가고, 거기에는 충분히 긴 값이 들어 있다.
+	 *
+	 * <p><b>CI 는 이 검사만 할 수 있다.</b> "cp 로 만든 설정이 실제로 뜨는지"를 CI 가 직접 보려면
+	 * {@code .env} 가 있어야 하는데, 값이 없으면 부팅이 서는 것이 설계다(§7.3). 그래서 여기서
+	 * 보는 것은 <b>템플릿이 그 줄을 갖고 있는가</b> 하나이며, 그것은 {@code .env} 없이도 성립한다.
+	 *
+	 * <p>{@code optional:} 을 함께 요구한다. 파일이 없어도 실패하지 않아야 배포가 진짜 환경변수로
+	 * 뜬다 — 필수 import 로 바뀌면 이 줄 자체가 배포를 막는다. 프로파일이 붙은 문서는 조건부이므로
+	 * 세지 않는다: {@code dev} 에서만 로딩되는 {@code .env} 는 같은 실패를 그대로 남긴다.
+	 */
+	@Test
+	void S7_3_the_template_imports_the_dotenv_file() {
+		List<String> declared = new ArrayList<>();
+		for (Map<String, Object> document : documents(TEMPLATE)) {
+			Map<String, Object> leaves = new LinkedHashMap<>();
+			flatten("", document, leaves);
+			boolean conditional =
+					leaves.keySet().stream().anyMatch(path -> path.startsWith("spring.config.activate"));
+			Object imported = leaves.get("spring.config.import");
+			if (conditional || imported == null) {
+				continue;
+			}
+			if (imported instanceof List<?> many) {
+				many.forEach(one -> declared.add(String.valueOf(one)));
+			}
+			else {
+				declared.add(String.valueOf(imported));
+			}
+		}
+
+		assertThat(declared)
+				.as("""
+						application.yml.template 에 .env 를 들이는 spring.config.import 가 없다 \
+						(프로파일 없는 문서 기준). 지금 선언된 것: %s
+
+						이 줄이 없으면 템플릿의 모든 ${VAR} 가 리터럴 문자열로 남는다. .env 는 \
+						docker-compose 만 읽고 Boot 에는 dotenv 로더가 없기 때문이다. 그러면 README \
+						대로 cp 한 설정이 "시크릿이 짧다" 류의 메시지로 부팅에 실패하고, 진짜 원인은 \
+						메시지 어디에도 나오지 않는다 (#428).
+
+						값은 optional: 로 시작하고 .env 를 가리켜야 한다. optional: 이 빠지면 파일이 \
+						없는 환경(배포·CI)에서 이 줄 자체가 부팅을 막는다.""", declared)
+				.anySatisfy(one -> assertThat(one).startsWith("optional:").contains(".env"));
+	}
+
+	/**
+	 * §7.3 — 로컬 {@code application.yml} 은 템플릿이 알려 주지 않는 키를 가져서는 안 된다
+	 * (#428).
+	 *
+	 * <p><b>#428 이 3개월을 살아남은 방식이 이것이다.</b> {@code application.yml} 은 {@code *.yml}
+	 * 로 추적되지 않으므로(§7.2) 로컬 사본이 앞서 나가도 <b>diff 가 보이지 않는다.</b> 개발자의
+	 * 사본에는 {@code spring.config.import} 가 있었고 왜 필요한지가 주석으로 적혀 있었지만, 그
+	 * 지식이 템플릿으로 돌아오지 않았다. 그동안 새로 클론한 사람만 부팅에 실패했다.
+	 *
+	 * <p><b>한쪽 방향만 본다.</b> 로컬에만 있는 키는 <i>템플릿이 모르는 지식</i>이고, 그것을 아는
+	 * 사람은 그 사본을 가진 한 명뿐이다. 반대로 템플릿에만 있는 키는 지식의 손실이 아니다 — 안내는
+	 * 그대로 남아 있고, 그 값이 정말 필요하면 §7.3 대로 부팅이 서서 곧바로 드러난다.
+	 *
+	 * <p><b>키만 본다. 값은 읽지도 비교하지도 않는다</b> (S-11) — 로컬 사본에는 실제 시크릿이 들어
+	 * 있고, 값을 보는 순간 그것이 테스트 로그에 실린다. 표기 차이는 {@code canonical} 이 지운다.
+	 *
+	 * <p>파일이 없으면 건너뛴다. CI 에는 {@code application.yml} 이 없으므로 이 검사는 <b>로컬
+	 * 전용</b>이다 — CI 에서 성립하는 몫은 {@link #S7_3_the_template_imports_the_dotenv_file()} 이
+	 * 맡는다.
+	 */
+	@Test
+	void S7_3_the_local_copy_declares_no_key_the_template_does_not_teach() {
+		assumeTrue(onClasspath(LOCAL_COPY),
+				"application.yml 이 클래스패스에 없다 — 템플릿만 있는 환경(CI)에서는 대조할 사본이 없다");
+
+		Set<String> ahead = new TreeSet<>(leafKeys(LOCAL_COPY));
+		ahead.removeAll(leafKeys(TEMPLATE));
+
+		assertThat(ahead)
+				.as("""
+						로컬 application.yml 에만 있고 application.yml.template 에는 없는 키: %s
+
+						템플릿은 이 설정을 처음 만드는 사람에게 유일한 안내다. 사본에만 있는 키는 그 \
+						안내에 없는 지식이고, application.yml 은 추적되지 않으므로 그 어긋남은 diff 로 \
+						드러나지 않는다 — #428 의 spring.config.import 가 정확히 그렇게 3개월을 \
+						살아남았다.
+
+						둘 중 하나다. (1) 그 키가 모두에게 필요하다 — 템플릿에 되가져온다(값이 아니라 \
+						자리와 이유를). (2) 이 기계에서만 쓰는 실험이다 — 사본에서 지운다.
+
+						※ 키 이름만 본다. 값은 읽지 않는다 (S-11).""", ahead)
+				.isEmpty();
+	}
+
+	/**
 	 * 이 레포가 실제로 바인딩하는 접두사. <b>스캔한다</b> — 목록을 손으로 적으면 프로퍼티가 늘 때마다
 	 * 낡고, 낡은 목록은 대조를 다시 사람의 눈으로 되돌린다 (#419).
 	 */
@@ -220,10 +330,28 @@ class ApplicationTemplateBindingTests {
 		return prefixes;
 	}
 
-	/** 템플릿은 {@code ---} 로 갈린 여러 문서다. 하나만 읽으면 뒤 문서가 검사 밖에 남는다. */
-	private static List<Map<String, Object>> documents() {
+	/**
+	 * 한 파일(모든 문서)의 leaf 경로. <b>키만 꺼낸다</b> — 값은 호출자에게 넘기지 않는다 (S-11).
+	 */
+	private static Set<String> leafKeys(String resource) {
+		Set<String> keys = new TreeSet<>();
+		for (Map<String, Object> document : documents(resource)) {
+			Map<String, Object> leaves = new LinkedHashMap<>();
+			flatten("", document, leaves);
+			leaves.keySet().forEach(path -> keys.add(canonical(path)));
+		}
+		return keys;
+	}
+
+	/** {@link #open(String)} 과 달리 <b>없어도 실패하지 않는다.</b> 로컬 전용 검사의 전제 확인용. */
+	private static boolean onClasspath(String resource) {
+		return ApplicationTemplateBindingTests.class.getResource(resource) != null;
+	}
+
+	/** YAML 은 {@code ---} 로 갈린 여러 문서다. 하나만 읽으면 뒤 문서가 검사 밖에 남는다. */
+	private static List<Map<String, Object>> documents(String resource) {
 		List<Map<String, Object>> documents = new ArrayList<>();
-		try (InputStream stream = open()) {
+		try (InputStream stream = open(resource)) {
 			for (Object loaded : new Yaml().loadAll(stream)) {
 				if (loaded instanceof Map<?, ?> document) {
 					Map<String, Object> typed = new LinkedHashMap<>();
@@ -235,12 +363,13 @@ class ApplicationTemplateBindingTests {
 		catch (IOException ex) {
 			throw new UncheckedIOException(ex);
 		}
-		assertThat(documents).as("%s 에서 읽은 YAML 문서가 없다", TEMPLATE).isNotEmpty();
+		assertThat(documents).as("%s 에서 읽은 YAML 문서가 없다", resource).isNotEmpty();
 		return documents;
 	}
 
 	private static List<String> lines() {
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(open(), StandardCharsets.UTF_8))) {
+		try (BufferedReader reader =
+				new BufferedReader(new InputStreamReader(open(TEMPLATE), StandardCharsets.UTF_8))) {
 			return reader.lines().toList();
 		}
 		catch (IOException ex) {
@@ -252,9 +381,9 @@ class ApplicationTemplateBindingTests {
 	 * <b>클래스패스에서 읽는다.</b> 상대 경로로 읽으면 워크트리·CI 에서 작업 디렉터리가 달라져
 	 * 파일을 못 찾고, 그때 실패하는 것은 검사 대상이 아니라 검사 자신이다.
 	 */
-	private static InputStream open() {
-		InputStream stream = ApplicationTemplateBindingTests.class.getResourceAsStream(TEMPLATE);
-		assertThat(stream).as("%s 가 클래스패스에 없다", TEMPLATE).isNotNull();
+	private static InputStream open(String resource) {
+		InputStream stream = ApplicationTemplateBindingTests.class.getResourceAsStream(resource);
+		assertThat(stream).as("%s 가 클래스패스에 없다", resource).isNotNull();
 		return stream;
 	}
 
