@@ -338,10 +338,31 @@ class TurnLatencyNightlyTests extends ContainerTestBase {
 		return Instant.now().truncatedTo(ChronoUnit.MINUTES).toString();
 	}
 
-	/** 러너 밖에서 돌면 {@code local} 이다. 회차 표에서 손으로 돌린 값을 구분하기 위한 것뿐이다. */
+	/**
+	 * 원장의 {@code 커밋} 열 — <b>측정된 코드</b>를 가리킨다.
+	 *
+	 * <p><b>{@code GITHUB_SHA} 를 쓰지 않는다.</b> {@code schedule} 로 도는 워크플로에서 그 값은
+	 * <b>기본 브랜치의 SHA</b> 이고 체크아웃한 {@code ref} 를 따라가지 않는다. nightly 는
+	 * {@code ref: backend} 를 체크아웃하므로, 두 브랜치가 갈라진 동안은 <b>재지 않은 커밋</b>이
+	 * 적힌다 — 회귀를 쫓는 사람이 측정된 코드가 없는 범위를 뒤지게 된다 (#416).
+	 *
+	 * <p>그래서 워크플로가 체크아웃한 HEAD 를 {@code MEASURED_SHA} 로 넘긴다.
+	 *
+	 * <p><b>넘어오지 않았는데 러너 안이면 {@code env:} 를 붙인다.</b> 조용히 옛 값으로 돌아가면
+	 * 이 버그가 그대로 돌아오고, <b>틀린 값은 빈 값보다 나쁘다</b> — 표에서 눈에 띄어야 한다.
+	 * 러너 밖이면 {@code local} 이다 (손으로 돌린 회차를 구분한다).
+	 */
 	private static String commit() {
+		String measured = System.getenv("MEASURED_SHA");
+		if (measured != null && !measured.isBlank()) {
+			return shortSha(measured);
+		}
 		String sha = System.getenv("GITHUB_SHA");
-		return (sha == null || sha.isBlank()) ? "local" : sha.substring(0, Math.min(7, sha.length()));
+		return (sha == null || sha.isBlank()) ? "local" : "env:" + shortSha(sha);
+	}
+
+	private static String shortSha(String sha) {
+		return sha.substring(0, Math.min(7, sha.length()));
 	}
 
 	private static String runId() {
