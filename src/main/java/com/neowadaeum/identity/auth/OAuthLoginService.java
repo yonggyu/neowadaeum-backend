@@ -16,6 +16,11 @@ import org.springframework.stereotype.Service;
  * <p><b>순서가 이 클래스의 형태를 정한다</b> (§4.1, B-13). 기존 회원인지 먼저 보고, 최초라면
  * <b>계정을 만들기 전에</b> 가입 정보와 연령을 판정한다 — 만들고 나서 거부하면 나이를 확인받지
  * 않은 계정이 남는다 (R10.2).
+ *
+ * <p><b>nonce 의 발급과 소비가 둘 다 여기 있다</b> (§13-87). 대조가 저장소를 봐야 성립하므로
+ * 토큰 검증기의 일이 아니고, 저장소 접근이므로 컨트롤러의 일도 아니다 — <b>유스케이스가 자기
+ * 상태의 양 끝을 갖는다.</b> 소비는 <b>계정을 찾거나 만들기 전</b>이며, 그 뒤로 미루면 통과하지
+ * 못할 요청이 회원 조회까지 간다.
  */
 @Service
 public class OAuthLoginService {
@@ -28,12 +33,30 @@ public class OAuthLoginService {
 
 	private final AgeGate ageGate;
 
+	private final LoginNonceStore nonces;
+
 	public OAuthLoginService(GoogleIdTokenVerifier verifier, SocialAccountRegistrar registrar,
-			AuthTokenService tokens, AgeGate ageGate) {
+			AuthTokenService tokens, AgeGate ageGate, LoginNonceStore nonces) {
 		this.verifier = verifier;
 		this.registrar = registrar;
 		this.tokens = tokens;
 		this.ageGate = ageGate;
+		this.nonces = nonces;
+	}
+
+	/**
+	 * 로그인 앞에 한 번 부른다 (§13-87).
+	 *
+	 * <p>클라이언트는 이 값을 GIS 의 {@code initialize({ nonce })} 에 실어야 하고, 그러면 그 값이
+	 * ID 토큰의 클레임으로 돌아온다. <b>이 왕복 하나가 이 결정의 대가다</b> — 그 대신 토큰만
+	 * 가로챈 쪽은 통과하지 못한다.
+	 *
+	 * <p><b>인증을 요구하지 않는다.</b> 로그인 앞이므로 요구할 자격 증명이 없다. 대신 컨트롤러가
+	 * IP 기준 호출 한도를 건다 (S-8) — 인증 없이 열리고 <b>서버에 상태를 만드는</b> 경로이기
+	 * 때문이다.
+	 */
+	public LoginNonce issueNonce() {
+		return this.nonces.issue();
 	}
 
 	/**
@@ -42,8 +65,10 @@ public class OAuthLoginService {
 	 * @param signup <b>최초 로그인에만 쓰인다.</b> 기존 회원이면 보지 않는다 — 로그인할 때마다
 	 *     동의를 다시 받으면 동의 이력이 로그인 이력이 된다
 	 * @param ipHash 동의 시점의 접속자 해시 (§12). 원문 IP 는 여기까지 오지 않는다
-	 * @throws ApiException {@code UNAUTHENTICATED} 토큰 검증 실패 · {@code FORBIDDEN} 정지·탈퇴 회원 ·
-	 *     {@code CONSENT_REQUIRED} 가입 정보 누락 · {@code AGE_RESTRICTED} 만 15세 미만
+	 * @throws ApiException {@code UNAUTHENTICATED} 토큰 검증 실패 ·
+	 *     {@code LOGIN_NONCE_INVALID} 서버가 발급한 nonce 가 토큰에 없거나 이미 쓰였다 ·
+	 *     {@code FORBIDDEN} 정지·탈퇴 회원 · {@code CONSENT_REQUIRED} 가입 정보 누락 ·
+	 *     {@code AGE_RESTRICTED} 만 15세 미만
 	 */
 	public AuthTokens login(OauthProvider provider, String idToken, SignupInfo signup, String ipHash) {
 		if (provider != OauthProvider.GOOGLE) {
@@ -51,8 +76,27 @@ public class OAuthLoginService {
 			throw new ApiException(ErrorCode.VALIDATION_ERROR);
 		}
 		VerifiedSocialIdentity verified = this.verifier.verify(idToken);
+		requireIssuedNonce(verified.nonce());
 		return this.tokens.issue(this.registrar.findPlayerRef(provider, verified.subject())
 				.orElseGet(() -> signUp(provider, verified, signup, ipHash)));
+	}
+
+	/**
+	 * <b>이 토큰이 이 로그인 시도를 위해 발급됐는가</b> (§13-87).
+	 *
+	 * <p>서명·발급자·대상·만료는 <b>토큰이 유효한가</b>까지만 말한다. 그것을 통과한 토큰을
+	 * 가로채 다른 자리에서 다시 쓰는 면이 남고, 그 면을 닫는 것이 이 한 줄이다.
+	 *
+	 * <p><b>실패를 구분해 알리지 않는다</b> (S-6). 없는 것 · 안 맞는 것 · 만료된 것 · 이미
+	 * 쓰인 것이 전부 같은 코드다 — 어느 쪽인지 알려 주면 그것이 서버 상태를 묻는 창구가 된다.
+	 *
+	 * <p><b>그래서 로그인은 재시도 가능한 요청이 아니다.</b> 같은 ID 토큰을 다시 보내면 두 번째는
+	 * 막힌다 — 1회성이 뜻하는 바가 그것이고, 다시 하려면 nonce 부터 다시 받아야 한다.
+	 */
+	private void requireIssuedNonce(String nonce) {
+		if (!this.nonces.consume(nonce)) {
+			throw new ApiException(ErrorCode.LOGIN_NONCE_INVALID);
+		}
 	}
 
 	/**
