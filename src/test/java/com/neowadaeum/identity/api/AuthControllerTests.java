@@ -1,6 +1,7 @@
 package com.neowadaeum.identity.api;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -17,6 +18,7 @@ import com.neowadaeum.common.support.RateLimitProperties;
 import com.neowadaeum.common.support.RateLimiter;
 import com.neowadaeum.identity.auth.AuthTokens;
 import com.neowadaeum.identity.auth.JwtProperties;
+import com.neowadaeum.identity.auth.LoginNonce;
 import com.neowadaeum.identity.auth.OAuthLoginService;
 import com.neowadaeum.identity.auth.RefreshCookieProperties;
 import com.neowadaeum.identity.auth.RefreshTokenCookie;
@@ -63,6 +65,86 @@ class AuthControllerTests {
 					this.alwaysAllows, RateLimitProperties.defaults(), this.refreshCookie))
 			.setControllerAdvice(new GlobalExceptionHandler())
 			.build();
+
+	// ── §13-87 로그인 nonce (#424) ──────────
+
+	/** 발급은 <b>값과 수명</b>을 돌려준다. 본문이 없는 요청이다 (§13-87). */
+	@Test
+	void S13_87_issuing_a_nonce_returns_a_value_and_its_lifetime() throws Exception {
+		given(this.login.issueNonce()).willReturn(new LoginNonce("nonce-1", 300));
+
+		this.mvc.perform(post("/api/v1/auth/nonce"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.nonce").value("nonce-1"))
+				.andExpect(jsonPath("$.expiresInSeconds").value(300));
+	}
+
+	/**
+	 * <b>발급 응답에 회원에 관한 값이 없다</b> (I-3, S-9).
+	 *
+	 * <p>로그인 <b>전</b>이라 있을 수가 없고, 생기는 날은 그것이 결함이다. "있어야 할 것"만
+	 * 단언하면 값이 새어도 통과한다 (S-3).
+	 */
+	@Test
+	void I3_the_nonce_response_carries_nothing_about_a_member() throws Exception {
+		given(this.login.issueNonce()).willReturn(new LoginNonce("nonce-1", 300));
+
+		String body = this.mvc.perform(post("/api/v1/auth/nonce"))
+				.andExpect(status().isOk())
+				.andReturn().getResponse().getContentAsString();
+
+		Assertions.assertThat(body)
+				.doesNotContain("playerRef", "email", "birthDate", "socialId", "accessToken");
+	}
+
+	/**
+	 * <b>S-8 — 한도가 이 경로에도 걸린다</b> (§13-87).
+	 *
+	 * <p>인증 없이 열리고 <b>부를 때마다 서버에 상태를 만든다.</b> 한도가 없으면 누구나 저장소를
+	 * 채울 수 있고, 그것은 로그인 실패가 아니라 서비스 전체의 문제가 된다.
+	 *
+	 * <p><b>거절된 요청은 발급까지 가지 않는다</b> — 가면 한도가 값이 만들어지는 것을 막지 못한다.
+	 */
+	@Test
+	void SEC8_the_nonce_path_is_limited_and_a_limited_request_issues_nothing() throws Exception {
+		RateLimiter exhausted = mock(RateLimiter.class);
+		given(exhausted.tryAcquire(any(), any(), anyInt(), any())).willReturn(false);
+		MockMvc limited = MockMvcBuilders.standaloneSetup(new AuthController(this.login, exhausted,
+						RateLimitProperties.defaults(), this.refreshCookie))
+				.setControllerAdvice(new GlobalExceptionHandler())
+				.build();
+
+		limited.perform(post("/api/v1/auth/nonce"))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.error").value("RATE_LIMITED"));
+
+		verify(this.login, never()).issueNonce();
+	}
+
+	/**
+	 * <b>nonce 대조 실패는 사유를 흘리지 않는다</b> (S-6, §13-87).
+	 *
+	 * <p>없든 · 안 맞든 · 만료됐든 · 이미 쓰였든 같은 코드이며, {@code message} 는 <b>다시
+	 * 시도하라</b>는 말까지만 한다 — 어느 검사에서 걸렸는지 응답이 말하면 그것이 서버 상태를
+	 * 묻는 창구가 된다.
+	 */
+	@Test
+	void SEC6_a_nonce_failure_does_not_say_which_check_rejected_it() throws Exception {
+		given(this.login.login(eq(OauthProvider.GOOGLE), any(), any(), any()))
+				.willThrow(new ApiException(ErrorCode.LOGIN_NONCE_INVALID));
+
+		String body = this.mvc.perform(post("/api/v1/auth/oauth/google")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"idToken\":\"replayed\"}"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error").value("LOGIN_NONCE_INVALID"))
+				.andReturn().getResponse().getContentAsString();
+
+		Assertions.assertThat(body)
+				.doesNotContainIgnoringCase("expired")
+				.doesNotContainIgnoringCase("consumed")
+				.doesNotContain("만료", "이미 쓴", "없는 nonce");
+	}
 
 	/** §13-22 — 계약이 정한 응답 그대로. {@code playerRef} 는 없다. */
 	@Test

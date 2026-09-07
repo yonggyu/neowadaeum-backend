@@ -71,7 +71,13 @@ public class GoogleIdTokenVerifier {
 			throw new ApiException(ErrorCode.UNAUTHENTICATED);
 		}
 		// 이메일 원문은 여기서 끝난다. 밖으로 나가는 것은 해시뿐이다 (§12, I-3).
-		return new VerifiedSocialIdentity(subject, Sha256.hex(jwt.getClaimAsString("email")));
+		//
+		// nonce 는 **꺼내기만 한다** (§13-87). 이 클래스가 판정하는 넷(서명·발급자·대상·만료)은
+		// 전부 토큰 자체로 판정되지만, nonce 는 **서버가 발급한 것이 맞는지**를 저장소에 물어야
+		// 한다 — 성질이 다르므로 자리도 다르다. 여기서 저장소를 붙이면 토큰 검증기가 인프라에
+		// 의존하게 되고, 그러면 이 클래스의 테스트가 Redis 를 요구한다.
+		return new VerifiedSocialIdentity(subject, Sha256.hex(jwt.getClaimAsString("email")),
+				jwt.getClaimAsString("nonce"));
 	}
 
 	/**

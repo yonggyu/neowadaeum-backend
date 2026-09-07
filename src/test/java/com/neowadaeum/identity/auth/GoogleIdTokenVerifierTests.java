@@ -104,6 +104,27 @@ class GoogleIdTokenVerifierTests {
 		assertThat(lower).isEqualTo(padded);
 	}
 
+	/**
+	 * <b>{@code nonce} 클레임을 그대로 꺼내 온다</b> (§13-87, #424).
+	 *
+	 * <p>이 클래스는 그 값이 <b>맞는지</b>를 보지 않는다 — 대조는 저장소를 봐야 성립하므로
+	 * {@code OAuthLoginService} 의 몫이다. 여기서 지키는 것은 <b>값이 사라지지 않는다</b>는 것
+	 * 하나이며, 사라지면 대조는 언제나 실패한다.
+	 */
+	@Test
+	void S13_87_the_nonce_claim_is_carried_out_of_the_verifier() {
+		VerifiedSocialIdentity verified = this.verifier.verify(
+				idToken(claims().claim("nonce", "issued-1").build(), this.googleKey));
+
+		assertThat(verified.nonce()).isEqualTo("issued-1");
+	}
+
+	/** nonce 를 싣지 않은 토큰도 <b>여기서는</b> 통과한다 — 막는 자리는 유스케이스다 (§13-87). */
+	@Test
+	void S13_87_a_token_without_a_nonce_is_not_the_verifiers_to_reject() {
+		assertThat(this.verifier.verify(idToken(claims().build(), this.googleKey)).nonce()).isNull();
+	}
+
 	/** 이메일이 없는 토큰도 정상이다. 해시는 비어 있다. */
 	@Test
 	void a_token_without_an_email_is_still_valid() {

@@ -226,6 +226,37 @@ class OpenApiContractTests {
 	}
 
 	/**
+	 * <b>로그인 nonce 발급 경로가 계약에 있고, 인증 없이 열린다</b> (§13-87, #424).
+	 *
+	 * <p><b>계약이 먼저 열려야 프론트가 따라올 수 있다</b> — 그쪽은 계약에 없는 값을 보내지
+	 * 않는다. {@code security: []} 를 함께 못박는 이유는 이 경로가 <b>로그인보다도 앞</b>이라
+	 * 요구할 자격 증명 자체가 없기 때문이다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void S13_87_the_contract_declares_the_login_nonce_endpoint_outside_authentication() {
+		Map<String, Object> operations = (Map<String, Object>) paths().get("/api/v1/auth/nonce");
+		assertThat(operations).as("§13-87 의 nonce 발급 경로가 계약에 없다").isNotNull();
+		assertThat(((Map<String, Object>) operations.get("post")).get("security"))
+				.as("로그인 앞의 경로다 — 토큰을 요구하면 아무도 로그인을 시작할 수 없다")
+				.isEqualTo(List.of());
+	}
+
+	/**
+	 * <b>요청 본문에 {@code nonce} 필드를 만들지 않는다</b> (§13-87, #424).
+	 *
+	 * <p>필드로 받으면 <b>같은 요청이 실어 온 값을 그 요청 안에서 비교</b>하게 되어 대조가
+	 * 성립하지 않는다. 그 값은 ID 토큰의 클레임으로 온다 — <b>이 단언이 그 함정을 계약에
+	 * 못박는다.</b>
+	 */
+	@Test
+	void S13_87_the_login_request_never_takes_a_nonce_field() {
+		assertThat(propertiesOf("OAuthLoginRequest"))
+				.as("nonce 는 요청 본문이 아니라 ID 토큰의 클레임으로 온다 (§13-87)")
+				.doesNotContain("nonce");
+	}
+
+	/**
 	 * <b>약관 판본을 알려 주는 경로가 계약에 있다</b> (#261, R10.2).
 	 *
 	 * <p>이 경로가 없던 동안 프론트는 판본을 <b>상수로 들고 있었다.</b> 약관이 개정되면 그

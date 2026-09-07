@@ -44,8 +44,11 @@ class OAuthLoginServiceTests {
 
 	private static final Instant NOW = Instant.parse("2026-08-27T00:00:00Z");
 
+	/** §13-87 — 토큰이 실어 온 nonce 까지가 검증기의 산출물이다. 대조는 서비스가 한다. */
+	private static final String NONCE = "issued-nonce";
+
 	private static final VerifiedSocialIdentity VERIFIED =
-			new VerifiedSocialIdentity("google-subject-1", "email-hash");
+			new VerifiedSocialIdentity("google-subject-1", "email-hash", NONCE);
 
 	private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
@@ -65,8 +68,21 @@ class OAuthLoginServiceTests {
 	private final SocialAccountRegistrar registrar =
 			new SocialAccountRegistrar(this.users, this.links, this.consentLogs, this.clock);
 
-	private final OAuthLoginService service =
-			new OAuthLoginService(this.verifier, this.registrar, this.tokens, new AgeGate(this.clock));
+	private final LoginNonceStore nonces = mock(LoginNonceStore.class);
+
+	private final OAuthLoginService service = new OAuthLoginService(this.verifier, this.registrar,
+			this.tokens, new AgeGate(this.clock), this.nonces);
+
+	/**
+	 * §13-87 — nonce 소비는 <b>기본적으로 성공한다.</b>
+	 *
+	 * <p>여기서 보는 것은 nonce 가 아닌 다른 성질들이고, 매 테스트가 그 준비를 반복하면
+	 * <b>무엇을 확인하는 테스트인지가 흐려진다.</b> nonce 자체는 아래 전용 테스트들이 본다.
+	 */
+	@org.junit.jupiter.api.BeforeEach
+	void nonceIsIssued() {
+		given(this.nonces.consume(NONCE)).willReturn(true);
+	}
 
 	/** 만 15세를 넘긴 생년월일. 경계값은 {@code AgeGateTests} 가 따로 본다. */
 	private static final LocalDate ADULT_ENOUGH = LocalDate.of(2005, 1, 1);
@@ -394,5 +410,86 @@ class OAuthLoginServiceTests {
 			throw new IllegalStateException(ex);
 		}
 		return user;
+	}
+
+	// ── §13-87 로그인 nonce (#424) ──────────────────────────
+
+	/**
+	 * <b>서버가 발급한 nonce 를 담지 않은 토큰은 통과하지 못한다</b> (§13-87).
+	 *
+	 * <p>서명·발급자·대상·만료는 <b>토큰이 유효한가</b>까지만 말한다. 그것을 통과한 토큰을 가로채
+	 * 다른 자리에서 다시 쓰는 면이 남고, 이 검사가 그 면을 닫는다.
+	 */
+	@Test
+	void S13_87_a_token_without_a_server_issued_nonce_is_rejected() {
+		given(this.verifier.verify("id-token"))
+				.willReturn(new VerifiedSocialIdentity("google-subject-1", "email-hash", null));
+
+		assertThatThrownBy(() -> this.service.login(OauthProvider.GOOGLE, "id-token", signup(), "ip-hash"))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.LOGIN_NONCE_INVALID);
+		verify(this.users, never()).save(any(User.class));
+		verify(this.links, never()).save(any(OauthIdentity.class));
+	}
+
+	/**
+	 * <b>발급되지 않았거나 만료됐거나 이미 쓰인 값은 전부 같은 응답이다</b> (S-6).
+	 *
+	 * <p>저장소가 돌려주는 것은 {@code false} 하나이며, 여기서도 <b>구분이 만들어지지 않는다</b> —
+	 * 구분을 만들면 그것이 서버 상태를 묻는 창구가 된다.
+	 */
+	@Test
+	void SEC6_an_unknown_expired_or_used_nonce_all_yield_the_same_code() {
+		given(this.verifier.verify("id-token"))
+				.willReturn(new VerifiedSocialIdentity("google-subject-1", "email-hash", "stale"));
+		given(this.nonces.consume("stale")).willReturn(false);
+
+		assertThatThrownBy(() -> this.service.login(OauthProvider.GOOGLE, "id-token", signup(), "ip-hash"))
+				.isInstanceOf(ApiException.class)
+				.extracting(ex -> ((ApiException) ex).errorCode())
+				.isEqualTo(ErrorCode.LOGIN_NONCE_INVALID);
+	}
+
+	/**
+	 * <b>대조는 계정을 찾거나 만들기 전이다</b> (§13-87).
+	 *
+	 * <p>뒤로 미루면 통과하지 못할 요청이 회원 조회까지 간다.
+	 */
+	@Test
+	void S13_87_the_nonce_is_consumed_before_any_account_lookup() {
+		given(this.verifier.verify("id-token"))
+				.willReturn(new VerifiedSocialIdentity("google-subject-1", "email-hash", "stale"));
+		given(this.nonces.consume("stale")).willReturn(false);
+
+		assertThatThrownBy(() -> this.service.login(OauthProvider.GOOGLE, "id-token", signup(), "ip-hash"))
+				.isInstanceOf(ApiException.class);
+
+		verify(this.links, never()).findByProviderAndSubject(any(), any());
+	}
+
+	/** 성공한 로그인은 그 값을 <b>소비한다</b> — 남겨 두면 1회성이 아니다. */
+	@Test
+	void S13_87_a_successful_login_consumes_the_nonce_exactly_once() {
+		givenNewAccount();
+		given(this.users.save(any(User.class)))
+				.willAnswer(invocation -> withField(invocation.getArgument(0), "id", UUID.randomUUID()));
+
+		this.service.login(OauthProvider.GOOGLE, "id-token", signup(), "ip-hash");
+
+		verify(this.nonces, times(1)).consume(NONCE);
+	}
+
+	/**
+	 * <b>발급은 아무것도 받지 않고 저장소가 만든 것을 그대로 돌려준다</b> (§13-87).
+	 *
+	 * <p>서비스가 값을 가공하면 토큰에 실리는 값과 저장된 값이 갈라진다.
+	 */
+	@Test
+	void S13_87_issuing_a_nonce_returns_what_the_store_made() {
+		LoginNonce made = new LoginNonce("value-1", 300);
+		given(this.nonces.issue()).willReturn(made);
+
+		assertThat(this.service.issueNonce()).isEqualTo(made);
 	}
 }

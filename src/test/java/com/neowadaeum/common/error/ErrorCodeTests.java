@@ -22,6 +22,9 @@ class ErrorCodeTests {
 		catalog.put("INVALID_CHOICE", HttpStatus.BAD_REQUEST);
 		catalog.put("VALIDATION_ERROR", HttpStatus.BAD_REQUEST);
 		catalog.put("UNAUTHENTICATED", HttpStatus.UNAUTHORIZED);
+		// §13-87 (#424) — 401 이지만 클라이언트가 할 일이 다르다. 재발급으로 회복되지 않고
+		// **로그인 왕복을 처음부터 다시** 해야 한다.
+		catalog.put("LOGIN_NONCE_INVALID", HttpStatus.UNAUTHORIZED);
 		catalog.put("AGE_RESTRICTED", HttpStatus.FORBIDDEN);
 		catalog.put("STORY_LIMIT_REACHED", HttpStatus.FORBIDDEN);
 		catalog.put("FORBIDDEN", HttpStatus.FORBIDDEN);
