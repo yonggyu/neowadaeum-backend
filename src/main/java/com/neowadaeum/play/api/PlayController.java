@@ -58,7 +58,10 @@ public class PlayController {
 		SessionStarter.StartedSession started = this.sessionStarter.start(this.playerRefs.currentPlayerRef(),
 				storyId, restart);
 
-		TurnView firstTurn = this.turns.view(started.storyVersionId(), started.firstTurn());
+		// §13-90 — 문구는 SessionStarter 가 생성 앞에서 확보한 값이다. 여기서 다시 조회하면
+		// 그 확인이 provider 호출 뒤가 된다.
+		TurnView firstTurn = this.turns.view(started.storyVersionId(), started.firstTurn(),
+				started.noticeText());
 
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(new StartSessionResponse(started.sessionId(), firstTurn));
