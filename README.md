@@ -55,6 +55,18 @@ cp src/main/resources/application.yml.template src/main/resources/application.ym
 
 `.env` 와 `application.yml` 은 **커밋되지 않는다**(§7.2). 실제 값은 절대 소스에 넣지 않는다.
 
+> **한 번 복사하고 끝이 아니다.** 새 기능이 새 환경변수를 들이면 커밋되는 것은 `.env.example`
+> 뿐이고, 이미 만들어 둔 `.env` 는 추적되지 않아 그 자리에 멈춰 있다 — **diff 가 보이지 않는다.**
+> 아래로 대조한다. 키 이름만 비교하며 값은 읽지 않는다 (S-11).
+>
+> ```bash
+> ./scripts/check-env-drift.sh
+> ```
+>
+> `scripts/preflight.sh` 가 이것을 함께 돌린다. **막지 않고 알리기만 한다** — 빠진 키가 전부
+> 부팅을 세우는 것은 아니고(예: `IMAGE_STORAGE_*` 다섯은 전부-또는-전무라 하나도 없으면 부팅은
+> 되고 이미지 업로드 경로만 죽는다), 그 판단은 값을 아는 사람의 몫이기 때문이다 (#434).
+
 > **새 worktree 마다 반복한다.** `application.yml` 은 `.gitignore` 의 `*.yml` 에 걸려 있는
 > untracked 파일이라, `git worktree add` 로 작업 폴더를 새로 만들면 **함께 오지 않는다** — 브랜치를
 > 옮기는 것과 달리 파일 자체가 그 worktree 에 없는 것이다. 이 상태로 테스트나 `bootRun` 을 돌리면
