@@ -1093,8 +1093,10 @@ class OpenApiContractTests {
 		Set<String> codes = new LinkedHashSet<>();
 		codeOf(body.get("example")).ifPresent(codes::add);
 		if (body.get("examples") instanceof Map<?, ?> examples) {
-			examples.values().forEach(example -> codeOf(((Map<String, Object>) example).get("value"))
-					.ifPresent(codes::add));
+			examples.values().stream()
+					.filter(Map.class::isInstance)
+					.forEach(example -> codeOf(((Map<String, Object>) example).get("value"))
+							.ifPresent(codes::add));
 		}
 		return codes;
 	}
