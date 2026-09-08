@@ -272,7 +272,7 @@ WSL 안에서 테스트를 돌리는 경우에만 해당한다. Windows 쪽에�
 
 - 민감 정보를 소스에 커밋하지 않는다. 실제 값은 `.env`에만 둔다.
 - `${VAR:실제값}` 기본값 패턴 금지. 값이 없으면 부팅이 실패해야 한다.
-- 새 `*.yml`을 만들지 않는다. 예외는 `docker-compose.yml`과 `.github/**/*.yml`(CI·이슈 템플릿·PR 설정) 둘뿐이다.
+- 새 `*.yml`을 만들지 않는다. 예외는 `docker-compose*.yml`(로컬 `docker-compose.yml` · 배포 `docker-compose.deploy.yml`)과 `.github/**/*.yml`(CI·이슈 템플릿·PR 설정), 그리고 `docs/openapi.yaml`뿐이다.
 - 이미 커밋된 파일은 `.gitignore` 추가만으로 빠지지 않는다 — `git rm --cached <파일>`.
 - 노출된 자격 증명은 **로테이션한다.** 커밋을 되돌려도 유출은 취소되지 않는다.
 
