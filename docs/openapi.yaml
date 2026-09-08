@@ -782,7 +782,12 @@ paths:
       summary: 드래프트 생성
       description: |
         1단계에서 시작한다. **작성자당 개수 상한이 있다** (R8.12) — 없으면 한 계정이 저장소를
-        채운다. 닿으면 `409` 이며, 지우면 자리가 난다.
+        채운다. 닿으면 `403 DRAFT_LIMIT_REACHED` 이며, 지우면 자리가 난다.
+
+        **`409 ALREADY_EXISTS` 였다** (§13-91, 이슈 #450). 그 코드의 문구는 *"이미 등록되어
+        있어요"* 인데 상한에 닿은 사람은 **같은 것을 두 번 만든 것이 아니다** — 프론트는 서버
+        문구를 그대로 그리므로(`F-4`) 틀린 안내가 화면에 그대로 났다. 개수 상한인
+        `STORY_LIMIT_REACHED` 와 **같은 403** 으로 맞춘다.
       x-implemented-by: B-51
       responses:
         '201':
@@ -793,15 +798,15 @@ paths:
                 $ref: '#/components/schemas/DraftResponse'
         '401':
           $ref: '#/components/responses/Unauthenticated'
-        '409':
-          description: 원고 개수 상한에 닿았다 (R8.12)
+        '403':
+          description: 원고 개수 상한에 닿았다 (R8.12, §13-91). 지우면 자리가 난다
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                error: ALREADY_EXISTS
-                message: 이미 등록되어 있어요.
+                error: DRAFT_LIMIT_REACHED
+                message: 만들 수 있는 원고 수를 모두 사용했어요. 쓰지 않는 원고를 지우면 새로 만들 수 있어요.
                 details: {}
         '429':
           $ref: '#/components/responses/TooManyRequests'
@@ -2471,6 +2476,7 @@ components:
         - LOGIN_NONCE_INVALID
         - AGE_RESTRICTED
         - STORY_LIMIT_REACHED
+        - DRAFT_LIMIT_REACHED
         - FORBIDDEN
         - NOT_FOUND
         - TURN_CONFLICT
