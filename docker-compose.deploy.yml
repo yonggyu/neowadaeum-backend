@@ -1,0 +1,170 @@
+# ─────────────────────────────────────────────────────────────
+# 배포용 compose (이슈 #448, docs/deployment.md §5)
+#
+# **로컬 개발용은 `docker-compose.yml` 이고, 이 파일과 섞지 않는다.** 섞으면
+# `spring-boot-docker-compose` 가 `./gradlew bootRun` 마다 프록시와 프론트까지 띄운다 —
+# 개발자는 왜 8080 앞에 무언가가 서는지 모른 채 디버깅하게 된다. 그래서 별도 파일이고,
+# 두 파일을 `-f` 로 겹쳐 쓰지도 않는다: 로컬 파일은 DB 포트를 호스트에 열어 두는데
+# 배포에서 그것은 열려서는 안 되는 포트다 (§13-45 — 앱과 DB 는 인터넷에 직접 노출되지 않는다).
+# 20 줄쯤 겹치는 대신 **배포 위상이 개발 파일에 의존하지 않는다.**
+#
+# 사용:
+#   docker compose -f docker-compose.deploy.yml --env-file <배포 env 파일> up -d
+#
+# **이 파일에 값이 하나도 없다.** 전부 `${VAR}` 이고 기본값을 두지 않는다 (§7.3).
+# 실제 도메인·계정·시크릿은 레포 밖 env 파일에만 있다 (S-11).
+# 어떤 키가 필요한지는 `docs/deployment.md` §5 의 표가 든다.
+#
+# **compose 는 값이 없어도 멈추지 않는다** — 빈 문자열로 채우고 경고만 남긴다. 멈추는 것은
+# 이미지 변수뿐이다(`image` 가 비면 `docker compose config` 가 실패한다). 나머지의 방어선은
+# **앱 자신**이다: 값이 없으면 부팅이 실패한다 (§7.3). 그래서 `up -d` 뒤에는 반드시
+# readiness 를 확인한다 — 경고를 흘려보낸 배포는 조용히 뜨는 것이 아니라 조용히 안 뜬다.
+#
+# **포트를 여는 것은 `caddy` 하나뿐이다.** app · web · postgres · redis 는 compose 기본
+# 네트워크 안에서만 서로를 본다. §13-45 가 요구한 *"앱은 인터넷에 직접 노출되지 않는다"* 가
+# 이 파일의 구조로 지켜진다 — 설정이 아니라 위상이다.
+# ─────────────────────────────────────────────────────────────
+
+# blue 와 green 은 **같은 환경을 받는다.** 다른 것은 이미지 태그뿐이다 —
+# 환경이 갈리면 그것은 blue/green 이 아니라 서로 다른 두 배포다.
+x-app-env: &app-env
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+
+  IDENTITY_DB_URL: ${IDENTITY_DB_URL}
+  IDENTITY_DB_USER: ${IDENTITY_DB_USER}
+  IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD}
+  CATALOG_DB_URL: ${CATALOG_DB_URL}
+  CATALOG_DB_USER: ${CATALOG_DB_USER}
+  CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+  PLAY_DB_URL: ${PLAY_DB_URL}
+  PLAY_DB_USER: ${PLAY_DB_USER}
+  PLAY_DB_PASSWORD: ${PLAY_DB_PASSWORD}
+  PROMPTLOG_DB_URL: ${PROMPTLOG_DB_URL}
+  PROMPTLOG_DB_USER: ${PROMPTLOG_DB_USER}
+  PROMPTLOG_DB_PASSWORD: ${PROMPTLOG_DB_PASSWORD}
+  REDIS_URL: ${REDIS_URL}
+
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+  REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE}
+  JWT_SECRET: ${JWT_SECRET}
+  GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
+  GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET}
+
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+
+  ADMIN_ALLOWED_CIDR: ${ADMIN_ALLOWED_CIDR}
+  ADMIN_TOTP_SECRET_KEY: ${ADMIN_TOTP_SECRET_KEY}
+
+  IMAGE_STORAGE_ENDPOINT: ${IMAGE_STORAGE_ENDPOINT}
+  IMAGE_STORAGE_REGION: ${IMAGE_STORAGE_REGION}
+  IMAGE_STORAGE_BUCKET: ${IMAGE_STORAGE_BUCKET}
+  IMAGE_STORAGE_ACCESS_KEY: ${IMAGE_STORAGE_ACCESS_KEY}
+  IMAGE_STORAGE_SECRET_KEY: ${IMAGE_STORAGE_SECRET_KEY}
+
+services:
+  # ── 앞단 ────────────────────────────────────────────────────
+  # 인터넷을 보는 유일한 컨테이너다. TLS 도 라우팅도 blue/green 전환도 여기서 끝난다.
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: neowadaeum-caddy
+    restart: unless-stopped
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"     # ACME HTTP-01 과 HTTPS 리다이렉트. 닫으면 인증서를 못 받는다
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 전환점. **쓰기 가능하게 마운트한다** — 배포자가 이 한 줄을 고쳐 blue ⇄ green 을 바꾼다.
+      - ./docker/caddy/upstream.caddy:/etc/caddy/upstream.caddy
+      # ★ 발급받은 인증서가 여기 산다. **이 볼륨을 지우면 재발급이고, 재발급에는 한도가 있다.**
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # ── 앱: blue / green ────────────────────────────────────────
+  # 둘 다 떠 있는 것이 정상이다. 놀고 있는 쪽을 내리지 않는 것이 §5 의 "되돌리기가 빠른" 이유다.
+  # 첫 배포에서는 두 이미지 변수에 같은 SHA 를 넣는다.
+  #
+  # **두 쪽이 동시에 뜨면 마이그레이션은 하나만 수행한다** — Flyway 가 잠금을 잡는다 (§3).
+  app-blue:
+    image: ${APP_IMAGE_BLUE}
+    container_name: neowadaeum-app-blue
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  app-green:
+    image: ${APP_IMAGE_GREEN}
+    container_name: neowadaeum-app-green
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── 프론트 ──────────────────────────────────────────────────
+  # **blue/green 이 아니다.** 정적 파일이고 마이그레이션도 준비 상태도 없다 —
+  # 갈아 끼우는 데 드는 시간이 프록시의 재시도 창(`Caddyfile` 의 `lb_try_duration`) 안이다.
+  # 되돌리기는 `WEB_IMAGE` 를 이전 태그로 되돌리고 이 서비스만 다시 올리는 것이다.
+  # 근거는 `docs/deployment.md` §5.
+  web:
+    image: ${WEB_IMAGE}
+    container_name: neowadaeum-web
+    restart: unless-stopped
+    environment:
+      # 단일 오리진이므로 프론트가 부르는 API 도 같은 오리진이다 (ADR-0008).
+      API_BASE_URL: ${API_BASE_URL}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
+
+  # ── 데이터 ──────────────────────────────────────────────────
+  # 한 호스트 안의 하나씩이다. 스토어 넷은 이 안의 스키마 넷이다 (§5.3).
+  postgres:
+    image: postgres:16-alpine
+    container_name: neowadaeum-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: UTC
+      # ↓ docker/postgres/init/01-init-schemas.sh 가 스키마별 계정을 만들 때 쓴다.
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD}
+      CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+      PLAY_DB_PASSWORD: ${PLAY_DB_PASSWORD}
+      PROMPTLOG_DB_PASSWORD: ${PROMPTLOG_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: neowadaeum-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:
