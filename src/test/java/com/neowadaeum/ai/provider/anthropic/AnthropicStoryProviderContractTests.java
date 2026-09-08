@@ -45,6 +45,10 @@ import tools.jackson.databind.json.JsonMapper;
  * 무엇을 읽는지, 실패를 어떻게 나누는지가 검증 대상이다.
  *
  * <p>컨테이너가 필요 없다 (ADR-0001). WireMock 은 프로세스 안에서 뜬다.
+ *
+ * <p><b>기록은 리스트를 통째로 단언한다</b> (#449). {@code getFirst()} 로 꺼내면 리스트가 비어
+ * 있을 때 {@link java.util.NoSuchElementException} 하나만 남고 <b>왜 비었는지 아무것도 말하지
+ * 않는다</b> — 그 대가와 이유는 {@code AnthropicSafetyClassificationTests} 에 적어 두었다 (#446).
  */
 class AnthropicStoryProviderContractTests {
 
@@ -317,14 +321,17 @@ class AnthropicStoryProviderContractTests {
 
 		this.provider.generateTurn(request());
 
-		assertThat(this.recorded).hasSize(1);
-		AiCallLog.Draft draft = this.recorded.getFirst();
-		assertThat(draft.purpose()).isEqualTo("turn");
-		assertThat(draft.providerId()).isEqualTo("anthropic");
-		assertThat(draft.modelId()).isEqualTo("claude-opus-5");
-		assertThat(draft.requestRaw()).contains("[WORLD]");
-		assertThat(draft.responseRaw()).contains("복도 끝에서 발소리가 멈췄다.");
-		assertThat(draft.latencyMs()).isNotNegative();
+		assertThat(this.recorded)
+				.as("성공한 턴 호출이 기록되지 않았다 (#446) — 호출이 나가지 못했거나 기록이 성공 경로에서 빠졌다")
+				.singleElement()
+				.satisfies(draft -> {
+					assertThat(draft.purpose()).isEqualTo("turn");
+					assertThat(draft.providerId()).isEqualTo("anthropic");
+					assertThat(draft.modelId()).isEqualTo("claude-opus-5");
+					assertThat(draft.requestRaw()).contains("[WORLD]");
+					assertThat(draft.responseRaw()).contains("복도 끝에서 발소리가 멈췄다.");
+					assertThat(draft.latencyMs()).isNotNegative();
+				});
 	}
 
 	/**
@@ -338,11 +345,13 @@ class AnthropicStoryProviderContractTests {
 		assertThatThrownBy(() -> this.provider.generateTurn(request()))
 				.isInstanceOf(ProviderCallFailedException.class);
 
-		assertThat(this.recorded).hasSize(1);
-		assertThat(this.recorded.getFirst().requestRaw()).isNotBlank();
-		assertThat(this.recorded.getFirst().responseRaw())
-				.as("응답이 없었는데 무언가 기록됐다")
-				.isNull();
+		assertThat(this.recorded)
+				.as("500 을 받은 호출이 기록되지 않았다 (#446) — 실패 경로가 기록보다 먼저 빠져나갔을 수 있다")
+				.singleElement()
+				.satisfies(draft -> {
+					assertThat(draft.requestRaw()).isNotBlank();
+					assertThat(draft.responseRaw()).as("응답이 없었는데 무언가 기록됐다").isNull();
+				});
 	}
 
 	/**
@@ -358,8 +367,10 @@ class AnthropicStoryProviderContractTests {
 		assertThatThrownBy(() -> this.provider.generateTurn(request()))
 				.isInstanceOf(TurnOutputSchemaException.class);
 
-		assertThat(this.recorded).hasSize(1);
-		assertThat(this.recorded.getFirst().responseRaw()).contains("통 문자열 본문");
+		assertThat(this.recorded)
+				.as("스키마 위반 응답이 기록되지 않았다 (#446) — 기록이 파싱보다 뒤로 밀리면 거부된 원문이 사라진다")
+				.singleElement()
+				.satisfies(draft -> assertThat(draft.responseRaw()).contains("통 문자열 본문"));
 	}
 
 	/**
@@ -389,7 +400,11 @@ class AnthropicStoryProviderContractTests {
 
 		this.provider.generateTurn(request());
 
-		assertThat(this.recorded.getFirst().costMicroKrw()).isNull();
+		assertThat(this.recorded)
+				.as("비용을 볼 기록이 아예 없다 (#446) — 단가가 없다는 것과 호출이 남지 않았다는 것은 다르다")
+				.singleElement()
+				.extracting(AiCallLog.Draft::costMicroKrw)
+				.isNull();
 	}
 
 	/**
@@ -410,7 +425,11 @@ class AnthropicStoryProviderContractTests {
 
 		priced.generateTurn(request());
 
-		assertThat(this.recorded.getFirst().costMicroKrw()).isEqualTo(10_500_000L);
+		assertThat(this.recorded)
+				.as("단가를 넣은 어댑터의 호출이 기록되지 않았다 (#446) — 이 테스트만 providerWith 로 어댑터를 새로 만든다")
+				.singleElement()
+				.extracting(AiCallLog.Draft::costMicroKrw)
+				.isEqualTo(10_500_000L);
 	}
 
 	/**
@@ -426,7 +445,11 @@ class AnthropicStoryProviderContractTests {
 
 		priced.generateTurn(request());
 
-		assertThat(this.recorded.getFirst().costMicroKrw()).isNull();
+		assertThat(this.recorded)
+				.as("usage 를 싣지 않은 응답의 호출이 기록되지 않았다 (#446) — 이 테스트만 providerWith 로 어댑터를 새로 만든다")
+				.singleElement()
+				.extracting(AiCallLog.Draft::costMicroKrw)
+				.isNull();
 	}
 
 	/**
