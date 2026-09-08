@@ -697,6 +697,7 @@ E2E에서 실제 AI를 호출하지 않는다. `FixedStoryProvider`가 시나리
 | 401 | `LOGIN_NONCE_INVALID` | ID 토큰에 서버가 발급한 nonce 가 없다 (§13-87) | 로그인 왕복을 처음부터 다시 — 재발급으로는 회복되지 않는다 |
 | 403 | `AGE_RESTRICTED` | 만 15세 미만 | 가입 불가 안내 |
 | 403 | `STORY_LIMIT_REACHED` | 계정당 작품 개수 상한 (B-60) | 날이 바뀌어도 늘지 않는다 — 기다리라고 안내하지 않는다 |
+| 403 | `DRAFT_LIMIT_REACHED` | 작성자당 원고 개수 상한 (B-51, §13-91) | 기다려서 풀리지 않는다 — **지우면 자리가 난다** |
 | 403 | `FORBIDDEN` | 소유자 아님 / 권한 없음 | |
 | 404 | `NOT_FOUND` | 리소스 없음 | |
 | 409 | `TURN_CONFLICT` | `turnNo` 불일치 | 현재 턴으로 동기화 |
