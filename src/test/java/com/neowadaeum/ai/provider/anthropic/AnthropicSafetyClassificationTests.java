@@ -33,6 +33,16 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p><b>실제 AI 를 부르지 않는다</b> ({@code .claude/rules/testing.md}). 확인하는 것은 <b>어느
  * 모델로 무엇을 보내고, 무엇을 통과시키지 않는가</b>다.
+ *
+ * <p><b>기록을 볼 때 {@code getFirst()} 를 쓰지 않는다</b> (이슈 #446). 리스트가 비어 있으면 그
+ * 호출은 {@link java.util.NoSuchElementException} 을 던지고 <b>왜 비었는지 아무것도 말하지
+ * 않는다</b> — 판정이 기록되지 않은 것인지, 호출 자체가 나가지 못한 것인지, stub 이 매칭되지
+ * 않아 다른 응답이 온 것인지가 전부 같은 예외가 된다. 이 클래스가 전량 실행에서 <b>한 번</b>
+ * 실패했을 때 남은 것이 그 예외뿐이라 원인을 좁히지 못했다.
+ *
+ * <p>그래서 기록은 <b>리스트를 통째로 단언한다.</b> 실패 메시지가 *"크기가 1이어야 하는데
+ * 0이다"* 를 말하고, {@code as(...)} 가 그 상태에서 무엇을 의심해야 하는지 함께 남긴다.
+ * <b>재현되지 않는 실패에 대비하는 방법은 다음 실패가 스스로 설명하게 만드는 것뿐이다.</b>
  */
 class AnthropicSafetyClassificationTests {
 
@@ -137,10 +147,14 @@ class AnthropicSafetyClassificationTests {
 
 		assertThat(this.provider.classifySafety(request())).containsExactly(SafetyCategory.HATE_SPEECH);
 
-		AiCallLog.Draft draft = this.recorded.getFirst();
-		assertThat(draft.purpose()).isEqualTo("safety");
-		assertThat(draft.modelId()).isEqualTo(SAFETY_MODEL);
-		assertThat(draft.safetyFlags()).isEqualTo("hate_speech");
+		assertThat(this.recorded)
+				.as("판정 호출이 기록되지 않았다 (#446) — 호출이 나가지 못했거나 stub 이 매칭되지 않았다")
+				.singleElement()
+				.satisfies(draft -> {
+					assertThat(draft.purpose()).isEqualTo("safety");
+					assertThat(draft.modelId()).isEqualTo(SAFETY_MODEL);
+					assertThat(draft.safetyFlags()).isEqualTo("hate_speech");
+				});
 	}
 
 	/** 걸린 것이 없으면 빈 집합이고 {@code safety_flags} 는 비어 있다. */
@@ -149,7 +163,12 @@ class AnthropicSafetyClassificationTests {
 		respondWith("{\"categories\": []}");
 
 		assertThat(this.provider.classifySafety(request())).isEmpty();
-		assertThat(this.recorded.getFirst().safetyFlags()).isNull();
+		assertThat(this.recorded)
+				.as("판정 호출이 기록되지 않았다 (#446) — 호출이 나가지 못했거나 stub 이 매칭되지 않았다")
+				.singleElement()
+				.extracting(AiCallLog.Draft::safetyFlags)
+				.as("걸린 것이 없으면 safety_flags 는 비어 있다 (R9.2)")
+				.isNull();
 	}
 
 	/**
@@ -165,8 +184,11 @@ class AnthropicSafetyClassificationTests {
 		assertThatThrownBy(() -> this.provider.classifySafety(request()))
 				.isInstanceOf(SafetyClassificationFailedException.class);
 
-		assertThat(this.recorded).hasSize(1);
-		assertThat(this.recorded.getFirst().responseRaw()).isNotNull();
+		assertThat(this.recorded)
+				.as("형식 위반도 기록은 남는다 — 무엇을 돌려줬길래 거부됐는지가 단서다 (R9.3)")
+				.singleElement()
+				.extracting(AiCallLog.Draft::responseRaw)
+				.isNotNull();
 	}
 
 	/**
