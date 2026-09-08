@@ -20,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -950,5 +951,168 @@ class OpenApiContractTests {
 
 	private static boolean endsWithAny(String name, List<String> suffixes) {
 		return suffixes.stream().anyMatch(name::endsWith);
+	}
+
+	// ── 8. 상태 코드와 그 아래의 에러 코드 (#432) ──────────────
+
+	/**
+	 * <b>계약이 선언한 에러 응답은 어떤 코드가 오는지 말하고, 그 코드는 그 상태에 속한다</b> (#432).
+	 *
+	 * <p>여기까지의 검사는 <b>경로 · 핸들러 · 스키마 · enum</b> 을 봤다. 그래서 코드 목록이
+	 * {@link ErrorCode} 와 같은지는 알았지만 <b>어느 오퍼레이션의 어느 상태에 어떤 코드가
+	 * 실리는지</b>는 아무도 대조하지 않았다 — 로그인의 {@code 403} 이 {@code AGE_RESTRICTED}
+	 * 하나만 적고 있던 동안 구현은 정지·탈퇴 회원에게 {@code FORBIDDEN} 을 내고 있었고, 계약을
+	 * 읽고 화면을 만드는 쪽은 그것을 알 방법이 없었다.
+	 *
+	 * <p><b>여기서 넓히는 것은 둘이다.</b> 4xx·5xx 응답은 <b>코드를 하나 이상 이름으로 말해야
+	 * 하고</b>, 말한 코드의 HTTP 상태가 <b>선언된 상태와 같아야 한다.</b> 예시가 곧 계약의
+	 * 기계 판독 가능한 부분이 된다.
+	 *
+	 * <p><b>여전히 보지 못하는 것이 있다</b> — <i>구현이 던지는데 계약이 적지 않은 코드</i>다.
+	 * {@code ApiException} 은 컨트롤러가 아니라 서비스 깊은 곳에서 던져지고
+	 * {@code GlobalExceptionHandler} 를 지나 응답이 되므로, 핸들러 시그니처에서 되짚을 면이
+	 * 없다. 그 방향은 경로별 테스트가 지킨다 (아래 · {@code OAuthLoginServiceTests}).
+	 */
+	@Test
+	void Issue432_every_error_response_names_codes_that_belong_to_its_status() {
+		List<String> silent = new ArrayList<>();
+		List<String> misplaced = new ArrayList<>();
+
+		eachErrorResponse((where, status, response) -> {
+			Set<String> codes = declaredCodesOf(response);
+			if (codes.isEmpty()) {
+				silent.add(where);
+				return;
+			}
+			codes.stream()
+					.filter(code -> !belongsTo(code, status))
+					.forEach(code -> misplaced.add(where + " → " + code));
+		});
+
+		assertThat(silent)
+				.as("에러 응답인데 어떤 코드가 오는지 계약이 말하지 않는다 (#432). example 또는 "
+						+ "examples 로 코드를 적는다 — 상태 코드만으로는 화면이 분기를 만들 수 없다")
+				.isEmpty();
+		assertThat(misplaced)
+				.as("계약이 그 상태에 속하지 않는 코드를 적었다 (#432). ErrorCode 의 HttpStatus 가 "
+						+ "정본이다")
+				.isEmpty();
+	}
+
+	/**
+	 * <b>정지·탈퇴 회원의 {@code FORBIDDEN} 이 두 경로 모두에 적혀 있다</b> (#432, R12.5).
+	 *
+	 * <p>로그인의 {@code 403} 에는 두 뜻이 실린다 — 나이로 막힌 사람과 <b>막힌 계정</b>이다.
+	 * 코드가 갈리므로 화면은 가를 수 있지만, <b>계약이 후자를 적지 않으면 그 분기가 존재하는
+	 * 줄을 모른다.</b> 재발급은 {@code requireActive} 로 같은 규칙을 쓰므로 같은 코드가 나오고,
+	 * <b>두 경로가 다른 말을 하고 있으면 그것이 더 나쁘다.</b>
+	 */
+	@Test
+	void R12_5_both_token_paths_declare_the_blocked_member() {
+		assertThat(declaredCodesOf(responseOf("/api/v1/auth/oauth/{provider}", "post", "403")))
+				.as("로그인의 403 이 정지·탈퇴 회원의 FORBIDDEN 을 말하지 않는다 (#432)")
+				.containsExactlyInAnyOrder("AGE_RESTRICTED", "FORBIDDEN");
+		assertThat(declaredCodesOf(responseOf("/api/v1/auth/refresh", "post", "403")))
+				.as("재발급의 403 이 FORBIDDEN 을 말하지 않는다 (#432)")
+				.contains("FORBIDDEN");
+	}
+
+	/** 계약의 모든 4xx · 5xx 응답을 한 번씩 준다. {@code $ref} 는 풀어서 준다. */
+	@SuppressWarnings("unchecked")
+	private static void eachErrorResponse(ErrorResponseVisitor visitor) {
+		paths().forEach((path, node) -> ((Map<String, Object>) node).forEach((verb, operation) -> {
+			if (!HTTP_METHODS.contains(verb.toUpperCase(Locale.ROOT))) {
+				return;
+			}
+			Object responses = ((Map<String, Object>) operation).get("responses");
+			if (responses == null) {
+				return;
+			}
+			((Map<String, Object>) responses).forEach((status, response) -> {
+				String code = String.valueOf(status);
+				if (!code.startsWith("4") && !code.startsWith("5")) {
+					return;
+				}
+				visitor.visit(verb.toUpperCase(Locale.ROOT) + " " + path + " " + code,
+						Integer.parseInt(code), resolve(response));
+			});
+		}));
+	}
+
+	@FunctionalInterface
+	private interface ErrorResponseVisitor {
+
+		void visit(String where, int status, Map<String, Object> response);
+	}
+
+	/** 한 오퍼레이션의 한 응답. 없으면 실패한다 — 못박는 자리이므로 조용히 넘기지 않는다. */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> responseOf(String path, String verb, String status) {
+		Map<String, Object> operations = (Map<String, Object>) paths().get(path);
+		assertThat(operations).as("계약에 %s 가 없다", path).isNotNull();
+		Map<String, Object> operation = (Map<String, Object>) operations.get(verb);
+		assertThat(operation).as("계약의 %s 에 %s 가 없다", path, verb).isNotNull();
+		Map<String, Object> responses = (Map<String, Object>) operation.get("responses");
+		Object response = responses.get(status);
+		assertThat(response).as("%s %s 에 %s 응답이 없다", verb, path, status).isNotNull();
+		return resolve(response);
+	}
+
+	/** {@code $ref: '#/components/responses/X'} 를 그 컴포넌트로 바꾼다. */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> resolve(Object response) {
+		Map<String, Object> node = (Map<String, Object>) response;
+		if (!(node.get("$ref") instanceof String ref)) {
+			return node;
+		}
+		String name = ref.substring(ref.lastIndexOf('/') + 1);
+		Map<String, Object> responses =
+				(Map<String, Object>) ((Map<String, Object>) SPEC.get("components")).get("responses");
+		Map<String, Object> found = (Map<String, Object>) responses.get(name);
+		assertThat(found).as("계약이 없는 응답 컴포넌트를 가리킨다 — %s", ref).isNotNull();
+		return found;
+	}
+
+	/**
+	 * 한 응답이 이름으로 말하는 에러 코드들.
+	 *
+	 * <p>{@code example} 하나든 {@code examples} 여럿이든 같게 읽는다 — <b>한 상태에 코드가
+	 * 여럿인 자리</b>({@code 429} · {@code 500} · 로그인의 {@code 403})가 후자다.
+	 */
+	@SuppressWarnings("unchecked")
+	private static Set<String> declaredCodesOf(Map<String, Object> response) {
+		Object content = response.get("content");
+		if (!(content instanceof Map)) {
+			return Set.of();
+		}
+		Object json = ((Map<String, Object>) content).get("application/json");
+		if (!(json instanceof Map)) {
+			return Set.of();
+		}
+		Map<String, Object> body = (Map<String, Object>) json;
+		Set<String> codes = new LinkedHashSet<>();
+		codeOf(body.get("example")).ifPresent(codes::add);
+		if (body.get("examples") instanceof Map<?, ?> examples) {
+			examples.values().stream()
+					.filter(Map.class::isInstance)
+					.forEach(example -> codeOf(((Map<String, Object>) example).get("value"))
+							.ifPresent(codes::add));
+		}
+		return codes;
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Optional<String> codeOf(Object example) {
+		if (example instanceof Map<?, ?> body && ((Map<String, Object>) body).get("error") instanceof String code) {
+			return Optional.of(code);
+		}
+		return Optional.empty();
+	}
+
+	/** 그 코드가 그 HTTP 상태로 나가는가. 정본은 {@link ErrorCode} 다. */
+	private static boolean belongsTo(String code, int status) {
+		return Arrays.stream(ErrorCode.values())
+				.filter(value -> value.name().equals(code))
+				.anyMatch(value -> value.status().value() == status);
 	}
 }
