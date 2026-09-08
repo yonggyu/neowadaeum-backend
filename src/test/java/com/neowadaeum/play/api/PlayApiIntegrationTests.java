@@ -380,8 +380,12 @@ class PlayApiIntegrationTests extends ContainerTestBase {
 	 */
 	@Test
 	void R11_1_the_turn_response_carries_the_notice_text() throws Exception {
-		UUID sessionId = UUID.fromString(startSession().path("sessionId").asString());
+		JsonNode start = startSession();
+		UUID sessionId = UUID.fromString(start.path("sessionId").asString());
 
+		// §13-90 (#437) — 시작 응답의 문구는 이제 생성 **앞에서** 확보한 값이다. 그 값이 실제로
+		// 실리는지 여기서 본다 — 옮긴 뒤 응답이 비면 조용히 빈 Footer 가 나간다.
+		assertThat(start.path("turn").path("noticeText").asString()).isEqualTo(NOTICE);
 		assertThat(current(sessionId).path("noticeText").asString()).isEqualTo(NOTICE);
 	}
 

@@ -58,9 +58,17 @@ public class ApiSecurityConfiguration {
 	 * <p>{@code /api/v1/consents} 가 여기 있는 이유는 <b>가입 전에 불리기 때문</b>이다 — 토큰을
 	 * 요구하면 아직 회원이 아닌 사람이 약관 판본을 읽을 방법이 없다. 그 대신 <b>그 응답에 회원에
 	 * 관한 값이 하나도 없어야 한다</b> (S-9).
+	 *
+	 * <p>{@code /api/v1/auth/nonce} 는 같은 이유의 더 앞이다 (§13-87) — <b>로그인보다 앞</b>이라
+	 * 요구할 자격 증명 자체가 없다. 그 대신 IP 기준 호출 한도가 걸린다 (S-8): 인증 없이 열리고
+	 * <b>서버에 상태를 만드는</b> 경로다.
+	 *
+	 * <p><b>그 경로가 {@code /api/v1/auth/oauth/*} 아래가 아닌 것은 의도다.</b> 거기에 두면
+	 * {@code {provider}} 자리와 같은 자리가 되어 <b>{@code provider} 이름이 "nonce" 인 로그인
+	 * 요청</b>과 라우팅이 겹친다.
 	 */
 	private static final String[] PUBLIC_PATHS = { "/api/v1/auth/oauth/*", "/api/v1/auth/refresh",
-			"/api/v1/landing", "/api/v1/consents" };
+			"/api/v1/auth/nonce", "/api/v1/landing", "/api/v1/consents" };
 
 	/**
 	 * 인증 없이 여는 <b>탐색</b> — {@code GET} 만이다 (§13-54, 이슈 #306).

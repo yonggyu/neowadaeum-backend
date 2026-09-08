@@ -49,6 +49,24 @@ git switch backend && git pull
 git switch -c feat/#<이슈>-<영문-소문자-슬러그>
 ```
 
+**워크트리에서 시작했다면 위 첫 줄이 성립하지 않는다.** 다른 워크트리가 `backend` 를 잡고 있으면 `git switch backend` 가 실패하고,
+워크트리 HEAD 는 애초에 기본 브랜치(`main`)에 서 있다. 이 경우 `origin/backend` 를 base 로 직접 준다.
+
+```bash
+git fetch origin
+git merge-base --is-ancestor HEAD origin/backend || echo "HEAD 가 backend 밖이다 — 아래로 다시 판다"
+git switch -c feat/#<이슈>-<영문-소문자-슬러그> origin/backend
+```
+
+**워크트리 HEAD 를 base 로 쓰지 않는다.** 이 레포의 `main` 은 **릴리스 후보**라(§8.2 · §8.7) 계약을 바꾸는 묶음이 아니면 승격하지 않고,
+그래서 상시 `backend` 보다 뒤처진다. 승격이 merge commit 이라 **조금 뒤처진 것이 아니라 갈래가 다르다** —
+`git merge-base --is-ancestor origin/main origin/backend` 가 거짓이다. 대부분의 레포에서 "기본 브랜치에서 워크트리를 만든다"는
+맞는 기본값이고, **특수한 것은 이 레포의 브랜치 구조다.**
+
+낡은 base 에서 시작하면 **낡은 문서를 정본으로 읽는다.** #411 작업은 한 세대 이전 HEAD 에서 출발해 브랜치를 다시 팠고,
+#345 판정은 워크트리의 `docs/perf/turn-latency.md` 가 최신 측정 회차가 빠진 판본이라 `origin/backend` 를 직접 대조해야 했다.
+**두 번 다 에이전트가 알아채서 넘어갔다는 것이 요점이다** — 코드였다면 컴파일이 잡았을 것을 문서에서는 아무것도 잡지 않는다 (이슈 #421).
+
 타입은 `feat` `fix` `refactor` `chore` `docs` `test` `perf` 중 작업 성격에 맞는 것 (§8.3).
 
 ## 2. 프로젝트 위키 — 이미 내려둔 결론이 있는가
