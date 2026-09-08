@@ -75,7 +75,15 @@ class ApplicationTemplateBindingTests {
 	 * 아니라 Spring 이 정의하는 이름이라, 우리 쪽 프로퍼티가 늘어도 이 집합은 늘지 않는다. 반대로
 	 * 우리 네임스페이스를 여기 적기 시작하면 이 검사는 자기가 지키려던 것을 지키지 못한다.
 	 */
-	private static final Set<String> FRAMEWORK_ROOTS = Set.of("spring", "management", "logging", "springdoc");
+	/**
+	 * 프레임워크가 소유한 최상위 네임스페이스.
+	 *
+	 * <p><b>{@code server} 는 #458 에서 늘었다</b> — 전달 헤더 전략과 Tomcat {@code RemoteIpValve}
+	 * 의 신뢰 목록이 그 아래 산다 (§13-93). 이 목록에 더하는 것은 <b>우리가 바인딩하지 않는
+	 * 키를 허용한다</b>는 뜻이므로, 프레임워크가 실제로 읽는 이름만 넣는다.
+	 */
+	private static final Set<String> FRAMEWORK_ROOTS =
+			Set.of("spring", "management", "logging", "springdoc", "server");
 
 	/** 문서 안에서 들여쓰기 없이 시작하는 키. 주석(`#`)과 리스트 항목(`-`)은 걸리지 않는다. */
 	private static final Pattern ROOT_KEY = Pattern.compile("^([A-Za-z][A-Za-z0-9_.-]*):(\\s.*)?$");
