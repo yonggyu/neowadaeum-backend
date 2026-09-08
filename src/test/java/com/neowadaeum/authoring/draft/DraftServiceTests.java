@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 
 /**
  * B-51 — <b>남의 원고는 없는 것과 구분되지 않는다</b> (I-8, §8.1).
@@ -124,7 +125,13 @@ class DraftServiceTests extends ContainerTestBase {
 		assertThat(this.service.save(authorRef, draftId, 3, "{\"fixed\":true}").getStep()).isEqualTo(3);
 	}
 
-	/** <b>개수 상한이 있다</b> (R8.12) — 없으면 한 계정이 저장소를 채운다. */
+	/**
+	 * <b>개수 상한이 있다</b> (R8.12) — 없으면 한 계정이 저장소를 채운다.
+	 *
+	 * <p><b>코드와 문구를 함께 단언한다</b> (§13-91, #450). 프론트는 서버의 {@code message} 를
+	 * 그대로 그리므로(F-4), 코드만 못박으면 <b>사용자가 읽는 말이 어긋나도 아무것도 깨지지
+	 * 않는다</b> — 그것이 이 이슈였다. 상한에 닿은 사람은 같은 것을 두 번 만든 것이 아니다.
+	 */
 	@Test
 	void R8_12_an_author_cannot_hoard_drafts() {
 		UUID authorRef = UUID.randomUUID();
@@ -134,8 +141,12 @@ class DraftServiceTests extends ContainerTestBase {
 
 		assertThatThrownBy(() -> this.service.create(authorRef))
 				.isInstanceOf(ApiException.class)
-				.extracting(ex -> ((ApiException) ex).errorCode())
-				.isEqualTo(ErrorCode.ALREADY_EXISTS);
+				.satisfies(thrown -> {
+					ErrorCode code = ((ApiException) thrown).errorCode();
+					assertThat(code).isEqualTo(ErrorCode.DRAFT_LIMIT_REACHED);
+					assertThat(code.status()).isEqualTo(HttpStatus.FORBIDDEN);
+					assertThat(code.defaultMessage()).doesNotContain("이미 등록").contains("원고");
+				});
 	}
 
 	/** 지운 자리는 다시 쓸 수 있다 — 상한이 영구 봉인이 되면 안 된다. */
