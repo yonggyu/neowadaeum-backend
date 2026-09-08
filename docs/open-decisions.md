@@ -286,6 +286,7 @@ backend  →  dev  →  main(릴리스 후보)  →  staging 검증  →  produc
 |---|---|
 | `docs/corrections.md` | 모든 `[결정 필요]` 항목과 채택 근거 |
 | `docs/deployment.md` | 배포 절차 · 마이그레이션 순서 · 롤백 |
+| `docs/releases.md` | 릴리스 조합 원장 — 어느 프론트와 어느 백엔드가 함께 검증됐는가 (§13-92) |
 | `docs/runbook/` | 장애 대응 4종 |
 | `docs/tasks.md` | B-xx 정의와 DoD |
 | `.env.example` | 넣어야 하는 환경변수 26개 |
