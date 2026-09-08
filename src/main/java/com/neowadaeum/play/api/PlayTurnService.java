@@ -100,6 +100,16 @@ public class PlayTurnService {
 		int chosenOrder = resolveChoiceOrder(sessionId, request.choiceId());
 		String key = idempotencyKey(playerRef, sessionId, request);
 
+		// §13-90 — 고지 문구를 **모델을 부르기 전에** 확보한다 (R11.1, §13-27). 조립 자리에서
+		// 확인하면 그때는 이미 provider 를 부르고 턴을 저장한 뒤다 — 비용은 나가고 화면은
+		// 실패하며, 사용자가 보지 못한 턴이 스냅샷과 함께 남는다 (I-5, append-only).
+		//
+		// **여기가 제약을 지키는 가장 이른 자리다.** 위의 판정들이 먼저여야 한다: 소유권은
+		// NOT_FOUND(I-3), 정지는 423, turnNo 불일치는 409 이며 클라이언트가 맞출 근거를 함께
+		// 준다(I-6), 한도는 429, 선택지는 INVALID_CHOICE(I-1) 다. 문구 조회를 그보다 앞에 두면
+		// **그 요청들이 전부 500 으로 바뀌어** 무엇을 고쳐야 하는지 알 수 없게 된다.
+		String noticeText = this.notice.require("play");
+
 		// R6.2 — 같은 요청이 이미 진행 중이면 기다렸다 그 결과를 준다. 409 를 주면 클라이언트가
 		// 다시 눌러 결국 두 번 생성된다 — 보호 대상은 중복 과금이다.
 		if (!this.idempotency.reserve(key)) {
@@ -108,7 +118,7 @@ public class PlayTurnService {
 					.orElseThrow(() -> new ApiException(ErrorCode.CONCURRENT_GENERATION));
 		}
 
-		return generate(playerRef, session, sessionId, chosenOrder, request.choiceId(), key);
+		return generate(playerRef, session, sessionId, chosenOrder, request.choiceId(), key, noticeText);
 	}
 
 	/**
@@ -118,7 +128,7 @@ public class PlayTurnService {
 	 * 아무것도 못 한다.
 	 */
 	private TurnView generate(UUID playerRef, PlaySession session, UUID sessionId, int chosenOrder,
-			String chosenChoiceId, String key) {
+			String chosenChoiceId, String key, String noticeText) {
 		// §4.3-2 — 동시 생성 락(계정당 1개).
 		this.guards.acquireGenerationLock(playerRef);
 		try {
@@ -127,7 +137,7 @@ public class PlayTurnService {
 				throw safetyBlocked(outcome);
 			}
 
-			TurnView view = view(session.getStoryVersionId(), outcome);
+			TurnView view = view(session.getStoryVersionId(), outcome, noticeText);
 			this.idempotency.complete(key, JSON.writeValueAsString(view));
 			this.guards.recordSuccess(sessionId);
 			return view;
@@ -179,8 +189,16 @@ public class PlayTurnService {
 				(request.idempotencyKey() != null) ? request.idempotencyKey() : "");
 	}
 
-	/** 세션 시작 직후의 첫 턴을 응답으로 바꾼다 (§4.2). */
-	public TurnView view(UUID storyVersionId, TurnOutcome outcome) {
+	/**
+	 * 세션 시작 직후의 첫 턴을 응답으로 바꾼다 (§4.2).
+	 *
+	 * <p><b>고지 문구를 인자로 받는다</b> (§13-90). 여기서 조회하면 그 확인이 provider 호출과
+	 * 턴 저장 <b>뒤</b>가 되어, 문구가 없을 때 비용만 쓰고 실패한다. 부르는 쪽이 생성 앞에서
+	 * 확보해 넘긴다 — {@link AiNoticeText} 가 응답 조립을 감싸지 않는 것도 같은 이유다.
+	 *
+	 * @param noticeText 생성 앞에서 확보한 문구 (R11.1)
+	 */
+	public TurnView view(UUID storyVersionId, TurnOutcome outcome, String noticeText) {
 		if (outcome.status() == TurnOutcome.TurnStatus.SAFETY_BLOCKED) {
 			throw safetyBlocked(outcome);
 		}
@@ -196,7 +214,7 @@ public class PlayTurnService {
 
 		return toView(session, turn, version, outcome.endingIndex(),
 				turn.isEnding() ? outcome.totalEndings() : null, reachRateOf(session, version, turn),
-				this.notice.require("play"));
+				noticeText);
 	}
 
 	/**

@@ -140,6 +140,10 @@ class AiNoticeExposureIntegrationTests extends ContainerTestBase {
 	 *
 	 * <p><b>대가를 적어 둔다</b> — 설정을 빠뜨리면 둘러보기만이 아니라 <b>플레이 전체가 멈춘다.</b>
 	 * 그래서 배포 절차의 0번 단계가 그만큼 더 중요해졌다 (`docs/deployment.md`).
+	 *
+	 * <p><b>§13-90 (#437) — 500 만으로는 부족했다.</b> 응답은 전에도 500 이었지만 그때는 이미
+	 * provider 를 부르고 턴을 저장한 뒤였다. 여기서 함께 단언하는 것은 <b>비용이 나가기 전에
+	 * 끝났다</b>는 사실이다 — 턴도 스냅샷도 남지 않는다 (I-5, append-only).
 	 */
 	@Test
 	void R11_1_play_does_not_start_without_a_configured_notice() throws Exception {
@@ -149,6 +153,8 @@ class AiNoticeExposureIntegrationTests extends ContainerTestBase {
 				.andExpect(result -> assertThat(result.getResponse().getStatus()).isEqualTo(500));
 
 		assertThat(this.impressions.count()).as("시작되지 않았으므로 노출도 남지 않는다").isZero();
+		assertThat(this.turns.count()).as("§13-90 — 모델을 부르기 전에 끝났다").isZero();
+		assertThat(this.snapshots.count()).as("보지 못한 턴의 스냅샷이 남지 않는다 (I-5)").isZero();
 	}
 
 	/** 동의 타입이 늘지 않았는지도 함께 본다 — 이 흐름은 동의를 만들지 않는다. */

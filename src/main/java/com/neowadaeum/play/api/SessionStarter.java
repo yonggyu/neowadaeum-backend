@@ -51,12 +51,13 @@ public class SessionStarter {
 	private final TurnPipeline pipeline;
 	private final TurnGenerationPort provider;
 	private final AiNoticeRecorder aiNotices;
+	private final AiNoticeText notice;
 	private final Clock clock;
 	private final TransactionTemplate transactions;
 
 	public SessionStarter(PlaySessionRepository sessions, StoryVersionFacade storyVersions,
 			StoryCatalogFacade stories, TurnPipeline pipeline, TurnGenerationPort provider,
-			AiNoticeRecorder aiNotices, Clock clock,
+			AiNoticeRecorder aiNotices, AiNoticeText notice, Clock clock,
 			PlatformTransactionManager playTransactionManager) {
 		this.transactions = new TransactionTemplate(playTransactionManager);
 		this.sessions = sessions;
@@ -65,6 +66,7 @@ public class SessionStarter {
 		this.pipeline = pipeline;
 		this.provider = provider;
 		this.aiNotices = aiNotices;
+		this.notice = notice;
 		this.clock = clock;
 	}
 
@@ -77,12 +79,23 @@ public class SessionStarter {
 	public StartedSession start(UUID playerRef, UUID storyId, boolean restart) {
 		CreatedSession created = this.transactions.execute(status -> createSession(playerRef, storyId, restart));
 
+		// §13-90 — 고지 문구를 **파이프라인보다 먼저** 확보한다 (R11.1, §13-27). 응답 조립
+		// 자리에서 확인하면 그때는 이미 provider 를 부르고 턴을 저장한 뒤다 — 비용은 나가고
+		// 화면은 실패하며, 아무도 보지 못한 턴이 스냅샷과 함께 남는다 (I-5, append-only).
+		//
+		// **createSession 뒤다.** 없는 작품·정지된 작품은 NOT_FOUND 여야 하고(I-8), 이미 열린
+		// 세션은 409 여야 한다(§13-9). 문구 조회를 그 앞에 두면 그 판정들이 전부 500 이 된다.
+		//
+		// **노출 기록보다도 앞이다.** 보여 주지 못할 문구를 "봤다"고 남기면 그 이력이 거짓이
+		// 된다 — 이력의 쓸모가 입증이므로 (R11.3, §11).
+		String noticeText = this.notice.require("play");
+
 		// R11.3 — 플레이를 시작하는 순간이 사전 고지의 자리다 (§4.1 의 "사전"). 매 턴이 아니라
 		// 여기서 한 번 남긴다. 기록기는 실패해도 플레이를 막지 않는다.
 		this.aiNotices.recordExposure(playerRef, NoticeSurface.PLAY);
 
 		TurnOutcome first = this.pipeline.advance(created.sessionId(), null);
-		return new StartedSession(created.sessionId(), created.storyVersionId(), first);
+		return new StartedSession(created.sessionId(), created.storyVersionId(), first, noticeText);
 	}
 
 	/**
@@ -170,7 +183,11 @@ public class SessionStarter {
 	 *                       는 {@code updatable = false} 이고 바꾸는 수단이 없으므로 세션을 다시 읽어도
 	 *                       같은 값이 나온다 (#294)
 	 * @param firstTurn      턴 1. 시작과 동시에 만들어진다
+	 * @param noticeText     <b>생성 앞에서 확보한</b> 고지 문구 (R11.1, §13-90). 응답 조립이
+	 *                       다시 조회하지 않고 이 값을 쓴다 — 조립 자리에서 없음을 알면 이미
+	 *                       비용이 나간 뒤다
 	 */
-	public record StartedSession(UUID sessionId, UUID storyVersionId, TurnOutcome firstTurn) {
+	public record StartedSession(UUID sessionId, UUID storyVersionId, TurnOutcome firstTurn,
+			String noticeText) {
 	}
 }
