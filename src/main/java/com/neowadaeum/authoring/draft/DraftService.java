@@ -53,11 +53,15 @@ public class DraftService {
 		this.transactions = new TransactionTemplate(catalogTransactionManager);
 	}
 
-	/** @throws ApiException {@code ALREADY_EXISTS} — 상한에 닿았다 (R8.12) */
+	/**
+	 * @throws ApiException {@code DRAFT_LIMIT_REACHED} — 상한에 닿았다 (R8.12, §13-91).
+	 *     <b>{@code ALREADY_EXISTS} 가 아니다</b> (이슈 #450) — 그 코드의 문구는 <i>"이미
+	 *     등록되어 있어요"</i> 이고, 상한에 닿은 사람은 같은 것을 두 번 만든 것이 아니다
+	 */
 	public StoryDraft create(UUID authorRef) {
 		return this.transactions.execute(status -> {
 			if (this.drafts.countByAuthorRef(authorRef) >= MAX_DRAFTS_PER_AUTHOR) {
-				throw new ApiException(ErrorCode.ALREADY_EXISTS);
+				throw new ApiException(ErrorCode.DRAFT_LIMIT_REACHED);
 			}
 			return this.drafts.save(StoryDraft.start(authorRef, Instant.now(this.clock)));
 		});

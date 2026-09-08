@@ -43,6 +43,10 @@ import tools.jackson.databind.json.JsonMapper;
  * 바꾸며, 스키마를 강제할 수단이 프롬프트뿐인 로컬 모델에 <b>한 번 더 기회를 준다.</b>
  *
  * <p>컨테이너가 필요 없다 (ADR-0001).
+ *
+ * <p><b>기록은 리스트를 통째로 단언한다</b> (#449). {@code getFirst()} 로 꺼내면 리스트가 비어
+ * 있을 때 {@link java.util.NoSuchElementException} 하나만 남고 <b>왜 비었는지 아무것도 말하지
+ * 않는다</b> — 그 대가와 이유는 {@code AnthropicSafetyClassificationTests} 에 적어 두었다 (#446).
  */
 class OllamaStoryProviderContractTests {
 
@@ -104,7 +108,11 @@ class OllamaStoryProviderContractTests {
 
 		this.provider.generateTurn(request());
 
-		assertThat(this.recorded.getFirst().costMicroKrw()).isNull();
+		assertThat(this.recorded)
+				.as("턴 호출이 기록되지 않았다 (#446) — 비용이 null 인 것과 기록 자체가 없는 것은 다르다")
+				.singleElement()
+				.extracting(AiCallLog.Draft::costMicroKrw)
+				.isNull();
 	}
 
 	/** 정상 응답이 {@code GeneratedTurn} 이 된다 — 파서를 거친다 (B-21). */
@@ -163,8 +171,13 @@ class OllamaStoryProviderContractTests {
 		assertThat(JSON.readTree(sent).path("model").asString(""))
 				.isEqualTo("llama-guard3")
 				.isNotEqualTo("llama3.1");
-		assertThat(this.recorded.getFirst().purpose()).isEqualTo("safety");
-		assertThat(this.recorded.getFirst().safetyFlags()).isEqualTo("rating_exceeded");
+		assertThat(this.recorded)
+				.as("판정이 정상으로 돌아왔는데 기록이 없다 (#446) — 호출은 나갔으니 기록 훅이 판정 경로에서 빠진 것이다")
+				.singleElement()
+				.satisfies(draft -> {
+					assertThat(draft.purpose()).isEqualTo("safety");
+					assertThat(draft.safetyFlags()).isEqualTo("rating_exceeded");
+				});
 	}
 
 	/**
@@ -233,7 +246,11 @@ class OllamaStoryProviderContractTests {
 		assertThat(JSON.readTree(sent).path("model").asString(""))
 				.isEqualTo("llama3.2:1b")
 				.isNotEqualTo("llama3.1");
-		assertThat(this.recorded.getFirst().purpose()).isEqualTo("summary");
+		assertThat(this.recorded)
+				.as("요약이 정상으로 돌아왔는데 기록이 없다 (#446) — 호출은 나갔으니 기록 훅이 요약 경로에서 빠진 것이다")
+				.singleElement()
+				.extracting(AiCallLog.Draft::purpose)
+				.isEqualTo("summary");
 	}
 
 	/** 빈 요약을 저장하지 않는다 — 그 세션은 그 뒤로 아무것도 기억하지 못하게 된다. */

@@ -27,6 +27,9 @@ class ErrorCodeTests {
 		catalog.put("LOGIN_NONCE_INVALID", HttpStatus.UNAUTHORIZED);
 		catalog.put("AGE_RESTRICTED", HttpStatus.FORBIDDEN);
 		catalog.put("STORY_LIMIT_REACHED", HttpStatus.FORBIDDEN);
+		// §13-91 (#450) — 원고 개수 상한. 작품 수 상한과 성질이 같으므로 같은 403 이며,
+		// **`ALREADY_EXISTS`(409) 가 아니다** — 그 문구는 상한에 닿은 사람에게 틀린 말이다.
+		catalog.put("DRAFT_LIMIT_REACHED", HttpStatus.FORBIDDEN);
 		catalog.put("FORBIDDEN", HttpStatus.FORBIDDEN);
 		catalog.put("NOT_FOUND", HttpStatus.NOT_FOUND);
 		catalog.put("TURN_CONFLICT", HttpStatus.CONFLICT);
@@ -73,6 +76,35 @@ class ErrorCodeTests {
 	@Test
 	void R9_6_safety_blocked_message_is_the_fixed_neutral_phrase() {
 		assertThat(ErrorCode.SAFETY_BLOCKED.defaultMessage()).isEqualTo("이 방향으로는 이야기를 이어갈 수 없어요.");
+	}
+
+	/**
+	 * §13-91 — <b>개수 상한 둘은 같은 상태를 쓰고 문구로 갈린다</b> (#450).
+	 *
+	 * <p>상태를 나누면 화면은 <i>"지금 만들 수 없다"</i> 를 두 갈래로 처리해야 하고, 코드를
+	 * 합치면 문구가 하나가 되어 <b>어느 한쪽에는 틀린 말</b>이 된다.
+	 */
+	@Test
+	void S13_91_both_count_limits_are_forbidden_and_differ_only_in_wording() {
+		assertThat(ErrorCode.DRAFT_LIMIT_REACHED.status()).isEqualTo(ErrorCode.STORY_LIMIT_REACHED.status());
+		assertThat(ErrorCode.DRAFT_LIMIT_REACHED.defaultMessage())
+				.isNotEqualTo(ErrorCode.STORY_LIMIT_REACHED.defaultMessage());
+	}
+
+	/**
+	 * §13-91 — <b>원고 상한의 문구가 상황을 말한다</b> (#450).
+	 *
+	 * <p>이 이슈의 실질이 문구다. 코드만 못박으면 다음에 코드를 재활용하며 같은 결함이
+	 * 다시 난다 — <b>"이미 등록되어 있어요" 는 상한에 닿은 사람에게 하는 말이 아니다.</b>
+	 * 상한 값 자체는 담지 않는다 (S-6) — 담으면 정책이 코드와 문구 두 곳에 생긴다.
+	 */
+	@Test
+	void S13_91_draft_limit_message_names_the_limit_not_a_duplicate() {
+		String message = ErrorCode.DRAFT_LIMIT_REACHED.defaultMessage();
+
+		assertThat(message).contains("원고").contains("모두 사용");
+		assertThat(message).doesNotContain("이미 등록");
+		assertThat(message).doesNotContainPattern("\\d");
 	}
 
 	/** S-6 — 기본 문구는 사용자에게 보여도 안전해야 한다. 내부 용어가 새지 않는지 확인한다. */
