@@ -88,12 +88,17 @@ git config core.hooksPath .githooks
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
-**`dev` 프로파일을 지정해야 뜬다.** 결정론 Provider(`FixedStoryProvider`) · dev 플레이 콘솔 ·
-계약 문서 경로가 전부 `dev & !prod` 이고, Provider 가 하나도 등록되지 않으면 기동이 멈춘다.
-표현식이 셋 다 같으므로 **`dev` 하나만 켜면 전부 해결된다.**
+**`dev` 프로파일을 지정해야 뜬다.** 결정론 Provider(`FixedStoryProvider`)를 비롯한 dev 전용 빈과
+경로가 전부 `dev & !prod` 이고, Provider 가 하나도 등록되지 않으면 기동이 멈춘다.
+**표현식이 전부 같으므로 `dev` 하나만 켜면 전부 해결된다.**
 
 > **의도된 설계다.** dev 전용 경로는 *"명시적으로 켤 때만 존재"* 해야 한다(ADR-0004). 프로파일
 > 지정을 빠뜨린 배포에서 그것들이 조용히 살아나는 것을 막는다.
+>
+> **자리의 수를 여기에 적지 않는다.** 셋이라고 센 판이 넷이 된 뒤로도 그대로였다(이슈 #438).
+> 정본은 코드다 — `@Profile("dev & !prod")` 가 붙은 자리와 `application.yml.template` 의
+> `on-profile` 블록이 전부이며, **새로 더하는 자리도 같은 표현식을 쓴다.** `"!prod"` 만 쓰면
+> 프로파일 미지정 배포에서 켜지고, `"dev"` 만 쓰면 둘이 함께 켜진 조합에서 켜진다(#47).
 >
 > 인증은 프로파일과 무관하다. **`dev` 에서도 토큰 없이는 401** 이다 — 고정 `player_ref` 우회는
 > B-12 가 제거했다(#34).
