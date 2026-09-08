@@ -45,5 +45,14 @@ if [ "$(git config --get core.hooksPath || true)" != ".githooks" ]; then
   printf '\033[33m  ! pre-commit 훅이 설치되어 있지 않다. 설치: git config core.hooksPath .githooks\033[0m\n'
 fi
 
+step "로컬 .env 표류 확인 (#434)"
+# 위 단계와 같은 성질이다 — **막지 않고 알리기만 한다.** .env 는 추적되지 않으므로(§7.2)
+# .env.example 에 키가 늘어도 각자의 사본이 따라왔는지 아무도 대조하지 않는데, 빠진 키가 전부
+# 부팅을 세우는 것도 아니라서 여기서 푸시를 막는 것은 과하다. 근거 전문은 스크립트가 갖는다.
+#
+# 이 단계가 CI 에 없는 이유도 같다: CI 에는 .env 가 없어 대조할 사본이 없다. 그쪽 몫은
+# ApplicationTemplateBindingTests 가 맡는다 (#428).
+./scripts/check-env-drift.sh
+
 printf '\n\033[32m✓ 통과. 푸시해도 된다.\033[0m\n'
 printf '  남은 것: PR 본문 작성 · diff 전수 확인(§8.9) · CI 3잡\n'

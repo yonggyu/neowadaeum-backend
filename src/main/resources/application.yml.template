@@ -9,6 +9,19 @@
 #    값이 없으면 부팅이 실패해야 한다. 조용히 잘못된 값으로 뜨는 것보다 낫다.
 # ─────────────────────────────────────────────────────────────
 spring:
+  # ── .env 를 설정으로 들인다 (로컬 전용, #428) ───────────────
+  # `.env` 는 docker-compose 만 읽는다. Boot 에는 dotenv 로더가 없으므로 이 줄이 없으면
+  # 아래의 모든 `${VAR}` 가 **리터럴 문자열로 남는다.** 그러면 예컨대 auth.jwt.secret 이
+  # `"${JWT_SECRET}"` 14바이트가 되어 "32바이트 미만"으로 부팅이 서고,
+  # **진짜 원인(.env 미로딩)은 메시지 어디에도 나오지 않는다.**
+  # README 대로 cp 한 설정이 그대로는 뜨지 않았던 이유가 이것이다.
+  #
+  # `[.properties]` 는 확장자 힌트다 — `.env` 는 KEY=VALUE 이므로 properties 로더가 읽는다.
+  # `optional:` 이라 파일이 없어도 이 줄 자체는 실패하지 않는다 — 배포는 `.env` 가 아니라
+  # 진짜 환경변수를 쓰고, 값이 없으면 그때 부팅이 서야 한다(§7.3).
+  config:
+    import: optional:file:./.env[.properties]
+
   application:
     name: neowadaeum-backend
 
@@ -103,29 +116,52 @@ app:
     # upload-url-ttl: 10m
     # read-url-ttl: 15m
 
-# ── 배치 (R2.7, I-20, #159) ──────────────────────────────────
-# 도달률은 배치 갱신이다 — 조회 경로가 계산하지 않는다 (I-20).
-# fixedDelay 이므로 앞 회차가 끝난 뒤부터 센다. 값이 없으면 코드가 1시간을 쓴다.
-# app:
-#   batch:
-#     ending-stat:
-#       delay: PT1H
+  # ── CORS (#248, #419) ─────────────────────────────────────
+  # 프론트는 별도 레포이고 브라우저에서 보면 다른 오리진이다 (§8.2). 허용 목록이 없으면
+  # 첫 요청이 preflight 에서 막힌다.
+  #
+  # 기본값을 두지 않는다 (§7.3). 빈 목록을 "아무도 허용 안 함"으로 조용히 읽으면, 설정을
+  # 빠뜨린 배포가 정상 부팅한 뒤 **남의 브라우저에서** 실패한다 — 서버 로그에 남지 않는 실패다.
+  #
+  # ★ 이 자리는 app: 아래다 (#419). CorsProperties 의 접두사가 app.cors 이므로, 루트에 cors:
+  #   로 두면 그것은 아무도 읽지 않는 **다른 키**다 — relaxed binding 이 흡수하는 것은 이름의
+  #   표기이지 접두사의 위치가 아니며, 어긋남은 경고 없이 남는다.
+  #
+  # 값의 형식은 scheme://host[:port] 이며 쉼표로 구분한다. 경로·끝 슬래시·와일드카드는 거부된다.
+  # 운영 오리진을 이 파일에 적지 않는다 (S-11) — 환경변수로만 넣는다.
+  #   예) CORS_ALLOWED_ORIGINS=http://localhost:5173
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
-# ── 호출 한도 (§15, S-8, #157) ───────────────────────────────
-# 값의 출처는 §15 다 — 턴 생성 분당 10회, precheck 분당 20회, 계정당 일일 한도.
-# auth-per-minute-per-ip 는 S-8 이다: 인증 전 경로는 계정 기준으로 셀 수 없다.
-# public-read-per-minute-per-ip 도 같은 이유이며 /landing 과 /consents 가 이 값 하나를
-# 함께 쓴다 (#277) — 따로 두면 한쪽이 다른 쪽의 우회로가 된다.
-# turn-per-day 는 "일일 토큰 한도"를 턴 수로 대리한다 (§13-28) — 토큰 원장에는
-# playerRef 가 없고(I-3) 그것이 의도된 설계다.
-# 값이 없으면 코드가 §15 의 값을 쓴다. B-46 실측 후 조정한다.
-# app:
-#   rate-limit:
-#     turn-per-minute: 10
-#     precheck-per-minute: 20
-#     auth-per-minute-per-ip: 20
-#     turn-per-day: 200
-#     public-read-per-minute-per-ip: 60
+  # ── 배치 (R2.7, I-20, #159) ────────────────────────────────
+  # 도달률은 배치 갱신이다 — 조회 경로가 계산하지 않는다 (I-20).
+  # fixedDelay 이므로 앞 회차가 끝난 뒤부터 센다. 값이 없으면 코드가 1시간을 쓴다.
+  #
+  # ★ app: 아래의 주석이다 (#419). 루트에 `# app:` 으로 두면 주석을 벗기는 순간 같은 문서에
+  #   app: 이 두 번 나오고, SnakeYAML 은 예외가 아니라 경고만 낸 뒤 **마지막 것만 남긴다** —
+  #   위쪽 app: 의 datasource 가 통째로 사라진다. 여기 있는 줄은 `# ` 만 떼면 자리가 맞는다.
+  # batch:
+  #   ending-stat:
+  #     delay: PT1H
+
+  # ── 호출 한도 (§15, S-8, #157) ─────────────────────────────
+  # 값의 출처는 §15 다 — 턴 생성 분당 10회, precheck 분당 20회, 계정당 일일 한도.
+  # auth-per-minute-per-ip 는 S-8 이다: 인증 전 경로는 계정 기준으로 셀 수 없다.
+  # public-read-per-minute-per-ip 도 같은 이유이며 /landing 과 /consents 가 이 값 하나를
+  # 함께 쓴다 (#277) — 따로 두면 한쪽이 다른 쪽의 우회로가 된다.
+  # turn-per-day 는 "일일 토큰 한도"를 턴 수로 대리한다 (§13-28) — 토큰 원장에는
+  # playerRef 가 없고(I-3) 그것이 의도된 설계다.
+  #
+  # ★ app: 아래의 주석이다 (#419). 루트에 `# app:` 으로 두면 주석을 벗기는 순간 같은 문서에
+  #   app: 이 두 번 나오고, SnakeYAML 은 예외가 아니라 경고만 낸 뒤 **마지막 것만 남긴다** —
+  #   위쪽 app: 의 datasource 가 통째로 사라진다. 여기 있는 줄은 `# ` 만 떼면 자리가 맞는다.
+  # 값이 없으면 코드가 §15 의 값을 쓴다. B-46 실측 후 조정한다.
+  # rate-limit:
+  #   turn-per-minute: 10
+  #   precheck-per-minute: 20
+  #   auth-per-minute-per-ip: 20
+  #   turn-per-day: 200
+  #   public-read-per-minute-per-ip: 60
 
 # ── 턴 예산 (§6.3, #116) ─────────────────────────────────────
 # ai.provider.timeout-ms 와 다른 것을 가리킨다 — 그쪽은 호출 하나의 상한이고, 이쪽은
@@ -135,19 +171,6 @@ app:
 # play:
 #   turn:
 #     budget-ms: 28000
-
-# ── CORS (#248) ──────────────────────────────────────────────
-# 프론트는 별도 레포이고 브라우저에서 보면 다른 오리진이다 (§8.2). 허용 목록이 없으면
-# 첫 요청이 preflight 에서 막힌다.
-#
-# 기본값을 두지 않는다 (§7.3). 빈 목록을 "아무도 허용 안 함"으로 조용히 읽으면, 설정을
-# 빠뜨린 배포가 정상 부팅한 뒤 **남의 브라우저에서** 실패한다 — 서버 로그에 남지 않는 실패다.
-#
-# 값의 형식은 scheme://host[:port] 이며 쉼표로 구분한다. 경로·끝 슬래시·와일드카드는 거부된다.
-# 운영 오리진을 이 파일에 적지 않는다 (S-11) — 환경변수로만 넣는다.
-#   예) CORS_ALLOWED_ORIGINS=http://localhost:5173
-cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
 # ── 인증 (§12 B-12) ──────────────────────────────────────────
 # secret 에 기본값을 두지 않는다 (§7.3). 없으면 부팅이 실패해야 한다.
@@ -276,8 +299,13 @@ ai:
       #   claude-haiku-4-5:
       #     input-krw-per-million-tokens: <값>
       #     output-krw-per-million-tokens: <값>
-    openai:
-      api-key: ${OPENAI_API_KEY}
+    # openai 어댑터는 아직 없다 (#419). ai.providers.openai 를 바인딩하는
+    # @ConfigurationProperties 가 존재하지 않으므로, 값을 넣어도 아무도 읽지 않는다 —
+    # 읽히지 않는 키는 경고 없이 남아 "설정했다"는 착각만 만든다. 어댑터가 생기는 날
+    # 주석을 벗긴다. 구현된 것은 실키, 구현되지 않은 것은 주석이다(pricing · play.turn 과 같다).
+    # openai:
+    #   api-key: ${OPENAI_API_KEY}
+
     # R3.2 — 로컬 LLM. API 키가 없으므로 base-url 이 등록 조건이다.
     # structuredOutput=false 로 보고하므로 스키마 위반 시 재요청이 2회다 (R3.3).
     #

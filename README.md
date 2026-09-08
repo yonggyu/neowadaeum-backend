@@ -55,6 +55,18 @@ cp src/main/resources/application.yml.template src/main/resources/application.ym
 
 `.env` 와 `application.yml` 은 **커밋되지 않는다**(§7.2). 실제 값은 절대 소스에 넣지 않는다.
 
+> **한 번 복사하고 끝이 아니다.** 새 기능이 새 환경변수를 들이면 커밋되는 것은 `.env.example`
+> 뿐이고, 이미 만들어 둔 `.env` 는 추적되지 않아 그 자리에 멈춰 있다 — **diff 가 보이지 않는다.**
+> 아래로 대조한다. 키 이름만 비교하며 값은 읽지 않는다 (S-11).
+>
+> ```bash
+> ./scripts/check-env-drift.sh
+> ```
+>
+> `scripts/preflight.sh` 가 이것을 함께 돌린다. **막지 않고 알리기만 한다** — 빠진 키가 전부
+> 부팅을 세우는 것은 아니고(예: `IMAGE_STORAGE_*` 다섯은 전부-또는-전무라 하나도 없으면 부팅은
+> 되고 이미지 업로드 경로만 죽는다), 그 판단은 값을 아는 사람의 몫이기 때문이다 (#434).
+
 > **새 worktree 마다 반복한다.** `application.yml` 은 `.gitignore` 의 `*.yml` 에 걸려 있는
 > untracked 파일이라, `git worktree add` 로 작업 폴더를 새로 만들면 **함께 오지 않는다** — 브랜치를
 > 옮기는 것과 달리 파일 자체가 그 worktree 에 없는 것이다. 이 상태로 테스트나 `bootRun` 을 돌리면
@@ -88,12 +100,17 @@ git config core.hooksPath .githooks
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
-**`dev` 프로파일을 지정해야 뜬다.** 결정론 Provider(`FixedStoryProvider`) · dev 플레이 콘솔 ·
-계약 문서 경로가 전부 `dev & !prod` 이고, Provider 가 하나도 등록되지 않으면 기동이 멈춘다.
-표현식이 셋 다 같으므로 **`dev` 하나만 켜면 전부 해결된다.**
+**`dev` 프로파일을 지정해야 뜬다.** 결정론 Provider(`FixedStoryProvider`)를 비롯한 dev 전용 빈과
+경로가 전부 `dev & !prod` 이고, Provider 가 하나도 등록되지 않으면 기동이 멈춘다.
+**표현식이 전부 같으므로 `dev` 하나만 켜면 전부 해결된다.**
 
 > **의도된 설계다.** dev 전용 경로는 *"명시적으로 켤 때만 존재"* 해야 한다(ADR-0004). 프로파일
 > 지정을 빠뜨린 배포에서 그것들이 조용히 살아나는 것을 막는다.
+>
+> **자리의 수를 여기에 적지 않는다.** 셋이라고 센 판이 넷이 된 뒤로도 그대로였다(이슈 #438).
+> 정본은 코드다 — `@Profile("dev & !prod")` 가 붙은 자리와 `application.yml.template` 의
+> `on-profile` 블록이 전부이며, **새로 더하는 자리도 같은 표현식을 쓴다.** `"!prod"` 만 쓰면
+> 프로파일 미지정 배포에서 켜지고, `"dev"` 만 쓰면 둘이 함께 켜진 조합에서 켜진다(#47).
 >
 > 인증은 프로파일과 무관하다. **`dev` 에서도 토큰 없이는 401** 이다 — 고정 `player_ref` 우회는
 > B-12 가 제거했다(#34).
