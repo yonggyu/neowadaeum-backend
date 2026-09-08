@@ -29,6 +29,10 @@ import tools.jackson.databind.json.JsonMapper;
  * Anthropic 어댑터의 요약 계약 (B-34, R4.5 · R3.6).
  *
  * <p>실제 AI 를 부르지 않는다. 보는 것은 <b>어느 모델로 무엇을 보내고, 무엇을 저장하지 않는가</b>다.
+ *
+ * <p><b>기록은 리스트를 통째로 단언한다</b> (#449). {@code getFirst()} 로 꺼내면 리스트가 비어
+ * 있을 때 {@link java.util.NoSuchElementException} 하나만 남고 <b>왜 비었는지 아무것도 말하지
+ * 않는다</b> — 그 대가와 이유는 {@code AnthropicSafetyClassificationTests} 에 적어 두었다 (#446).
  */
 class AnthropicSummaryTests {
 
@@ -150,9 +154,13 @@ class AnthropicSummaryTests {
 
 		this.provider.summarize(request());
 
-		assertThat(this.recorded).hasSize(1);
-		assertThat(this.recorded.getFirst().purpose()).isEqualTo("summary");
-		assertThat(this.recorded.getFirst().modelId()).isEqualTo(SUMMARY_MODEL);
+		assertThat(this.recorded)
+				.as("요약 호출이 기록되지 않았다 (#446) — 호출이 나가지 못했거나 stub 이 매칭되지 않았다")
+				.singleElement()
+				.satisfies(draft -> {
+					assertThat(draft.purpose()).isEqualTo("summary");
+					assertThat(draft.modelId()).isEqualTo(SUMMARY_MODEL);
+				});
 	}
 
 	/**
