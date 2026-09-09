@@ -346,6 +346,30 @@ class OpenApiContractTests {
 				.containsExactlyInAnyOrderElementsOf(fieldKeysOfRealValidationFailure());
 	}
 
+	/**
+	 * #470 — 계약의 예제가 <b>항목마다 {@code field} 를 든다.</b>
+	 *
+	 * <p>{@code field} 는 <i>어느 자리가 어긋났는가</i>이고 화면이 자기 문구를 고르는 근거다.
+	 * {@code reason} 은 진단 값이라 그 자리를 대신할 수 없으므로, {@code field} 가 빠진 항목은
+	 * <b>화면에서 쓸 수 없는 항목</b>이 된다.
+	 *
+	 * <p>바로 위 검사는 항목들의 키를 <b>합집합</b>으로 모으므로 한 항목이 {@code field} 를 빠뜨려도
+	 * 통과한다. 예제가 곧 다음 사람이 읽는 계약이다.
+	 *
+	 * <p><b>{@code reason} 의 문구는 보지 않는다.</b> 검증 라이브러리의 기본 메시지이며 판본을 따라
+	 * 바뀐다 — 테스트가 그 문구를 베끼면 라이브러리가 오를 때 계약과 무관하게 깨진다.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void Issue470_validation_error_example_names_a_field_in_every_entry() {
+		Map<String, Object> details = (Map<String, Object>) exampleOf("ValidationError").get("details");
+
+		assertThat((List<Map<String, Object>>) details.get("fields"))
+				.as("계약의 예제에 어긋난 자리를 말하지 않는 항목이 있다 (#470)")
+				.isNotEmpty()
+				.allSatisfy(entry -> assertThat(entry.get("field")).isInstanceOf(String.class));
+	}
+
 	/** {@code components/responses} 의 단일 {@code example}. */
 	@SuppressWarnings("unchecked")
 	private static Map<String, Object> exampleOf(String responseName) {
