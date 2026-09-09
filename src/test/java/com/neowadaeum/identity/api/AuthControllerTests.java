@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -255,6 +256,57 @@ class AuthControllerTests {
 						.content("{\"refreshToken\":\"refresh-0\"}"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.error").value("UNAUTHENTICATED"));
+
+		verify(this.login, never()).refresh(any());
+	}
+
+	/**
+	 * 로그아웃은 <b>쿠키를 지우는 것이 전부다</b> (#473, §13-94).
+	 *
+	 * <p>이름과 {@code Path} 가 굽는 쿠키와 <b>같아야</b> 브라우저가 그것을 지우기로 읽는다 —
+	 * 한 글자만 달라도 다른 쿠키를 지우려 한 것이 되고, <b>성공했다고 답하면서 아무것도 지우지
+	 * 않은 응답</b>이 나간다.
+	 */
+	@Test
+	void Issue473_logout_expires_the_refresh_cookie() throws Exception {
+		String setCookie = this.mvc.perform(delete("/api/v1/auth/refresh")
+						.cookie(new Cookie("nwd_rt", "refresh-0")))
+				.andExpect(status().isNoContent())
+				.andReturn()
+				.getResponse()
+				.getHeader(HttpHeaders.SET_COOKIE);
+
+		Assertions.assertThat(setCookie)
+				.startsWith("nwd_rt=;")
+				.contains("Max-Age=0")
+				.contains("Path=/api/v1/auth/refresh")
+				.contains("HttpOnly")
+				.contains("SameSite=Strict");
+	}
+
+	/**
+	 * <b>쿠키가 없어도 204 다</b> (§13-94).
+	 *
+	 * <p>상태를 없애는 요청은 없던 것을 없애는 것도 성공이다. {@code 401} 을 주면 화면은
+	 * <i>나가지 못했다</i> 를 그려야 하는데 <b>실제로는 이미 나가 있다.</b>
+	 */
+	@Test
+	void Issue473_logout_without_a_cookie_is_still_204() throws Exception {
+		this.mvc.perform(delete("/api/v1/auth/refresh"))
+				.andExpect(status().isNoContent());
+	}
+
+	/**
+	 * <b>토큰을 검증하지 않는다</b> (§13-94).
+	 *
+	 * <p>검증하면 만료된 토큰을 든 사람이 나가지 못한다 — 로그아웃이 가장 필요한 상태다.
+	 * 그래서 이 경로는 {@code OAuthLoginService} 를 부르지 않는다.
+	 */
+	@Test
+	void Issue473_logout_does_not_verify_the_token() throws Exception {
+		this.mvc.perform(delete("/api/v1/auth/refresh")
+						.cookie(new Cookie("nwd_rt", "expired-or-forged")))
+				.andExpect(status().isNoContent());
 
 		verify(this.login, never()).refresh(any());
 	}
