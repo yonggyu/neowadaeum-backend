@@ -2319,13 +2319,38 @@ components:
             details: {}
     ValidationError:
       description: |
-        입력 검증 실패. `details.fields` 에 어긋난 자리가 **배열**로 온다 — `[{field, reason}]`.
+        입력 검증 실패. **`details` 의 모양은 둘 중 하나다** (§13-96, #478).
+
+        | 무엇이 어긋났나 | `details` |
+        |---|---|
+        | **요청의 어느 칸** | `fields: [{field, reason, …}]` |
+        | **칸이 아닌 전제 · 원고 전체** | `reason: "<카테고리>"` (+ 측정값) |
+
+        **먼저 `details.fields` 가 있는지 본다.** 있으면 항목마다 어느 칸인지 말하는 응답이고,
+        없으면 `details.reason` 이 무엇이 막았는지 말한다. 셋째 모양은 없다 — 자리마다 다른 모양이
+        나가면 화면이 할 수 있는 일은 `message` 를 그리는 것뿐이 된다.
+
+        ### `fields` — 어느 칸이 어긋났는가
 
         **배열인 이유는 한 필드에 위반이 둘 이상일 수 있기 때문이다** (#466). 맵이면 뒤에 온 것이
-        앞을 덮어써 사용자가 한 번에 하나씩만 고치게 된다.
+        앞을 덮어써 사용자가 한 번에 하나씩만 고치게 된다. 첫 예제가 그 경우다 — 맵으로는
+        표현할 수 없는 응답이고, 그것이 배열인 이유다.
 
-        **예제는 같은 필드에 위반이 둘인 경우다** — 맵으로는 표현할 수 없는 응답이고,
-        그것이 배열인 이유다.
+        **항목은 `field` 와 `reason` 외의 키를 더 들 수 있다.** 목록 개수 상한이 그 자리이며
+        (`max`), 모양을 맞추느라 버리면 작성자는 **몇 개까지 되는지 모른 채** 같은 400 을
+        반복해서 받는다. 화면은 `field` 로 문구를 고르고 그 문구가 이 값을 쓴다 — 없으면
+        문구가 수를 말하지 않을 뿐이다.
+
+        ### `reason` — 칸이 아닌 것을 칸인 척하지 않는다
+
+        발행·공개 범위 변경처럼 **요청은 형태가 맞고 맞지 않는 것이 동작의 전제**인 자리, 그리고
+        원고 전체를 한 번에 재는 게이트가 여기로 온다. 없는 칸 이름을 지어내 `fields` 에 밀어
+        넣으면 화면은 그 칸 옆에 문구를 붙이고, **거기를 고쳐도 통과하지 않는다.**
+
+        이 자리의 `reason` 은 서버가 정한 **안정된 카테고리 코드**이며 화면이 분기해도 되는
+        값이다 — `fields[].reason` 과 이름은 같지만 성질이 다르다(아래). 값은 **카테고리
+        수준**이며 그보다 자세해지지 않는다 (S-11). 측정값이 함께 오는 자리가 있다
+        (`vocabularyUsagePercent`).
 
         본문이 모델로 풀리지 못한 실패도 같은 자리로 온다. 다만 그 실패는 첫 어긋남에서
         멈추므로 `fields` 는 **한 칸짜리 배열**이고, 값 검증 사유와 **같은 응답에 섞이지
@@ -2333,7 +2358,10 @@ components:
         **보낸 값도 기대 타입도 담지 않는다** (S-3, S-6). 어긋난 자리를 특정할 수 없으면
         `details` 는 빈 객체다.
 
-        ### `field` 와 `reason` 은 쓰임이 다르다 (#470)
+        ### `fields[]` 안에서 `field` 와 `reason` 은 쓰임이 다르다 (#470)
+
+        **이 절은 배열 항목의 `reason` 만 말한다.** 위의 최상위 `reason` 은 서버가 정한 값이라
+        성질이 반대다 — 배열 항목 쪽에는 서버가 쓰지 않은 문자열이 섞여 온다.
 
         - **`field` 가 기계가 읽는 값이다.** *어느 자리가 어긋났는가*를 말하며 항목마다 항상 있다.
           화면이 문구를 고르는 근거는 이쪽이다 — `error` 코드와 `field` 로 자기 문구를 고른다.
@@ -2345,7 +2373,7 @@ components:
           적는다(`Error`). 화면이 자기 문구를 갖는 것이 원칙이고 `message` 는 그것이 없을 때의
           폴백이며, `reason` 은 어느 쪽도 아니다.
 
-        아래 예제의 `reason` 이 **검증 라이브러리 기본 메시지 그대로**인 것이 이 값의 성질을 보여 준다.
+        첫 예제의 `reason` 이 **검증 라이브러리 기본 메시지 그대로**인 것이 이 값의 성질을 보여 준다.
         고정 문구로 통일하지 않는 이유는, 통일해도 *"보여 주는 문구"* 라는 오해가 남고 문구의 정본이
         `message` 와 둘로 갈리기 때문이다.
 
@@ -2356,15 +2384,43 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-          example:
-            error: VALIDATION_ERROR
-            message: 입력값을 확인해 주세요.
-            details:
-              fields:
-                - field: title
-                  reason: must not be blank
-                - field: title
-                  reason: size must be between 1 and 40
+          examples:
+            fieldViolations:
+              summary: 어느 칸이 어긋났는가 — 같은 필드에 위반이 둘
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  fields:
+                    - field: title
+                      reason: must not be blank
+                    - field: title
+                      reason: size must be between 1 and 40
+            fieldViolationWithCap:
+              summary: 칸에 상한이 있다 — 목록 개수가 상한을 넘었다
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  fields:
+                    - field: chapters
+                      reason: too_many
+                      max: 32
+            preconditionNotMet:
+              summary: 칸이 아니다 — 동작의 전제가 맞지 않는다
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  reason: story_not_approved
+            vocabularyBudgetExceeded:
+              summary: 칸이 아니다 — 선언한 이름이 프롬프트 예산을 넘었다
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  reason: vocabulary_budget_exceeded
+                  vocabularyUsagePercent: 137
     InvalidChoice:
       description: '`choiceId` 가 직전 턴이 발급한 것이 아니다 (I-1)'
       content:
@@ -3526,8 +3582,10 @@ components:
             숫자를 *프롬프트 때문에* 정했다고 적었지만 그 프롬프트의 상한과는 대조되지
             않았고, 실제로는 32 × 40 이 예산의 두 배를 넘는다.
 
-            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며
-            `details.vocabularyUsagePercent` 가 **상한 대비 몇 %인지**를 준다 (100 이 상한).
+            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며 `details.reason` 이
+            `vocabulary_budget_exceeded`, `details.vocabularyUsagePercent` 가 **상한 대비 몇
+            %인지**를 준다 (100 이 상한). **`details.fields` 가 아니다** (§13-96) — 인물과
+            플래그를 함께 재므로 가리킬 칸이 하나로 정해지지 않는다.
             토큰 수와 상한값은 응답에 담지 않는다 (S-6).
           maxItems: 32
           items:
@@ -3546,8 +3604,9 @@ components:
             **L0 의 요청당 상한과도 다르다** — `precheck` 이 막는 것은 타자 한 번이 부르는
             한 요청의 크기이고, 여기서 막는 것은 작품 하나의 크기다.
 
-            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며 `details.field` 가
-            `chapters`, `details.max` 가 상한을 준다. 세이프티 임계가 아니므로 가리지 않는다 —
+            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며 `details.fields` 의 항목이
+            `field: chapters` 와 `max` 를 함께 준다 (§13-96) — **어느 칸인지 말하는 응답이므로
+            다른 검증 실패와 같은 자리로 온다.** 상한은 세이프티 임계가 아니므로 가리지 않는다 —
             가리면 작성자는 몇 개를 지워야 하는지 알 수 없다.
           maxItems: 32
           items:
