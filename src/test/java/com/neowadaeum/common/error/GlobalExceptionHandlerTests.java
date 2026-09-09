@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -130,12 +131,89 @@ class GlobalExceptionHandlerTests {
 				.andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
 	}
 
+	/**
+	 * #466 — 본문이 모델로 풀리지 못한 실패도 어느 자리가 어긋났는지 알린다.
+	 *
+	 * <p>{@code @Valid} 이전 단계라 예전에는 {@code details} 가 빈 객체로 나갔고, 클라이언트는 무엇을
+	 * 고쳐야 하는지 알 수 없었다.
+	 */
+	@Test
+	void S9_1_unreadable_body_reports_the_offending_field_path() throws Exception {
+		mockMvc.perform(post("/probe/typed")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"turnNo\":\"열두번째\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.details.fields").isArray())
+				.andExpect(jsonPath("$.details.fields[0].field").value("turnNo"))
+				.andExpect(jsonPath("$.details.fields[0].reason").isNotEmpty());
+	}
+
+	/** #466 — 중첩 구조에서도 자리를 특정한다. 목록 안의 원소는 인덱스까지 붙는다. */
+	@Test
+	void S9_1_unreadable_body_reports_a_nested_field_path() throws Exception {
+		mockMvc.perform(post("/probe/nested")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"scenes\":[{\"order\":\"첫번째\"}]}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.details.fields[0].field").value("scenes[0].order"));
+	}
+
+	/**
+	 * S-3 / S-6 — 역직렬화 실패 응답이 <b>보낸 값·내부 클래스 경로·기대 타입</b>을 되돌려 보내지 않는다.
+	 *
+	 * <p>Jackson 의 예외 메시지에는 이 셋이 함께 들어 있다. 자리(필드 경로)까지만 싣는 것이 이 검사가
+	 * 지키는 선이다 — "있어야 할 것"만 단언하면 값이 새어도 통과한다.
+	 */
+	@Test
+	void SEC3_unreadable_body_response_leaks_neither_value_nor_internals() throws Exception {
+		String secret = "user-typed-secret-0123456789";
+
+		String body = bodyOf(mockMvc.perform(post("/probe/typed")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"turnNo\":\"" + secret + "\"}")).andReturn());
+
+		assertThat(body)
+				.doesNotContain(secret)
+				.doesNotContain("com.neowadaeum")
+				.doesNotContain("ProbeTypedRequest")
+				.doesNotContain("java.lang")
+				.doesNotContain("Integer")
+				.doesNotContain("Exception")
+				.doesNotContain("tools.jackson");
+	}
+
+	/**
+	 * #466 / §9.3 — 어긋난 자리를 특정할 수 없는 실패는 {@code details} 를 빈 객체로 둔다.
+	 *
+	 * <p>본문이 애초에 JSON 이 아니면 Jackson 이 기록한 참조 경로가 없다. 없는 자리를 지어내지 않는다.
+	 */
+	@Test
+	void S9_3_unreadable_body_without_a_known_path_keeps_details_empty() throws Exception {
+		mockMvc.perform(post("/probe/typed")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{ this is not json"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
+				.andExpect(jsonPath("$.details").isMap())
+				.andExpect(jsonPath("$.details").isEmpty());
+	}
+
 	private static String bodyOf(MvcResult result) throws Exception {
 		result.getResponse().setCharacterEncoding(StandardCharsets.UTF_8.name());
 		return result.getResponse().getContentAsString(StandardCharsets.UTF_8);
 	}
 
 	record ProbeRequest(@NotBlank @Size(max = 5) String title) {
+	}
+
+	record ProbeTypedRequest(Integer turnNo) {
+	}
+
+	record ProbeScene(int order) {
+	}
+
+	record ProbeNestedRequest(List<ProbeScene> scenes) {
 	}
 
 	@RestController
@@ -159,6 +237,14 @@ class GlobalExceptionHandlerTests {
 
 		@PostMapping("/validate")
 		void validate(@Valid @RequestBody ProbeRequest request) {
+		}
+
+		@PostMapping("/typed")
+		void typed(@RequestBody ProbeTypedRequest request) {
+		}
+
+		@PostMapping("/nested")
+		void nested(@RequestBody ProbeNestedRequest request) {
 		}
 	}
 }
