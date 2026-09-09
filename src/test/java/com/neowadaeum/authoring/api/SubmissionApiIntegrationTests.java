@@ -149,7 +149,7 @@ class SubmissionApiIntegrationTests extends ContainerTestBase {
 		this.mvc.perform(patch("/api/v1/authoring/drafts/%s".formatted(draftId)).with(asPlayer())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(JSON.writeValueAsString(
-								java.util.Map.of("step", 5, "payload", PAYLOAD))))
+								java.util.Map.of("step", 5, "payload", JSON.readTree(PAYLOAD)))))
 				.andExpect(status().isOk());
 		return draftId;
 	}

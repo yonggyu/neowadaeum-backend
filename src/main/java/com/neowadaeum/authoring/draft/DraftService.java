@@ -4,11 +4,15 @@ import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 원고 읽고 쓰기 (§8.1, §13.8).
@@ -31,6 +35,15 @@ public class DraftService {
 	 * 것이 아니라 쌓아 둔 것</b>이며, 상한이 낮으면 지우고 다시 만들면 된다.
 	 */
 	static final int MAX_DRAFTS_PER_AUTHOR = 10;
+
+	/**
+	 * <b>손으로 잇지 않는다</b> (이슈 #465 리뷰).
+	 *
+	 * <p>{@code field} 는 검사 요청이 보낸 <b>맵의 키</b>이며 길이도 문자도 서버가 정하지
+	 * 않는다. 문자열을 이어 붙여 만들면 따옴표 하나로 <b>저장된 것이 JSON 이 아니게</b> 되고,
+	 * 그 원고는 이후 조회마다 깨진다 — 목록 조회는 <b>원고 하나가 나머지 전부를 끌고 간다.</b>
+	 */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	private final StoryDraftRepository drafts;
 
@@ -132,18 +145,15 @@ public class DraftService {
 	 */
 	private static String findingsJson(
 			com.neowadaeum.authoring.precheck.PrecheckScreen.Result result) {
-		StringBuilder json = new StringBuilder("[");
-		for (int i = 0; i < result.findings().size(); i++) {
-			var finding = result.findings().get(i);
-			if (i > 0) {
-				json.append(',');
-			}
-			json.append("{\"field\":\"").append(finding.field())
-					.append("\",\"span\":[").append(finding.span()[0]).append(',')
-					.append(finding.span()[1]).append("],\"kind\":\"").append(finding.kind())
-					.append("\"}");
+		List<Map<String, Object>> findings = new ArrayList<>();
+		for (var finding : result.findings()) {
+			Map<String, Object> entry = new LinkedHashMap<>();
+			entry.put("field", finding.field());
+			entry.put("span", List.of(finding.span()[0], finding.span()[1]));
+			entry.put("kind", finding.kind());
+			findings.add(entry);
 		}
-		return json.append(']').toString();
+		return JSON.writeValueAsString(findings);
 	}
 
 	/** 원고가 만든 작품을 가리키게 한다 (B-54). */
