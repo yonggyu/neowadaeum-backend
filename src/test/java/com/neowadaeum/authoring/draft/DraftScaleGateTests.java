@@ -66,14 +66,22 @@ class DraftScaleGateTests {
 	 *
 	 * <p>세이프티 임계가 아니므로 가리지 않는다 — 가리면 작성자는 <b>몇 개를 지워야 하는지</b>
 	 * 알 수 없고, 지웠다 넣었다 하며 같은 400 을 반복해서 받는다.
+	 *
+	 * <p><b>자리는 {@code details.fields} 다</b> (§13-96, #478). 가리키는 것이 요청 본문의 실제
+	 * 칸이므로 다른 검증 실패와 같은 모양으로 온다 — {@code max} 는 그 항목 안에 남는다.
 	 */
 	@Test
-	void S13_81_the_rejection_names_the_list_and_the_cap() {
+	@SuppressWarnings("unchecked")
+	void S13_96_the_rejection_names_the_list_and_the_cap_in_the_fields_array() {
 		ApiException thrown = catchApiException(
 				() -> this.gate.verify(declaredWith(this.limits.chaptersPerStory() + 1, 1)));
 
-		assertThat(thrown.details()).containsEntry("field", "chapters")
-				.containsEntry("max", this.limits.chaptersPerStory());
+		assertThat(thrown.details()).containsOnlyKeys("fields");
+		assertThat((java.util.List<java.util.Map<String, Object>>) thrown.details().get("fields"))
+				.singleElement()
+				.satisfies(entry -> assertThat(entry).containsEntry("field", "chapters")
+						.containsEntry("max", this.limits.chaptersPerStory())
+						.containsKey("reason"));
 	}
 
 	/**

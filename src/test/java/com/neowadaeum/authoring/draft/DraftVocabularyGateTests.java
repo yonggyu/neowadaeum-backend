@@ -87,15 +87,34 @@ class DraftVocabularyGateTests {
 	 *
 	 * <p>담기는 것은 <b>비율</b>이다. 토큰 수도 상한값도 응답에 넣지 않는다 (S-6) — 작성자가
 	 * 아는 단위가 아니고, 그 수를 내보내면 계산 방식이 함께 나간다.
+	 *
+	 * <p><b>{@code reason} 을 함께 싣는다</b> (§13-96, #478). 측정값만 오면 화면은 키 이름을
+	 * 보고 사정을 추측해야 한다 — 이 자리가 {@code details.fields} 가 아닌 것은 인물과 플래그를
+	 * 함께 재어 <b>가리킬 칸이 하나로 정해지지 않기</b> 때문이다.
 	 */
 	@Test
 	void SEC6_the_rejection_says_how_far_over_without_naming_tokens() {
 		ApiException thrown = org.junit.jupiter.api.Assertions.assertThrows(ApiException.class,
 				() -> this.gate.verify(declaring(0, 32, 40)));
 
-		assertThat(thrown.details()).containsOnlyKeys("vocabularyUsagePercent");
+		assertThat(thrown.details()).containsOnlyKeys("reason", "vocabularyUsagePercent");
 		assertThat((Integer) thrown.details().get("vocabularyUsagePercent")).isGreaterThan(100);
 		assertThat(thrown.getMessage()).doesNotContain("175", "token", "토큰");
+	}
+
+	/**
+	 * <b>칸이 아닌 것을 칸인 척하지 않는다</b> (§13-96, #478).
+	 *
+	 * <p>{@code details.fields} 로 내보내려면 어느 칸이 어긋났는지 말할 수 있어야 하는데, 이
+	 * 게이트는 인물과 플래그를 <b>함께</b> 재므로 그런 칸이 없다. 지어내면 화면은 그 칸 옆에
+	 * 문구를 붙이고 작성자는 <b>거기서 이름 하나를 지워도</b> 같은 400 을 받는다.
+	 */
+	@Test
+	void S13_96_the_rejection_does_not_invent_a_field_that_is_not_there() {
+		ApiException thrown = org.junit.jupiter.api.Assertions.assertThrows(ApiException.class,
+				() -> this.gate.verify(declaring(0, 32, 40)));
+
+		assertThat(thrown.details()).doesNotContainKey("fields").doesNotContainKey("field");
 	}
 
 	/** 공식 작품 시드 규모(인물 3 · 플래그 6)는 여유가 크다. 게이트가 정상 작품을 막지 않는다. */

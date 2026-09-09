@@ -12,12 +12,23 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.jayway.jsonpath.JsonPath;
+import com.neowadaeum.authoring.UgcLimitProperties;
+import com.neowadaeum.authoring.draft.DraftScaleGate;
+import com.neowadaeum.authoring.draft.DraftStateSchema;
+import com.neowadaeum.authoring.draft.DraftStoryDefinition;
+import com.neowadaeum.authoring.draft.DraftVocabularyGate;
+import com.neowadaeum.authoring.review.StoryReviewRepository;
+import com.neowadaeum.authoring.review.StoryReviewTimeline;
+import com.neowadaeum.authoring.review.StoryVisibilityService;
+import com.neowadaeum.authoring.review.Visibility;
+import com.neowadaeum.catalog.publish.StoryPublisher;
 import com.neowadaeum.catalog.query.StoryCatalogFacade;
 import com.neowadaeum.catalog.query.StoryStatusView;
 import com.neowadaeum.catalog.query.StoryVersionFacade;
 import com.neowadaeum.common.error.GlobalExceptionHandler;
 import com.neowadaeum.common.spi.AiNotice;
 import com.neowadaeum.common.spi.AiNoticeQuery;
+import com.neowadaeum.common.spi.StateVocabularyBudget;
 import com.neowadaeum.common.support.RateLimitProperties;
 import com.neowadaeum.common.support.RateLimiter;
 import com.neowadaeum.play.api.AiNoticeText;
@@ -33,16 +44,18 @@ import com.neowadaeum.play.repository.PlaySessionRepository;
 import com.neowadaeum.play.repository.TurnRepository;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -55,6 +68,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -114,17 +129,23 @@ class ErrorDetailsExampleContractTests {
 	// ── 1. 예제 ↔ 살아 있는 응답 ─────────────────────────────
 
 	/**
-	 * §9.1 — 계약의 예제와 <b>실제 응답</b>의 {@code details} 모양이 같다.
+	 * §9.1 — <b>실제 응답</b>의 {@code details} 모양을 계약이 그린다.
 	 *
 	 * <p>비교 대상은 값이 아니라 <b>키 경로와 타입</b>이다. 값까지 묶으면 예제가 고정 데이터가 되어
 	 * 계약이 읽히지 않는 문서가 되고, 키만 보면 맵과 배열이 구분되지 않는다 — 그것이 #466 이었다.
+	 *
+	 * <p><b>코드 하나에 모양이 여럿일 수 있다</b> (§13-96, #478). 예전에는 코드당 구동 경로가
+	 * 하나라 <b>한 코드가 여러 모양으로 나가는 것</b>을 잡지 못했다 — 예제 하나와 응답 하나가
+	 * 맞으면 통과했다. 그래서 이 검사는 <b>살아 있는 모양이 예제들 중 하나로 그려져 있는가</b>를
+	 * 보고, 반대 방향(그린 모양은 전부 구동된다)은 아래 검사가 본다. 둘이 합쳐 같음이 된다.
 	 *
 	 * <p>코드 자체도 함께 확인한다. 구동 경로가 언젠가 다른 코드로 흘러가면, 빈 {@code details}
 	 * 끼리 비교하며 <b>아무것도 지키지 않는 검사</b>가 되기 때문이다.
 	 */
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("livingErrorResponses")
-	void S9_1_error_example_details_match_the_real_response(String code, LiveErrorResponse live) throws Exception {
+	void S9_1_error_example_details_match_the_real_response(String label, String code, LiveErrorResponse live)
+			throws Exception {
 		String body = live.body();
 
 		assertThat(JsonPath.<String>read(body, "$.error"))
@@ -135,11 +156,9 @@ class ErrorDetailsExampleContractTests {
 		List<ErrorExample> examples = examplesOf(code);
 
 		assertThat(examples).as("계약에 %s 예제가 없다 (#432 — 어떤 코드가 오는지 계약이 말한다)", code).isNotEmpty();
-		for (ErrorExample example : examples) {
-			assertThat(shapeOf(example.details()))
-					.as("계약의 예제와 실제 응답의 details 모양이 다르다 (#471) — %s", example.location())
-					.containsExactlyInAnyOrderElementsOf(liveShape);
-		}
+		assertThat(examples.stream().map(example -> shapeOf(example.details())).toList())
+				.as("살아 있는 응답의 details 모양을 계약이 그리지 않았다 (#471, §13-96) — %s", label)
+				.contains(liveShape);
 	}
 
 	/**
@@ -151,20 +170,27 @@ class ErrorDetailsExampleContractTests {
 	 *
 	 * <p>빈 {@code details} 를 그린 예제는 대상이 아니다. 담기 시작하는 순간 대상이 되고, 그때
 	 * 구동 경로가 없으면 여기서 걸린다.
+	 *
+	 * <p><b>코드가 아니라 모양 단위로 센다</b> (§13-96, #478). 코드로만 세면 이미 구동 경로가
+	 * 있는 코드에 <b>다른 모양의 예제</b>를 하나 더 그려도 통과한다 — 그것이 이 이슈에서 실제로
+	 * 늘어난 것이다.
 	 */
 	@Test
-	void S9_1_every_example_that_draws_details_is_pinned_to_a_live_response() {
-		Set<String> drawn = new TreeSet<>();
+	void S9_1_every_example_that_draws_details_is_pinned_to_a_live_response() throws Exception {
+		Map<String, Set<Set<String>>> probed = probedShapes();
+
+		Set<String> unpinned = new TreeSet<>();
 		for (ErrorExample example : errorExamples()) {
-			if (!shapeOf(example.details()).isEmpty()) {
-				drawn.add(example.code());
+			Set<String> shape = shapeOf(example.details());
+			if (!shape.isEmpty() && !probed.getOrDefault(example.code(), Set.of()).contains(shape)) {
+				unpinned.add(example.location());
 			}
 		}
 
-		assertThat(drawn)
+		assertThat(unpinned)
 				.as("details 를 그린 예제인데 살아 있는 응답과 대조되지 않는다 (#471). "
 						+ "livingErrorResponses 에 구동 경로를 더한다")
-				.isSubsetOf(probedCodes());
+				.isEmpty();
 	}
 
 	/**
@@ -172,29 +198,55 @@ class ErrorDetailsExampleContractTests {
 	 *
 	 * <p><b>프로덕션 경로를 부른다.</b> 예외를 테스트가 직접 만들면 대조 대상이 계약과 테스트가 되어,
 	 * 정작 구현이 갈라졌을 때 아무 일도 일어나지 않는다.
+	 *
+	 * <p><b>{@code VALIDATION_ERROR} 는 넷이다</b> (§13-96) — 한 코드가 자리에 따라 다른 모양으로
+	 * 나가고, 그 모양들이 계약에 전부 그려져 있는지가 이 파일이 지키는 것이다.
 	 */
 	static Stream<Arguments> livingErrorResponses() {
 		return Stream.of(
-				arguments("VALIDATION_ERROR", (LiveErrorResponse) ErrorDetailsExampleContractTests::unreadableBody),
-				arguments("TURN_CONFLICT", (LiveErrorResponse) () -> responseOf(
-						() -> turnServiceReadyForTurnTwo(mock(TurnPipeline.class))
+				probe("VALIDATION_ERROR", "본문이 모델로 풀리지 못했다",
+						ErrorDetailsExampleContractTests::unreadableBody),
+				probe("VALIDATION_ERROR", "목록 개수가 상한을 넘었다",
+						() -> responseOf(() -> scaleGate().verify(oversizedDraft()))),
+				probe("VALIDATION_ERROR", "승인되지 않은 작품의 공개 범위를 바꾼다",
+						() -> responseOf(() -> visibilityServiceOf("in_review")
+								.change(PLAYER_REF, STORY_ID, Visibility.PUBLIC))),
+				probe("VALIDATION_ERROR", "선언한 이름이 프롬프트 예산을 넘었다",
+						() -> responseOf(() -> overBudgetVocabularyGate()
+								.verify(new DraftStateSchema(Set.of("yuna"), Set.of("met_yuna"))))),
+				probe("TURN_CONFLICT", "직전 턴 번호가 아니다",
+						() -> responseOf(() -> turnServiceReadyForTurnTwo(mock(TurnPipeline.class))
 								.advance(PLAYER_REF, SESSION_ID, choice(0)))),
-				arguments("SAFETY_BLOCKED", (LiveErrorResponse) () -> responseOf(
-						() -> turnServiceReadyForTurnTwo(blockingPipeline())
+				probe("SAFETY_BLOCKED", "L2 가 막았다",
+						() -> responseOf(() -> turnServiceReadyForTurnTwo(blockingPipeline())
 								.advance(PLAYER_REF, SESSION_ID, choice(1)))),
-				arguments("CONCURRENT_GENERATION", (LiveErrorResponse) () -> responseOf(
-						() -> guardsWithHeldLock().acquireGenerationLock(PLAYER_REF))),
-				arguments("RETRY_COOLDOWN", (LiveErrorResponse) () -> responseOf(
-						() -> guardsAtFailureLimit().requireNotCoolingDown(SESSION_ID))),
-				arguments("RATE_LIMITED", (LiveErrorResponse) () -> responseOf(
-						() -> guardsOverLimit(RateLimitProperties.MINUTE).requireWithinLimits(PLAYER_REF))),
-				arguments("QUOTA_EXCEEDED", (LiveErrorResponse) () -> responseOf(
-						() -> guardsOverLimit(RateLimitProperties.DAY).requireWithinLimits(PLAYER_REF))));
+				probe("CONCURRENT_GENERATION", "생성 락을 다른 요청이 잡고 있다",
+						() -> responseOf(() -> guardsWithHeldLock().acquireGenerationLock(PLAYER_REF))),
+				probe("RETRY_COOLDOWN", "연속 실패가 한도에 닿았다",
+						() -> responseOf(() -> guardsAtFailureLimit().requireNotCoolingDown(SESSION_ID))),
+				probe("RATE_LIMITED", "분당 창을 소진했다",
+						() -> responseOf(
+								() -> guardsOverLimit(RateLimitProperties.MINUTE).requireWithinLimits(PLAYER_REF))),
+				probe("QUOTA_EXCEEDED", "일일 창을 소진했다",
+						() -> responseOf(
+								() -> guardsOverLimit(RateLimitProperties.DAY).requireWithinLimits(PLAYER_REF))));
 	}
 
-	private static Set<String> probedCodes() {
-		return livingErrorResponses().map(arguments -> (String) arguments.get()[0])
-				.collect(Collectors.toCollection(TreeSet::new));
+	/** 표시 이름에 <b>어느 자리인가</b>를 남긴다 — 코드가 같은 줄이 넷이면 번호로는 읽히지 않는다. */
+	private static Arguments probe(String code, String label, LiveErrorResponse live) {
+		return arguments(code + " — " + label, code, live);
+	}
+
+	/** 코드마다 <b>구동 경로가 실제로 만드는 모양들</b>. */
+	private static Map<String, Set<Set<String>>> probedShapes() throws Exception {
+		Map<String, Set<Set<String>>> shapes = new TreeMap<>();
+		for (Arguments probe : livingErrorResponses().toList()) {
+			String code = (String) probe.get()[1];
+			String body = ((LiveErrorResponse) probe.get()[2]).body();
+			shapes.computeIfAbsent(code, key -> new LinkedHashSet<>())
+					.add(shapeOf(JsonPath.read(body, "$.details")));
+		}
+		return shapes;
 	}
 
 	// ── 2. details 의 모양 ──────────────────────────────────
@@ -408,6 +460,52 @@ class ErrorDetailsExampleContractTests {
 
 		return new PlayTurnService(sessions, turns, mock(StoryVersionFacade.class), pipeline,
 				mock(TurnGuards.class), idempotency, stories, new AiNoticeText(notices));
+	}
+
+	/**
+	 * 상한을 넘긴 원고 (§13-81). 게이트가 보는 것은 개수뿐이므로 세 값만 세운다.
+	 *
+	 * <p><b>{@code DraftScaleGateTests} 와 합치지 않는다</b> — 그쪽이 잠그는 것은 <b>몇 개까지
+	 * 지나가는가</b> 이고 여기가 보는 것은 응답의 <b>모양</b>이다.
+	 */
+	private static DraftStoryDefinition.Declared oversizedDraft() {
+		UgcLimitProperties limits = UgcLimitProperties.defaults();
+		return new DraftStoryDefinition.Declared(new DraftStateSchema(Set.of(), Set.of()),
+				limits.chaptersPerStory() + 1, 1);
+	}
+
+	private static DraftScaleGate scaleGate() {
+		return new DraftScaleGate(UgcLimitProperties.defaults());
+	}
+
+	/**
+	 * 예산을 넘겼다고 답하는 판정기 (§13-76).
+	 *
+	 * <p><b>경계를 실제로 계산하지 않는다.</b> 여기서 보는 것은 게이트가 <b>어떤 모양으로</b>
+	 * 거절하는가이고, 계산기의 경계가 어디인가는 {@code DraftVocabularyGateTests} 의 것이다 —
+	 * 그 경계가 움직일 때 이 파일까지 빨개지면 실패가 무엇을 말하는지 흐려진다.
+	 */
+	private static DraftVocabularyGate overBudgetVocabularyGate() {
+		return new DraftVocabularyGate(
+				(numericPaths, flags, inventory) -> new StateVocabularyBudget.Usage(137));
+	}
+
+	/**
+	 * 승인되지 않은 남의 손이 닿지 않은 작품 (R8.6). <b>칸이 아니라 전제가 맞지 않는 자리</b>다.
+	 *
+	 * <p>트랜잭션 관리자는 흉내만 낸다 — 여기서 도는 것은 커밋이 아니라 <b>전제 판정</b>이고,
+	 * 그 판정은 저장소를 만나기 전에 끝난다.
+	 */
+	private static StoryVisibilityService visibilityServiceOf(String reviewStatus) {
+		StoryPublisher publisher = mock(StoryPublisher.class);
+		given(publisher.ownerStatusOf(STORY_ID))
+				.willReturn(Optional.of(new StoryPublisher.OwnedStory(PLAYER_REF, reviewStatus, "unlisted")));
+
+		PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
+		given(transactions.getTransaction(any())).willReturn(mock(TransactionStatus.class));
+
+		return new StoryVisibilityService(publisher, mock(StoryReviewRepository.class),
+				mock(StoryReviewTimeline.class), Clock.systemUTC(), transactions);
 	}
 
 	/** L2 가 막은 턴 (§9.2). 세션 상태는 직전 턴 그대로다 (R6.6). */
