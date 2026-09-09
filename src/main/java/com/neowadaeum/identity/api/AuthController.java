@@ -13,10 +13,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.util.Locale;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -30,8 +33,9 @@ import org.springframework.web.bind.annotation.RestController;
  * <b>로그인보다도 앞</b>이라 인증을 요구할 자격 증명 자체가 없다 (§13-87).
  *
  * <p><b>이 컨트롤러만 {@code Set-Cookie} 를 쓴다</b> (ADR-0008, #278). 리프레시 토큰은 응답
- * 본문에 실리지 않고 {@link RefreshTokenCookie} 가 굽는 쿠키로만 오간다 — 그래서 두 응답이
- * {@code HttpServletResponse} 를 받는다.
+ * 본문에 실리지 않고 {@link RefreshTokenCookie} 가 굽는 쿠키로만 오간다 — 그래서 세 응답이
+ * {@code HttpServletResponse} 를 받는다. <b>셋째가 로그아웃</b>이며, 그것만 굽는 대신 지운다
+ * (#473).
  */
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -135,6 +139,37 @@ public class AuthController {
 		String refreshToken = this.refreshCookie.readFrom(httpRequest)
 				.orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
 		return issue(this.login.refresh(refreshToken), httpResponse);
+	}
+
+	/**
+	 * 로그아웃 — <b>이 브라우저에서 흔적을 지운다</b> (#473, §13-60 의 <i>범위 밖</i> 을 정정한다).
+	 *
+	 * <p><b>재발급과 같은 경로에 둔 것이 이 설계의 전부다.</b> 쿠키의 {@code Path} 가
+	 * {@link RefreshTokenCookie#PATH} 하나이므로 <b>다른 경로에 두면 쿠키가 실려 오지 않는다.</b>
+	 * 같은 자리에 두면 세 가지가 저절로 맞는다 — 쿠키가 오고, {@code PUBLIC_PATHS} 가 이미 이
+	 * 경로를 열어 두었고, CSRF 면제에서 빠지는 경로도 그대로다. <b>보안 설정이 한 줄도 바뀌지
+	 * 않는다는 것이 이 자리가 맞다는 근거다.</b>
+	 *
+	 * <p><b>검증하지 않는다.</b> 토큰이 만료됐든 애초에 없든 <b>언제나 {@code 204}</b> 다.
+	 *
+	 * <ul>
+	 * <li>검증하면 <b>만료된 토큰을 든 사람이 나가지 못한다</b> — 로그아웃이 가장 필요한 상태에서
+	 * 막히는 셈이다
+	 * <li>없는 쿠키에 {@code 401} 을 주면 화면은 <i>나가지 못했다</i> 를 그려야 하는데 실제로는
+	 * <b>이미 나가 있다.</b> 상태를 없애는 요청은 없던 것을 없애는 것도 성공이다
+	 * </ul>
+	 *
+	 * <p><b>IP 한도를 걸지 않는다.</b> S-8 이 위 셋에 한도를 건 근거는 <i>추측을 막는 것</i>과
+	 * <i>서버에 상태를 만드는 것</i>인데, 이 경로는 <b>아무것도 검증하지 않고 아무 상태도 만들지
+	 * 않는다.</b> 반대로 걸면 공용 IP 뒤의 사람이 <b>나가지 못하는</b> 실패가 생긴다.
+	 *
+	 * <p><b>서버 측 무효화는 없다.</b> 리프레시 토큰이 상태 없는 서명 JWT 라 무를 레코드가 없다 —
+	 * 탈취된 토큰까지 무르려면 거부 목록이라는 새 상태가 필요하며 그것은 별개의 결정이다.
+	 */
+	@DeleteMapping("/refresh")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void logout(HttpServletResponse httpResponse) {
+		this.refreshCookie.clearFrom(httpResponse);
 	}
 
 	/**
