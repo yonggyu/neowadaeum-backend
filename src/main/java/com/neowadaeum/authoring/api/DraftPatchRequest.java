@@ -34,8 +34,10 @@ public record DraftPatchRequest(@Min(1) @Max(5) int step, @NotNull JsonNode payl
 	 */
 	@AssertTrue(message = "payload must be a JSON object within the size limit")
 	boolean isPayloadAcceptable() {
-		return this.payload != null && this.payload.isObject()
-				&& this.payload.toString().length() <= MAX_PAYLOAD_LENGTH;
+		if (this.payload == null) {
+			return true;   // 빠진 것은 @NotNull 이 말한다. 둘이 함께 걸리면 한 칸에 사유가 둘 실린다
+		}
+		return this.payload.isObject() && this.payload.toString().length() <= MAX_PAYLOAD_LENGTH;
 	}
 
 	/** 저장 계층이 받는 모양. 원고는 {@code jsonb} 컬럼에 원문으로 남는다. */
