@@ -64,7 +64,7 @@ public class DraftController {
 	@PatchMapping("/{draftId}")
 	public DraftResponse save(@PathVariable UUID draftId, @Valid @RequestBody DraftPatchRequest body) {
 		StoryDraft saved = this.drafts.save(this.playerRefs.currentPlayerRef(), draftId, body.step(),
-				body.payload());
+				body.payloadJson());
 		return DraftResponse.of(saved);
 	}
 
