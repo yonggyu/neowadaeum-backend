@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.neowadaeum.ai.log.AiCallLog;
 import com.neowadaeum.ai.prompt.PromptAssembler;
 import com.neowadaeum.ai.prompt.TurnPromptFactory;
@@ -22,6 +23,7 @@ import com.neowadaeum.play.port.ProviderCallFailedException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +45,16 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>그래서 기록은 <b>리스트를 통째로 단언한다.</b> 실패 메시지가 *"크기가 1이어야 하는데
  * 0이다"* 를 말하고, {@code as(...)} 가 그 상태에서 무엇을 의심해야 하는지 함께 남긴다.
  * <b>재현되지 않는 실패에 대비하는 방법은 다음 실패가 스스로 설명하게 만드는 것뿐이다.</b>
+ *
+ * <p><b>그 대비의 나머지 절반이 HTTP 왕복이다</b> (이슈 #446, 2차). 판정 호출이 예외로 끝나면
+ * 남는 것은 스택트레이스뿐이라 <b>서버가 요청을 받기는 했는지, 받았는데 stub 에 매칭되지
+ * 않은 것인지</b>가 구분되지 않는다 — 앞의 것이면 연결·타이밍이고 뒤의 것이면 stub 이다.
+ * {@link #serverSaw()} 가 그 둘을 갈라 실패 메시지에 싣는다.
+ *
+ * <p><b>36회를 돌려도 재현되지 않았다</b>(단독 15 · {@code clean} 전량 15 · 8코어 포화 6).
+ * 병렬 실행 · 비동기 기록 · 인스턴스 공유 · 타임아웃 · 러너 리소스 압박이 모두 후보에서
+ * 지워졌고 <b>원인은 여전히 미상이다.</b> 그래서 이 클래스가 하는 일은 원인을 막는 것이
+ * 아니라 <b>다음 회차가 스스로를 설명하게 하는 것</b>이다.
  */
 class AnthropicSafetyClassificationTests {
 
@@ -91,6 +103,37 @@ class AnthropicSafetyClassificationTests {
 
 	private static SafetyClassificationRequest request() {
 		return new SafetyClassificationRequest(List.of("복도 끝에서 발소리가 멈췄다.", "비켜 준다"));
+	}
+
+	/**
+	 * 판정을 부르되, <b>실패하면 서버가 무엇을 받았는지 함께 말한다</b> (이슈 #446).
+	 *
+	 * <p>이 호출이 예외로 끝나는 길은 둘이다 — 벤더에 닿지 못했거나(연결·읽기), 닿았는데 응답이
+	 * 판정으로 읽히지 않았거나. <b>스택트레이스만으로는 그 둘이 구분되지 않는다.</b> 서버가 받은
+	 * 요청 수와 매칭되지 않은 요청 수가 그것을 가른다: <b>0건이면 요청이 나가지 못한 것이고,
+	 * 매칭되지 않은 것이 있으면 stub 이 어긋난 것이다.</b>
+	 *
+	 * <p>성공 경로에서는 아무것도 하지 않는다 — 진단은 실패했을 때만 필요하다.
+	 */
+	private Set<SafetyCategory> classifyOrExplain() {
+		try {
+			return this.provider.classifySafety(request());
+		}
+		catch (RuntimeException failure) {
+			throw new AssertionError("판정 호출이 실패했다 (#446). " + serverSaw(), failure);
+		}
+	}
+
+	/**
+	 * 서버가 본 것을 한 줄로. <b>본문을 싣지 않는다</b> — 수와 URL 만으로 두 갈래가 갈리고,
+	 * 판정 대상 텍스트를 실패 메시지에 남기지 않는다 (S-11).
+	 */
+	private String serverSaw() {
+		List<LoggedRequest> unmatched = this.server.findAllUnmatchedRequests();
+		return "서버가 받은 요청 %d 건, 그중 stub 에 매칭되지 않은 것 %d 건%s — 0 건이면 요청이 나가지 못한 것이고, 매칭되지 않은 것이 있으면 stub 이 어긋난 것이다"
+				.formatted(this.server.getAllServeEvents().size(), unmatched.size(),
+						unmatched.isEmpty() ? "" : " " + unmatched.stream()
+								.map(LoggedRequest::getUrl).distinct().toList());
 	}
 
 	/**
@@ -162,7 +205,7 @@ class AnthropicSafetyClassificationTests {
 	void R9_2_a_clean_verdict_is_an_empty_set() {
 		respondWith("{\"categories\": []}");
 
-		assertThat(this.provider.classifySafety(request())).isEmpty();
+		assertThat(classifyOrExplain()).isEmpty();
 		assertThat(this.recorded)
 				.as("판정 호출이 기록되지 않았다 (#446) — 호출이 나가지 못했거나 stub 이 매칭되지 않았다")
 				.singleElement()
