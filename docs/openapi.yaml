@@ -2486,9 +2486,13 @@ components:
       description: |
         **429 는 셋으로 구분한다** (§13-14d). 하나로 합치지 않는다 — 클라이언트 처리가 다르다.
 
-        - `RETRY_COOLDOWN` — 연속 실패 3회. `details.retryAfterSeconds` 동안 재시도 비활성
+        - `RETRY_COOLDOWN` — 연속 실패 3회. 그동안 재시도 비활성
         - `RATE_LIMITED` — 분당 호출 한도 초과
         - `QUOTA_EXCEEDED` — 일일 토큰·생성 한도 초과
+
+        **셋 다 `details.retryAfterSeconds`(초) 를 담는다.** 언제 다시 올지 알려주지 않으면
+        클라이언트가 즉시 재시도하고, 그러면 한도는 트래픽을 줄이는 것이 아니라 실패를 늘리는
+        장치가 된다. 값은 지금 창이 끝날 때까지 남은 시간이라 코드마다 자릿수가 다르다.
       content:
         application/json:
           schema:
@@ -2504,12 +2508,14 @@ components:
               value:
                 error: RATE_LIMITED
                 message: 요청이 너무 빨라요. 잠시 후 다시 시도해 주세요.
-                details: {}
+                details:
+                  retryAfterSeconds: 12
             quotaExceeded:
               value:
                 error: QUOTA_EXCEEDED
                 message: 오늘 이용할 수 있는 양을 모두 사용했어요.
-                details: {}
+                details:
+                  retryAfterSeconds: 21600
     InternalError:
       description: |
         서버 결함. `CONTEXT_BUDGET_EXCEEDED` 는 컨텍스트 예산 초과이며 **조용히 잘라내지 않고 실패시킨다** (§4.4).
