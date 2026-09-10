@@ -2352,6 +2352,11 @@ components:
         수준**이며 그보다 자세해지지 않는다 (S-11). 측정값이 함께 오는 자리가 있다
         (`vocabularyUsagePercent`).
 
+        **분기해도 되는 값이므로 목록을 계약이 든다** (§13-97, #483) — `ValidationReason` 열거가
+        그 정본이며 `ErrorCode` 와 같은 방식으로 클라이언트가 생성해 쓸 수 있다. 예제로만
+        그리면 **예제가 있는 값만 목록이 되고**, 나머지는 소스를 읽어야 알 수 있어 계약을
+        건너뛴 정본이 프론트에 하나 더 생긴다.
+
         본문이 모델로 풀리지 못한 실패도 같은 자리로 온다. 다만 그 실패는 첫 어긋남에서
         멈추므로 `fields` 는 **한 칸짜리 배열**이고, 값 검증 사유와 **같은 응답에 섞이지
         않는다** — 그 단계는 모델이 만들어진 뒤에야 돈다. 이때 `reason` 은 고정 문구이며
@@ -2383,7 +2388,18 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Error'
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              # §13-97 — 봉투는 하나뿐이므로(§9.1) `Error` 를 그대로 쓰고, **최상위 `reason` 만**
+              # 여기서 좁힌다. 값의 정본이 계약에 없으면 화면은 소스를 읽어야 분기 대상을 안다.
+              - type: object
+                properties:
+                  details:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      reason:
+                        $ref: '#/components/schemas/ValidationReason'
           examples:
             fieldViolations:
               summary: 어느 칸이 어긋났는가 — 같은 필드에 위반이 둘
@@ -2664,6 +2680,34 @@ components:
           type: object
           additionalProperties: true
           description: 코드별 부가 정보. **`null` 이 되지 않는다** — 값이 없으면 빈 객체다
+
+    ValidationReason:
+      type: string
+      description: |
+        `VALIDATION_ERROR` 의 **최상위 `details.reason`** 값 (§13-96, §13-97).
+        `com.neowadaeum.common.error.ValidationReason` 과 **정확히 일치**한다.
+
+        **`details.fields[].reason` 이 아니다.** 그쪽은 검증 라이브러리의 문구가 섞여 오는
+        진단 값이라 열거할 수 없고(§13-95), 이쪽은 전부 서버가 적은 고정 코드라
+        **화면이 분기해도 되는 값**이다. 목록을 계약이 드는 이유가 그것이다 — 분기 대상을
+        알려면 목록을 알아야 하고, 소스를 읽어 알아내면 계약을 건너뛴 정본이 하나 더 생긴다.
+
+        값은 **카테고리 수준**이며 그보다 자세해지지 않는다 (S-11). 어느 칸이 어긋났는지·
+        어떤 값을 보냈는지·내부 상태가 무엇인지 담지 않는다.
+
+        - `story_not_approved` — 승인 상태가 아닌 작품의 공개 범위를 바꾸려 했다 (R8.6)
+        - `promote_requires_unlisted` — `unlisted` 가 아닌 자리에서 `public` 으로 올리려 했다 (§13-39)
+        - `vocabulary_budget_exceeded` — 선언한 이름이 프롬프트 어휘 예산을 넘었다.
+          `details.vocabularyUsagePercent` 가 함께 온다 (§13-76)
+        - `missing_default_ending` — 기본 엔딩 없는 작품을 발행하려 했다 (R2.2)
+
+        **예제는 값마다 늘지 않는다** — 예제가 그리는 것은 `details` 의 **모양**이고(§13-96)
+        네 값이 만드는 모양은 둘뿐이다. 값의 목록은 이 열거가 든다.
+      enum:
+        - story_not_approved
+        - promote_requires_unlisted
+        - vocabulary_budget_exceeded
+        - missing_default_ending
 
     AuthorType:
       type: string

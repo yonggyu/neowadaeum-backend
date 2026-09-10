@@ -3,6 +3,7 @@ package com.neowadaeum.authoring.review;
 import com.neowadaeum.catalog.publish.StoryPublisher;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.error.ValidationReason;
 import com.neowadaeum.common.spi.StoryReviewTimes;
 import java.time.Clock;
 import java.time.Instant;
@@ -75,7 +76,7 @@ public class StoryVisibilityService {
 			Visibility current = visibilityOf(stored.visibility());
 			if (reviewStatus != ReviewStatus.APPROVED) {
 				throw new ApiException(ErrorCode.VALIDATION_ERROR,
-						Map.of("reason", "story_not_approved"));
+						Map.of("reason", ValidationReason.STORY_NOT_APPROVED.code()));
 			}
 			if (current == target) {
 				return withTimes(new VisibilityOutcome(storyId, reviewStatus, current, null));
@@ -100,7 +101,7 @@ public class StoryVisibilityService {
 	private VisibilityOutcome promote(UUID storyId, Visibility current) {
 		if (current != Visibility.UNLISTED) {
 			throw new ApiException(ErrorCode.VALIDATION_ERROR,
-					Map.of("reason", "promote_requires_unlisted"));
+					Map.of("reason", ValidationReason.PROMOTE_REQUIRES_UNLISTED.code()));
 		}
 		// §13-83 — 남겨 두는 자리(current)와 통과가 열 자리(public)는 다른 사실이다. 여기서는
 		// 늘 public 이지만 그 값을 적어 두는 것은 제출 경로가 다른 값을 적기 시작했기
