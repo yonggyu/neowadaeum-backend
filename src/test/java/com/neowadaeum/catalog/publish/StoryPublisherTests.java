@@ -114,22 +114,26 @@ class StoryPublisherTests extends ContainerTestBase {
 	}
 
 	/**
-	 * <b>#396 · §13-85 — 발행은 두 컬럼에 함께 쓴다.</b>
+	 * <b>#486 · §13-85 — 발행은 이제 새 이름 한 곳에만 쓴다.</b>
 	 *
-	 * <p>커버 컬럼의 이름을 고치는 중이고 무중단 배포에서는 구 버전과 신 버전이 겹쳐 돈다
-	 * (docs/deployment.md §2). 옛 컬럼에 쓰지 않으면 <b>겹치는 동안 구 버전이 빈 커버를 읽는다</b>
-	 * — 작품 행과 버전 행 둘 다 그렇다 (버전이 승인 때 작품 행으로 옮겨진다, #358).
+	 * <p>개명의 <b>2 단계</b>다. 1 단계(#396)는 옛 컬럼에도 함께 썼다 — 무중단 배포에서 구
+	 * 버전과 신 버전이 겹쳐 돌기 때문이며 (docs/deployment.md §2), 그 배포가 끝난 지금은 옛
+	 * 컬럼을 읽는 코드가 남아 있지 않다. <b>여기서 쓰기를 멈추지 않으면 다음 배포가 그 컬럼을
+	 * 지울 수 없다</b> — 지우는 순간 이 INSERT 가 42703 으로 실패한다.
 	 *
-	 * <p>이 단언은 <b>옛 컬럼을 지우는 배포에서 뒤집힌다</b> — 그때 양쪽 쓰기와 함께 사라진다.
+	 * <p>작품 행과 버전 행 <b>둘 다</b> 본다. 버전이 승인 때 작품 행으로 옮겨지므로 (#358) 한
+	 * 쪽만 고치면 승인이 지나가는 순간 다른 쪽이 되살아난다.
+	 *
+	 * <p>이 단언은 <b>옛 컬럼을 지우는 배포(3 단계)에서 사라진다</b> — 읽을 컬럼이 없어진다.
 	 */
 	@Test
-	void S13_85_publishing_writes_the_cover_to_both_column_names() {
+	void S13_85_publishing_writes_the_cover_only_to_the_new_column() {
 		var published = publish(definition());
 
 		assertThat(coverColumnsOf(published.storyId()))
-				.containsExactly("drafts/cover/키.jpg", "drafts/cover/키.jpg");
+				.containsExactly("drafts/cover/키.jpg", null);
 		assertThat(versionCoverColumnsOf(published.versionId()))
-				.containsExactly("drafts/cover/키.jpg", "drafts/cover/키.jpg");
+				.containsExactly("drafts/cover/키.jpg", null);
 	}
 
 	/**
@@ -159,12 +163,17 @@ class StoryPublisherTests extends ContainerTestBase {
 				.param(storyId).query(String.class).list();
 	}
 
-	/** 두 이름이 같은 값을 들고 있어야 한다 (#396). 순서는 {@code (새 이름, 옛 이름)} 이다. */
+	/**
+	 * 두 이름이 각각 무엇을 들고 있는가 (#486). 순서는 {@code (새 이름, 옛 이름)} 이다.
+	 *
+	 * <p><b>{@code List.of} 를 쓰지 않는다</b> — 옛 이름이 {@code null} 인 것이 이 조회가
+	 * 확인하려는 값이고, {@code List.of} 는 그 값에서 {@link NullPointerException} 을 던진다.
+	 */
 	private List<String> coverColumnsOf(UUID storyId) {
 		return org.springframework.jdbc.core.simple.JdbcClient.create(this.catalog)
 				.sql("SELECT cover_image_key, cover_url FROM story WHERE id = ?")
 				.param(storyId)
-				.query((rs, rowNum) -> List.of(rs.getString(1), rs.getString(2)))
+				.query((rs, rowNum) -> java.util.Arrays.asList(rs.getString(1), rs.getString(2)))
 				.single();
 	}
 
@@ -172,7 +181,7 @@ class StoryPublisherTests extends ContainerTestBase {
 		return org.springframework.jdbc.core.simple.JdbcClient.create(this.catalog)
 				.sql("SELECT cover_image_key, cover_url FROM story_version WHERE id = ?")
 				.param(versionId)
-				.query((rs, rowNum) -> List.of(rs.getString(1), rs.getString(2)))
+				.query((rs, rowNum) -> java.util.Arrays.asList(rs.getString(1), rs.getString(2)))
 				.single();
 	}
 

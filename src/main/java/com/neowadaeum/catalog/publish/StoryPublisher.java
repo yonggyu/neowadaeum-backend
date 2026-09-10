@@ -97,13 +97,13 @@ public class StoryPublisher {
 
 		this.jdbc.sql("""
 						INSERT INTO story (id, slug, title, short_desc, world_intro,
-								cover_image_key, cover_url,
+								cover_image_key,
 								author_type, author_ref, visibility, review_status, created_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(storyId, slugFor(storyId, definition.title()), definition.title(),
 						trimmedShortDesc(definition.shortDesc()), definition.worldIntro(),
-						definition.coverImageKey(), definition.coverImageKey(),
+						definition.coverImageKey(),
 						USER_AUTHOR_TYPE, definition.authorRef(),
 						PRIVATE_VISIBILITY, DRAFT_REVIEW_STATUS, at(now))
 				.update();
@@ -159,6 +159,10 @@ public class StoryPublisher {
 	 * <b>버전이 말한 적 없는 것</b>이 같아져, 한 번 올린 커버를 영영 내릴 수 없게 된다.
 	 *
 	 * <p>스냅샷의 유무는 {@code title} 이 답한다 — 발행 경로는 그것을 반드시 쓴다.
+	 *
+	 * <p><b>커버는 새 이름 한 곳에만 쓴다</b> (#486, §13-85). 개명의 2 단계이며, 옛 컬럼은
+	 * 다음 배포가 지운다 (docs/deployment.md §2) — 여기서 함께 쓰기를 멈추지 않으면 그 배포가
+	 * 지울 수 있는 컬럼이 되지 않는다.
 	 */
 	private void promoteStoryFields(UUID storyId, UUID versionId) {
 		if (versionStoryFieldsOf(versionId).map(fields -> fields.title() == null).orElse(true)) {
@@ -167,8 +171,7 @@ public class StoryPublisher {
 		this.jdbc.sql("""
 						UPDATE story s
 						SET title = v.title, short_desc = v.short_desc, world_intro = v.world_intro,
-								cover_image_key = COALESCE(v.cover_image_key, v.cover_url),
-								cover_url = COALESCE(v.cover_image_key, v.cover_url)
+								cover_image_key = v.cover_image_key
 						FROM story_version v
 						WHERE v.id = ? AND s.id = ?
 						""")
@@ -427,8 +430,7 @@ public class StoryPublisher {
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public Optional<StoryHeader> headerOf(UUID storyId) {
 		return this.jdbc.sql("""
-						SELECT title, short_desc, world_intro,
-								COALESCE(cover_image_key, cover_url) AS cover_image_key,
+						SELECT title, short_desc, world_intro, cover_image_key,
 								author_ref, review_status, visibility, created_at
 						FROM story WHERE id = ?
 						""")
@@ -453,8 +455,7 @@ public class StoryPublisher {
 	public Optional<VersionStoryFields> versionStoryFieldsOf(UUID versionId) {
 		return this.jdbc
 				.sql("""
-						SELECT title, short_desc, world_intro,
-								COALESCE(cover_image_key, cover_url) AS cover_image_key
+						SELECT title, short_desc, world_intro, cover_image_key
 						FROM story_version WHERE id = ?
 						""")
 				.param(versionId)
@@ -538,8 +539,7 @@ public class StoryPublisher {
 	@Transactional(value = "catalogTransactionManager", readOnly = true)
 	public List<VersionCharacter> versionCharactersOf(UUID storyVersionId) {
 		return this.jdbc.sql("""
-						SELECT name, persona_prompt,
-								COALESCE(portrait_image_key, portrait_url) AS portrait_image_key
+						SELECT name, persona_prompt, portrait_image_key
 						FROM character
 						WHERE story_version_id = ? ORDER BY display_order
 						""")
@@ -664,13 +664,13 @@ public class StoryPublisher {
 		this.jdbc.sql("""
 						INSERT INTO story_version (id, story_id, version_no, world_prompt, choice_policy,
 								state_schema, state_template_key, published_at,
-								title, short_desc, world_intro, cover_image_key, cover_url)
-						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
+								title, short_desc, world_intro, cover_image_key)
+						VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?)
 						""")
 				.params(versionId, storyId, versionNo, definition.worldPrompt(), CHOICE_POLICY,
 						stateSchemaJson, definition.stateTemplateKey(), at(now), definition.title(),
 						trimmedShortDesc(definition.shortDesc()), definition.worldIntro(),
-						definition.coverImageKey(), definition.coverImageKey())
+						definition.coverImageKey())
 				.update();
 
 		insertVersionGenres(versionId, definition.genreKeys());
@@ -704,13 +704,13 @@ public class StoryPublisher {
 		for (StoryDefinition.Character character : definition.characters()) {
 			this.jdbc.sql("""
 							INSERT INTO character (id, story_version_id, story_id, name, role,
-									portrait_image_key, portrait_url, one_line, persona_prompt,
+									portrait_image_key, one_line, persona_prompt,
 									display_order, is_visible_in_detail)
-							VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 							""")
 					// role 은 아직 작성자가 정하지 않는다 — 지어내지 않고 비운다.
 					.params(UUID.randomUUID(), versionId, storyId, character.name(), null,
-							character.portraitImageKey(), character.portraitImageKey(),
+							character.portraitImageKey(),
 							character.oneLine(), character.personaPrompt(),
 							character.displayOrder(), character.visibleInDetail())
 					.update();
