@@ -2,6 +2,7 @@ package com.neowadaeum.catalog.publish;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.error.ValidationReason;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -211,7 +212,7 @@ public class StoryPublisher {
 		if (count == null || count < 1) {
 			// S-7 — 폴백 부재를 조용히 넘기지 않는다. 사유는 카테고리 수준이다 (S-11).
 			throw new ApiException(ErrorCode.VALIDATION_ERROR,
-					java.util.Map.of("reason", "missing_default_ending"));
+					Map.of("reason", ValidationReason.MISSING_DEFAULT_ENDING.code()));
 		}
 	}
 
