@@ -2,8 +2,11 @@ package com.neowadaeum.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import com.jayway.jsonpath.JsonPath;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.error.GlobalExceptionHandler;
 import com.neowadaeum.play.api.TurnRequestBody;
 import com.neowadaeum.play.api.HistoryView;
 import com.neowadaeum.play.api.LandingView;
@@ -14,6 +17,7 @@ import com.neowadaeum.play.api.StoryDetailResponse;
 import com.neowadaeum.play.api.TurnView;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -32,7 +36,12 @@ import org.springframework.context.annotation.ClassPathScanningCandidateComponen
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.util.ClassUtils;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
@@ -308,6 +317,129 @@ class OpenApiContractTests {
 		assertThat(responses)
 				.as("인증을 요구하지 않는 경로가 401 을 선언하면 계약이 두 말을 한다 — %s", path)
 				.doesNotContainKey("401");
+	}
+
+	/**
+	 * #466 — {@code VALIDATION_ERROR} 의 <b>예제</b>가 실제 응답과 같은 모양인가.
+	 *
+	 * <p>{@code Error.details} 는 {@code additionalProperties: true} 라 어떤 모양이든 스키마를 통과한다.
+	 * 그래서 예제가 맵이고 구현이 배열인 채로 오래 남아 있었다 — 필드 선언만 대조하는 검사는 이것을
+	 * 보지 못한다. <b>계약을 읽는 사람은 예제를 읽는다.</b>
+	 *
+	 * <p>배열이 정본인 이유는 <b>한 필드에 위반이 둘 이상일 수 있기 때문</b>이다. 맵이면 뒤엣것이
+	 * 앞엣것을 덮어써 사용자는 한 번에 하나씩만 고치게 된다.
+	 *
+	 * <p><b>예제가 여럿이 됐다</b> (§13-96, #478) — {@code fields} 항목은 자리에 따라 키를 더
+	 * 들 수 있으므로({@code max}) 키 집합을 하나로 못박지 않는다. 대신 <b>핸들러가 내보내는 키
+	 * 집합이 그중 하나로 그려져 있는가</b>를 본다. 모양 하나하나의 대조는
+	 * {@code ErrorDetailsExampleContractTests} 가 양방향으로 한다 (#471).
+	 */
+	@Test
+	void S9_1_validation_error_example_matches_the_real_response() throws Exception {
+		List<Set<String>> drawnKeySets = validationErrorFieldEntries().stream()
+				.map(entry -> (Set<String>) new LinkedHashSet<>(entry.keySet()))
+				.toList();
+
+		assertThat(drawnKeySets)
+				.as("계약의 예제와 실제 응답이 서로 다른 키를 쓴다 (#466)")
+				.contains(fieldKeysOfRealValidationFailure());
+	}
+
+	/**
+	 * #470 — 계약의 예제가 <b>항목마다 {@code field} 를 든다.</b>
+	 *
+	 * <p>{@code field} 는 <i>어느 자리가 어긋났는가</i>이고 화면이 자기 문구를 고르는 근거다.
+	 * {@code reason} 은 진단 값이라 그 자리를 대신할 수 없으므로, {@code field} 가 빠진 항목은
+	 * <b>화면에서 쓸 수 없는 항목</b>이 된다.
+	 *
+	 * <p>바로 위 검사는 항목들의 키를 <b>합집합</b>으로 모으므로 한 항목이 {@code field} 를 빠뜨려도
+	 * 통과한다. 예제가 곧 다음 사람이 읽는 계약이다.
+	 *
+	 * <p><b>{@code reason} 의 문구는 보지 않는다.</b> 검증 라이브러리의 기본 메시지이며 판본을 따라
+	 * 바뀐다 — 테스트가 그 문구를 베끼면 라이브러리가 오를 때 계약과 무관하게 깨진다.
+	 */
+	@Test
+	void Issue470_validation_error_example_names_a_field_in_every_entry() {
+		assertThat(validationErrorFieldEntries())
+				.as("계약의 예제에 어긋난 자리를 말하지 않는 항목이 있다 (#470)")
+				.isNotEmpty()
+				.allSatisfy(entry -> assertThat(entry.get("field")).isInstanceOf(String.class));
+	}
+
+	/**
+	 * {@code ValidationError} 예제들이 그린 {@code details.fields} 항목 전부.
+	 *
+	 * <p>예제가 여럿이므로(§13-96) <b>하나를 골라 읽지 않는다</b> — 골라 읽으면 나머지 예제가
+	 * 아무 검사도 받지 않고, 그것이 #471 이 드러낸 상태다.
+	 */
+	@SuppressWarnings("unchecked")
+	private static List<Map<String, Object>> validationErrorFieldEntries() {
+		List<Map<String, Object>> entries = new ArrayList<>();
+		for (Map<String, Object> example : examplesOf("ValidationError")) {
+			Object details = example.get("details");
+			if (!(details instanceof Map<?, ?> map) || map.get("fields") == null) {
+				continue;
+			}
+			assertThat(map.get("fields")).as("계약의 details.fields 가 배열이 아니다 (#466)")
+					.isInstanceOf(List.class);
+			entries.addAll((List<Map<String, Object>>) map.get("fields"));
+		}
+		return entries;
+	}
+
+	/** {@code components/responses} 한 자리의 에러 예제 전부 — {@code example} 하나든 {@code examples} 여럿이든. */
+	@SuppressWarnings("unchecked")
+	private static List<Map<String, Object>> examplesOf(String responseName) {
+		Map<String, Object> components = (Map<String, Object>) SPEC.get("components");
+		Map<String, Object> response =
+				(Map<String, Object>) ((Map<String, Object>) components.get("responses")).get(responseName);
+		assertThat(response).as("스펙에 %s 응답이 없다", responseName).isNotNull();
+
+		Map<String, Object> json =
+				(Map<String, Object>) ((Map<String, Object>) response.get("content")).get("application/json");
+		List<Map<String, Object>> examples = new ArrayList<>();
+		if (json.get("example") instanceof Map<?, ?> single) {
+			examples.add((Map<String, Object>) single);
+		}
+		if (json.get("examples") instanceof Map<?, ?> named) {
+			named.values().stream().filter(Map.class::isInstance)
+					.map(entry -> ((Map<String, Object>) entry).get("value"))
+					.filter(Map.class::isInstance)
+					.forEach(value -> examples.add((Map<String, Object>) value));
+		}
+		assertThat(examples).as("%s 응답에 예제가 없다", responseName).isNotEmpty();
+		return examples;
+	}
+
+	/**
+	 * 실제 핸들러가 내보내는 {@code details.fields} 항목의 키.
+	 *
+	 * <p>계약이 아니라 <b>살아 있는 응답</b>에서 읽는다 — 그래야 다음에 한쪽만 움직였을 때 여기서 걸린다.
+	 */
+	private static Set<String> fieldKeysOfRealValidationFailure() throws Exception {
+		MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ValidationProbeController())
+				.setControllerAdvice(new GlobalExceptionHandler())
+				.build();
+
+		String body = mockMvc.perform(post("/contract-probe")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"turnNo\":\"글자\"}"))
+				.andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+		Map<String, Object> firstField = JsonPath.read(body, "$.details.fields[0]");
+		return new LinkedHashSet<>(firstField.keySet());
+	}
+
+	/** 위 검사가 실제 응답을 얻기 위한 최소 컨트롤러. 응답 타입이 없으므로 계약 커버리지에는 잡히지 않는다. */
+	@RestController
+	static class ValidationProbeController {
+
+		@PostMapping("/contract-probe")
+		void probe(@RequestBody ContractProbeRequest request) {
+		}
+	}
+
+	record ContractProbeRequest(Integer turnNo) {
 	}
 
 	// ── 3. 구현 ⊆ 계약 ───────────────────────────────────────

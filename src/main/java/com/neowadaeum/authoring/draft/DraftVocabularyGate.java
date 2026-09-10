@@ -29,6 +29,15 @@ public class DraftVocabularyGate {
 	/** {@code state_schema} 의 수치 그룹. {@link DraftStateSchema} 가 이 이름으로 발행한다. */
 	private static final String AFFINITY = "affinity.";
 
+	/**
+	 * 무엇이 어긋났는가 — <b>칸이 아니라 원고 전체의 전제</b>다 (§13-96, #478).
+	 *
+	 * <p>인물과 플래그를 <b>함께</b> 재므로 가리킬 칸이 하나로 정해지지 않는다. 없는 칸 이름을
+	 * 지어내 {@code fields} 에 밀어 넣으면 화면은 그 칸 옆에 문구를 붙이고, <b>거기서 이름 하나를
+	 * 지워도 통과하지 않는다.</b>
+	 */
+	private static final String BUDGET_EXCEEDED = "vocabulary_budget_exceeded";
+
 	private final StateVocabularyBudget budget;
 
 	public DraftVocabularyGate(StateVocabularyBudget budget) {
@@ -39,16 +48,17 @@ public class DraftVocabularyGate {
 	 * <b>인물과 플래그를 함께 본다.</b> 둘 다 같은 블록에 실리므로 한쪽만 재면 다른 쪽이 그
 	 * 상한을 무의미하게 만든다 — 상한이 없는 쪽이 인물이다.
 	 *
-	 * @throws ApiException {@code VALIDATION_ERROR} — 넘겼다. {@code details.vocabularyUsagePercent}
-	 *     로 <b>얼마나 넘겼는지</b> 알린다. 토큰 수도 상한도 내보내지 않는다 (S-6)
+	 * @throws ApiException {@code VALIDATION_ERROR} — 넘겼다. {@code details.reason} 이 <b>무엇이
+	 *     막았는지</b>를, {@code details.vocabularyUsagePercent} 가 <b>얼마나 넘겼는지</b>를
+	 *     알린다 (§13-96). 토큰 수도 상한도 내보내지 않는다 (S-6)
 	 */
 	public void verify(DraftStateSchema declared) {
 		List<String> numericPaths = declared.characters().stream().map(AFFINITY::concat).toList();
 
 		StateVocabularyBudget.Usage usage = this.budget.assess(numericPaths, declared.flags(), List.of());
 		if (!usage.fits()) {
-			throw new ApiException(ErrorCode.VALIDATION_ERROR,
-					Map.of("vocabularyUsagePercent", usage.percentOfBudget()));
+			throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.<String, Object>of(
+					"reason", BUDGET_EXCEEDED, "vocabularyUsagePercent", usage.percentOfBudget()));
 		}
 	}
 }

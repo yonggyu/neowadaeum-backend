@@ -1,6 +1,7 @@
 package com.neowadaeum.identity.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -170,6 +171,50 @@ class AuthEndToEndTests extends ContainerTestBase {
 				.isEqualTo(403);
 		assertThat(JSON.readTree(result.getResponse().getContentAsString()).path("error").asString())
 				.isEqualTo("FORBIDDEN");
+	}
+
+	/**
+	 * §13-94 — <b>로그아웃이 보안 체인을 그대로 지난다</b> (#473).
+	 *
+	 * <p>이 테스트가 지키는 것은 응답 하나가 아니라 <b>설정을 고치지 않아도 된다는 주장</b>이다.
+	 * {@code PUBLIC_PATHS} 는 이 경로를 <b>메서드와 무관하게</b> 열고, CSRF 면제는 이 경로를
+	 * <b>부정 매처로 빼므로</b> {@code DELETE} 에도 그대로 걸린다. 둘 중 하나라도 경로가 아니라
+	 * 메서드까지 보게 바뀌면 여기서 빨개진다.
+	 */
+	@Test
+	void Issue473_logout_passes_the_chain_without_authentication() throws Exception {
+		String refreshToken = givenActiveMemberRefreshToken();
+
+		MvcResult result = this.mockMvc.perform(withCsrf(delete("/api/v1/auth/refresh")
+						.cookie(new Cookie(REFRESH_COOKIE, refreshToken))))
+				.andReturn();
+
+		assertThat(result.getResponse().getStatus())
+				.as("인증을 요구하지 않는다 — 401 이면 PUBLIC_PATHS 가 메서드까지 보게 바뀐 것이다")
+				.isEqualTo(204);
+		assertThat(result.getResponse().getHeader("Set-Cookie"))
+				.as("쿠키를 지우는 응답이어야 한다")
+				.contains("nwd_rt=")
+				.contains("Max-Age=0")
+				.contains("Path=/api/v1/auth/refresh");
+	}
+
+	/**
+	 * §13-94 — <b>로그아웃도 CSRF 토큰을 요구한다</b> (#473).
+	 *
+	 * <p>재발급과 같은 경로이므로 같은 요구가 걸린다. 걸리지 않으면 <b>남의 사이트가 사용자를
+	 * 조용히 로그아웃시킬 수 있다</b> — 자격 증명을 훔치는 것은 아니지만 사용자가 하지 않은 일이
+	 * 일어나는 것은 같다.
+	 */
+	@Test
+	void Issue473_logout_without_a_csrf_token_is_refused() throws Exception {
+		MvcResult result = this.mockMvc.perform(delete("/api/v1/auth/refresh")
+						.cookie(new Cookie(REFRESH_COOKIE, givenActiveMemberRefreshToken())))
+				.andReturn();
+
+		assertThat(result.getResponse().getStatus())
+				.as("면제에서 빠진 경로다 — 메서드가 달라도 같다")
+				.isEqualTo(403);
 	}
 
 	/**

@@ -239,7 +239,7 @@ class AdminReviewHistoryApiIntegrationTests extends ContainerTestBase {
 
 		this.mvc.perform(patch("/api/v1/authoring/drafts/%s".formatted(draftId)).with(asPlayer(authorRef))
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(JSON.writeValueAsString(java.util.Map.of("step", 5, "payload", PAYLOAD))))
+						.content(JSON.writeValueAsString(java.util.Map.of("step", 5, "payload", JSON.readTree(PAYLOAD)))))
 				.andExpect(status().isOk());
 
 		String submitted = this.mvc

@@ -53,6 +53,11 @@ public class DraftImageController {
 	 *
 	 * <p><b>캐시하지 않는다.</b> 승인 전 이미지는 게이트 뒤에 있어야 하고, 중간 캐시에 남은 바이트는
 	 * 그 게이트를 지나지 않는다 (I-8).
+	 *
+	 * <p><b>열람 감사를 남기지 않는다</b> (R12.3, S-5). 남기는 자리는 검수자 경로
+	 * ({@code readReviewImage}) 이며, 소유자가 자기 원고를 보는 것은 S-5 가 답하려는 물음
+	 * <i>(누가 남의 원고 이미지를 봤는가)</i> 의 대상이 아니다 — <b>이 침묵의 정본은 계약의
+	 * {@code readDraftImage} 설명</b>이고 여기서 되풀이하지 않는다 (§13-78, 이슈 #469).
 	 */
 	@GetMapping
 	public ResponseEntity<byte[]> read(@PathVariable UUID draftId,

@@ -5,13 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.neowadaeum.ContainerTestBase;
 import com.neowadaeum.common.error.ApiException;
+import com.neowadaeum.authoring.precheck.PrecheckFinding;
+import com.neowadaeum.authoring.precheck.PrecheckScreen;
 import com.neowadaeum.common.error.ErrorCode;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * B-51 — <b>남의 원고는 없는 것과 구분되지 않는다</b> (I-8, §8.1).
@@ -161,6 +166,32 @@ class DraftServiceTests extends ContainerTestBase {
 		this.service.delete(authorRef, first);
 
 		assertThat(this.service.create(authorRef)).isNotNull();
+	}
+
+	/**
+	 * 이슈 #465 리뷰 — <b>저장된 검수 결과는 언제나 JSON 이다.</b>
+	 *
+	 * <p>{@code field} 는 검사 요청이 보낸 <b>맵의 키</b>이고 서버가 모양을 정하지 않는다.
+	 * 손으로 이어 붙이던 시절에는 <b>따옴표 하나로 저장된 것이 JSON 이 아니게</b> 됐고, 그
+	 * 원고는 이후 조회마다 깨진다 — 목록은 <b>원고 하나가 나머지 전부를 끌고 간다.</b>
+	 *
+	 * <p><b>거절하지 않고 담는다.</b> 이상한 이름을 보낸 것은 요청의 문제이지만, 그 이름을
+	 * 되돌려 주지 못하면 작성자는 <b>어디를 고쳐야 하는지</b> 알 수 없다 (R8.2).
+	 */
+	@Test
+	void S465_a_field_name_carrying_a_quote_does_not_corrupt_the_stored_findings() {
+		UUID authorRef = UUID.randomUUID();
+		UUID draftId = this.service.create(authorRef).getId();
+		String hostileField = "characters[0].\"name\\";
+
+		this.service.recordPrecheck(authorRef, draftId,
+				new PrecheckScreen.Result(DraftSafetyState.BLOCKED,
+						List.of(new PrecheckFinding(hostileField, new int[] { 0, 1 }, "kind", "안내"))));
+
+		String stored = this.drafts.findById(draftId).orElseThrow().getSafetyFindings();
+		JsonNode findings = JsonMapper.builder().build().readTree(stored);
+		assertThat(findings.isArray()).isTrue();
+		assertThat(findings.get(0).get("field").asString()).isEqualTo(hostileField);
 	}
 
 	private UUID givenBlockedDraftAtStep(UUID authorRef, int step) {

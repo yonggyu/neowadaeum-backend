@@ -3,6 +3,7 @@ package com.neowadaeum.authoring.draft;
 import com.neowadaeum.authoring.UgcLimitProperties;
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
@@ -31,6 +32,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class DraftScaleGate {
 
+	/** 넘긴 이유. {@code reason} 은 진단 값이며 화면이 문구를 고르는 근거는 {@code field} 다 (§13-95). */
+	private static final String TOO_MANY = "too_many";
+
 	private final UgcLimitProperties limits;
 
 	public DraftScaleGate(UgcLimitProperties limits) {
@@ -38,18 +42,31 @@ public class DraftScaleGate {
 	}
 
 	/**
-	 * @throws ApiException {@code VALIDATION_ERROR} — 넘겼다. {@code details} 로 <b>어느 목록이
-	 *     몇 개까지인지</b> 알린다. 세이프티 임계가 아니므로 값을 가리지 않는다 (S-11 이 가리는
-	 *     것은 검수 비율과 정지 임계다) — 가리면 작성자는 몇 개를 지워야 하는지 알 수 없다
+	 * @throws ApiException {@code VALIDATION_ERROR} — 넘겼다. {@code details.fields} 로 <b>어느
+	 *     목록이 몇 개까지인지</b> 알린다 (§13-96). 세이프티 임계가 아니므로 값을 가리지 않는다
+	 *     (S-11 이 가리는 것은 검수 비율과 정지 임계다) — 가리면 작성자는 몇 개를 지워야 하는지
+	 *     알 수 없다
 	 */
 	public void verify(DraftStoryDefinition.Declared declared) {
 		requireAtMost("chapters", declared.chapterCount(), this.limits.chaptersPerStory());
 		requireAtMost("endings", declared.endingCount(), this.limits.endingsPerStory());
 	}
 
+	/**
+	 * <b>어느 칸이 어긋났는지는 {@code fields} 배열로 말한다</b> (§13-96, #478).
+	 *
+	 * <p>여기가 가리키는 것은 요청 본문의 실제 자리({@code chapters} · {@code endings})이므로
+	 * {@code @Valid} 실패와 같은 자리로 온다 — 한 코드가 자리마다 다른 모양으로 나가면 화면은
+	 * <b>어느 칸이 문제인지 말하는 길</b>을 그 자리에서만 잃는다.
+	 *
+	 * <p><b>{@code max} 는 배열 항목에 남긴다.</b> 모양을 맞추느라 버리면 작성자는 몇 개까지
+	 * 되는지 모른 채 지웠다 넣었다 하며 같은 400 을 반복해서 받는다 — 통일이 화면이 할 수 있는
+	 * 일을 줄이는 자리다.
+	 */
 	private static void requireAtMost(String field, int count, int max) {
 		if (count > max) {
-			throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.of("field", field, "max", max));
+			throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.of("fields",
+					List.of(Map.<String, Object>of("field", field, "reason", TOO_MANY, "max", max))));
 		}
 	}
 }

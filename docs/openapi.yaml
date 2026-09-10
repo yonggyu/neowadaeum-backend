@@ -222,6 +222,53 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [auth]
+      operationId: logout
+      summary: 로그아웃 — 이 브라우저의 세션을 끝낸다
+      description: |
+        **재발급과 같은 경로다.** 리프레시 쿠키의 `Path` 가 이 경로 하나이므로 다른 자리에
+        두면 그 쿠키가 실려 오지 않는다. 같은 자리에 두면 CSRF 요구도 공개 여부도 위
+        `post` 와 같은 규칙을 그대로 물려받는다 — **면제 경계가 늘지 않는다.**
+
+        **언제나 `204` 다.** 쿠키가 없어도, 토큰이 만료됐어도 같다.
+
+        - 검증하면 **만료된 토큰을 든 사람이 나가지 못한다** — 로그아웃이 가장 필요한 상태다
+        - 없는 쿠키에 `401` 을 주면 화면은 *나가지 못했다* 를 그려야 하는데 실제로는 이미
+          나가 있다. 상태를 없애는 요청은 없던 것을 없애는 것도 성공이다
+
+        **호출하는 쪽은 자격 증명을 실어야 한다** (`credentials: 'include'`). 실지 않으면
+        브라우저가 응답의 `Set-Cookie` 를 버려 **쿠키가 그대로 남는다** — 화면은 성공으로
+        보이고 새로고침하면 다시 로그인된 상태가 된다.
+
+        **서버 측 무효화는 하지 않는다.** 리프레시 토큰은 상태 없는 서명 JWT 이므로 무를
+        레코드가 없다. 이 경로가 지우는 것은 **브라우저에 남은 흔적**이며, 탈취된 토큰까지
+        무르려면 거부 목록이라는 새 상태가 필요하다 — 별개의 결정이다 (§13-60 · 이슈 #473).
+      security: []
+      x-implemented-by: B-12
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          schema:
+            type: string
+          description: |
+            `XSRF-TOKEN` 쿠키에서 읽은 값을 그대로 돌려보낸다 (double-submit). 위 `post` 와
+            같은 경로이므로 같은 요구가 걸린다.
+      responses:
+        '204':
+          description: |
+            끝났다. **본문이 없다.** 함께 나가는 `Set-Cookie` 가 리프레시 쿠키를 **수명 0** 으로
+            덮어쓴다 — 이름과 `Path` 가 같아야 브라우저가 그것을 지우기로 읽는다.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: |
+                `nwd_rt=; Max-Age=0; Path=/api/v1/auth/refresh; HttpOnly; SameSite=Strict`
+                — 굽는 쿠키와 이름·경로·속성이 같고 수명만 0 이다.
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   # ── §13.2 Library ───────────────────────────────────────────
   /api/v1/library:
@@ -970,6 +1017,12 @@ paths:
 
         **판정은 원고 소유권이다.** 작성자는 관리자가 아니므로(S-4 밖) 걸 수 있는 사실이 그것
         하나이며, **남의 원고는 없는 것과 구분되지 않는다** (I-8) — `404` 다.
+
+        **열람 감사를 남기지 않는다** (R12.3, S-5). **이 침묵은 누락이 아니다** — 남기는 자리는
+        검수자 경로(`readReviewImage`)이며, S-5 가 답하려는 물음은 *누가 **남의** 원고 이미지를
+        봤는가* 이고 **소유자가 자기 원고를 보는 것은 그 물음의 대상이 아니다.** 여기에 걸면
+        작성자가 자기 원고를 여는 동안 줄이 쌓여 정작 그 물음의 답이 그 안에 묻힌다 — 이미지
+        열람을 원고 열람과 **다른 자원**으로 나눈 것과 같은 판단이다 (§13-78).
 
         **`Content-Type` 은 키가 정한다.** 저장소가 기록한 값이 아니라 **발급이 서명한 형식**을
         내보낸다 (§13-65) — 확장자가 그 값을 들고 있다.
@@ -2265,17 +2318,109 @@ components:
             message: 가입을 계속하려면 추가 정보가 필요해요.
             details: {}
     ValidationError:
-      description: 입력 검증 실패. `details.fields` 에 필드별 사유가 온다
+      description: |
+        입력 검증 실패. **`details` 의 모양은 둘 중 하나다** (§13-96, #478).
+
+        | 무엇이 어긋났나 | `details` |
+        |---|---|
+        | **요청의 어느 칸** | `fields: [{field, reason, …}]` |
+        | **칸이 아닌 전제 · 원고 전체** | `reason: "<카테고리>"` (+ 측정값) |
+
+        **먼저 `details.fields` 가 있는지 본다.** 있으면 항목마다 어느 칸인지 말하는 응답이고,
+        없으면 `details.reason` 이 무엇이 막았는지 말한다. 셋째 모양은 없다 — 자리마다 다른 모양이
+        나가면 화면이 할 수 있는 일은 `message` 를 그리는 것뿐이 된다.
+
+        ### `fields` — 어느 칸이 어긋났는가
+
+        **배열인 이유는 한 필드에 위반이 둘 이상일 수 있기 때문이다** (#466). 맵이면 뒤에 온 것이
+        앞을 덮어써 사용자가 한 번에 하나씩만 고치게 된다. 첫 예제가 그 경우다 — 맵으로는
+        표현할 수 없는 응답이고, 그것이 배열인 이유다.
+
+        **항목은 `field` 와 `reason` 외의 키를 더 들 수 있다.** 목록 개수 상한이 그 자리이며
+        (`max`), 모양을 맞추느라 버리면 작성자는 **몇 개까지 되는지 모른 채** 같은 400 을
+        반복해서 받는다. 화면은 `field` 로 문구를 고르고 그 문구가 이 값을 쓴다 — 없으면
+        문구가 수를 말하지 않을 뿐이다.
+
+        ### `reason` — 칸이 아닌 것을 칸인 척하지 않는다
+
+        발행·공개 범위 변경처럼 **요청은 형태가 맞고 맞지 않는 것이 동작의 전제**인 자리, 그리고
+        원고 전체를 한 번에 재는 게이트가 여기로 온다. 없는 칸 이름을 지어내 `fields` 에 밀어
+        넣으면 화면은 그 칸 옆에 문구를 붙이고, **거기를 고쳐도 통과하지 않는다.**
+
+        이 자리의 `reason` 은 서버가 정한 **안정된 카테고리 코드**이며 화면이 분기해도 되는
+        값이다 — `fields[].reason` 과 이름은 같지만 성질이 다르다(아래). 값은 **카테고리
+        수준**이며 그보다 자세해지지 않는다 (S-11). 측정값이 함께 오는 자리가 있다
+        (`vocabularyUsagePercent`).
+
+        본문이 모델로 풀리지 못한 실패도 같은 자리로 온다. 다만 그 실패는 첫 어긋남에서
+        멈추므로 `fields` 는 **한 칸짜리 배열**이고, 값 검증 사유와 **같은 응답에 섞이지
+        않는다** — 그 단계는 모델이 만들어진 뒤에야 돈다. 이때 `reason` 은 고정 문구이며
+        **보낸 값도 기대 타입도 담지 않는다** (S-3, S-6). 어긋난 자리를 특정할 수 없으면
+        `details` 는 빈 객체다.
+
+        ### `fields[]` 안에서 `field` 와 `reason` 은 쓰임이 다르다 (#470)
+
+        **이 절은 배열 항목의 `reason` 만 말한다.** 위의 최상위 `reason` 은 서버가 정한 값이라
+        성질이 반대다 — 배열 항목 쪽에는 서버가 쓰지 않은 문자열이 섞여 온다.
+
+        - **`field` 가 기계가 읽는 값이다.** *어느 자리가 어긋났는가*를 말하며 항목마다 항상 있다.
+          화면이 문구를 고르는 근거는 이쪽이다 — `error` 코드와 `field` 로 자기 문구를 고른다.
+        - **`reason` 은 진단·로그용이다.** 사람이 원인을 좁히라고 싣는 값이며 **그대로 사용자에게
+          보여 주도록 만들어진 값이 아니다.** 안정성을 보장하지 않는다 — 검증 라이브러리의 기본
+          메시지가 그대로 섞여 오므로 **한 응답 안에서 언어가 갈릴 수 있고**, 그 문구는 라이브러리
+          판본에 따라 바뀐다. **문구 표의 키로 쓰지 않는다** — 키는 `field` 다.
+        - **사용자에게 보여도 안전한 문구는 `message` 다.** 계약이 그 자리를 *안전한 폴백 문구*라고
+          적는다(`Error`). 화면이 자기 문구를 갖는 것이 원칙이고 `message` 는 그것이 없을 때의
+          폴백이며, `reason` 은 어느 쪽도 아니다.
+
+        첫 예제의 `reason` 이 **검증 라이브러리 기본 메시지 그대로**인 것이 이 값의 성질을 보여 준다.
+        고정 문구로 통일하지 않는 이유는, 통일해도 *"보여 주는 문구"* 라는 오해가 남고 문구의 정본이
+        `message` 와 둘로 갈리기 때문이다.
+
+        **`reason` 이 담지 않는 것 — 보낸 값 · 내부 경로 · 클래스명** (S-3, S-6). 역직렬화 쪽에
+        고정 문구를 세운 것이 이 선이며(#466) 값 검증 쪽도 같은 선을 지킨다. 하나라도 실리면 응답이
+        입력의 메아리가 되거나 내부 구조를 알려 준다.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-          example:
-            error: VALIDATION_ERROR
-            message: 입력값을 확인해 주세요.
-            details:
-              fields:
-                turnNo: must be greater than or equal to 0
+          examples:
+            fieldViolations:
+              summary: 어느 칸이 어긋났는가 — 같은 필드에 위반이 둘
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  fields:
+                    - field: title
+                      reason: must not be blank
+                    - field: title
+                      reason: size must be between 1 and 40
+            fieldViolationWithCap:
+              summary: 칸에 상한이 있다 — 목록 개수가 상한을 넘었다
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  fields:
+                    - field: chapters
+                      reason: too_many
+                      max: 32
+            preconditionNotMet:
+              summary: 칸이 아니다 — 동작의 전제가 맞지 않는다
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  reason: story_not_approved
+            vocabularyBudgetExceeded:
+              summary: 칸이 아니다 — 선언한 이름이 프롬프트 예산을 넘었다
+              value:
+                error: VALIDATION_ERROR
+                message: 입력값을 확인해 주세요.
+                details:
+                  reason: vocabulary_budget_exceeded
+                  vocabularyUsagePercent: 137
     InvalidChoice:
       description: '`choiceId` 가 직전 턴이 발급한 것이 아니다 (I-1)'
       content:
@@ -2397,9 +2542,13 @@ components:
       description: |
         **429 는 셋으로 구분한다** (§13-14d). 하나로 합치지 않는다 — 클라이언트 처리가 다르다.
 
-        - `RETRY_COOLDOWN` — 연속 실패 3회. `details.retryAfterSeconds` 동안 재시도 비활성
+        - `RETRY_COOLDOWN` — 연속 실패 3회. 그동안 재시도 비활성
         - `RATE_LIMITED` — 분당 호출 한도 초과
         - `QUOTA_EXCEEDED` — 일일 토큰·생성 한도 초과
+
+        **셋 다 `details.retryAfterSeconds`(초) 를 담는다.** 언제 다시 올지 알려주지 않으면
+        클라이언트가 즉시 재시도하고, 그러면 한도는 트래픽을 줄이는 것이 아니라 실패를 늘리는
+        장치가 된다. 값은 지금 창이 끝날 때까지 남은 시간이라 코드마다 자릿수가 다르다.
       content:
         application/json:
           schema:
@@ -2415,12 +2564,14 @@ components:
               value:
                 error: RATE_LIMITED
                 message: 요청이 너무 빨라요. 잠시 후 다시 시도해 주세요.
-                details: {}
+                details:
+                  retryAfterSeconds: 12
             quotaExceeded:
               value:
                 error: QUOTA_EXCEEDED
                 message: 오늘 이용할 수 있는 양을 모두 사용했어요.
-                details: {}
+                details:
+                  retryAfterSeconds: 21600
     InternalError:
       description: |
         서버 결함. `CONTEXT_BUDGET_EXCEEDED` 는 컨텍스트 예산 초과이며 **조용히 잘라내지 않고 실패시킨다** (§4.4).
@@ -3431,8 +3582,10 @@ components:
             숫자를 *프롬프트 때문에* 정했다고 적었지만 그 프롬프트의 상한과는 대조되지
             않았고, 실제로는 32 × 40 이 예산의 두 배를 넘는다.
 
-            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며
-            `details.vocabularyUsagePercent` 가 **상한 대비 몇 %인지**를 준다 (100 이 상한).
+            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며 `details.reason` 이
+            `vocabulary_budget_exceeded`, `details.vocabularyUsagePercent` 가 **상한 대비 몇
+            %인지**를 준다 (100 이 상한). **`details.fields` 가 아니다** (§13-96) — 인물과
+            플래그를 함께 재므로 가리킬 칸이 하나로 정해지지 않는다.
             토큰 수와 상한값은 응답에 담지 않는다 (S-6).
           maxItems: 32
           items:
@@ -3451,8 +3604,9 @@ components:
             **L0 의 요청당 상한과도 다르다** — `precheck` 이 막는 것은 타자 한 번이 부르는
             한 요청의 크기이고, 여기서 막는 것은 작품 하나의 크기다.
 
-            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며 `details.field` 가
-            `chapters`, `details.max` 가 상한을 준다. 세이프티 임계가 아니므로 가리지 않는다 —
+            넘기면 저장·미리보기·제출이 `400 VALIDATION_ERROR` 이며 `details.fields` 의 항목이
+            `field: chapters` 와 `max` 를 함께 준다 (§13-96) — **어느 칸인지 말하는 응답이므로
+            다른 검증 실패와 같은 자리로 온다.** 상한은 세이프티 임계가 아니므로 가리지 않는다 —
             가리면 작성자는 몇 개를 지워야 하는지 알 수 없다.
           maxItems: 32
           items:
