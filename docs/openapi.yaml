@@ -2684,7 +2684,7 @@ components:
     ValidationReason:
       type: string
       description: |
-        `VALIDATION_ERROR` 의 **최상위 `details.reason`** 값 (§13-96, §13-97).
+        `VALIDATION_ERROR` 의 **최상위 `details.reason`** 값 (§13-96, §13-97, §13-98).
         `com.neowadaeum.common.error.ValidationReason` 과 **정확히 일치**한다.
 
         **`details.fields[].reason` 이 아니다.** 그쪽은 검증 라이브러리의 문구가 섞여 오는
@@ -2695,11 +2695,30 @@ components:
         값은 **카테고리 수준**이며 그보다 자세해지지 않는다 (S-11). 어느 칸이 어긋났는지·
         어떤 값을 보냈는지·내부 상태가 무엇인지 담지 않는다.
 
-        - `story_not_approved` — 승인 상태가 아닌 작품의 공개 범위를 바꾸려 했다 (R8.6)
-        - `promote_requires_unlisted` — `unlisted` 가 아닌 자리에서 `public` 으로 올리려 했다 (§13-39)
+        ### 각 값이 언제 오는가
+
+        - `story_not_approved` — 승인 상태가 아닌 작품의 공개 범위를 바꾸려 했다 (R8.6).
+          작품이 승인되면 **같은 요청이 통과한다**
+        - `promote_requires_unlisted` — `unlisted` 가 아닌 자리에서 `public` 으로 올리려 했다
+          (§13-39). 작품이 `unlisted` 로 가면 **같은 요청이 통과한다**
         - `vocabulary_budget_exceeded` — 선언한 이름이 프롬프트 어휘 예산을 넘었다.
-          `details.vocabularyUsagePercent` 가 함께 온다 (§13-76)
-        - `missing_default_ending` — 기본 엔딩 없는 작품을 발행하려 했다 (R2.2)
+          `details.vocabularyUsagePercent` 가 함께 온다 (§13-76). 선언을 줄여 **다시 보내야**
+          통과한다
+        - `missing_default_ending` — 기본 엔딩 없는 작품을 발행하려 했다 (R2.2).
+          기본 엔딩을 만들면 **같은 요청이 통과한다**
+
+        ### 이 열거가 담는 범위 (§13-98)
+
+        `VALIDATION_ERROR` 는 **요청 자체가 틀린 것**을 뜻한다 — 형태 · 길이 · 상한 ·
+        맞지 않는 조합처럼 **서버 상태를 보지 않고 판정할 수 있는 것**이다. 요청은 옳고
+        맞지 않는 것이 **작품이 지금 놓인 자리**라면 그것은 상태를 말하는 코드의 몫이다.
+        판별은 한 문장이다 — **같은 요청을 나중에 그대로 다시 보내서 통과할 수 있는가.**
+
+        위 넷 중 그 문장에 걸리는 것이 셋이다(`story_not_approved` ·
+        `promote_requires_unlisted` · `missing_default_ending`). **그럼에도 지금 옮기지
+        않았다** — 이 값은 화면이 분기하는 값이라 옮기는 순간 계약 변경이고, 프론트와
+        순서를 맞춰 후속 이슈에서 옮긴다. **그래서 이 목록을 새 값의 선례로 읽지 않는다**:
+        새 사유는 위 판별 문장으로 자리를 고른다.
 
         **예제는 값마다 늘지 않는다** — 예제가 그리는 것은 `details` 의 **모양**이고(§13-96)
         네 값이 만드는 모양은 둘뿐이다. 값의 목록은 이 열거가 든다.
