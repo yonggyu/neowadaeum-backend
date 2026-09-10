@@ -100,6 +100,36 @@ git config core.hooksPath .githooks
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
+### Gemini Provider 활성화
+
+실제 API 키는 프로젝트 루트의 `.env`에만 둔다.
+
+```dotenv
+GEMINI_API_KEY=<발급받은 키>
+```
+
+그 다음 로컬 `src/main/resources/application.yml`에서 Provider와 용도별 모델을 지정한다. 이 파일도
+커밋되지 않는다. `safety`가 없으면 L2 판정이 실패해 모든 턴이 차단되므로 실제 플레이에는 네 용도를
+모두 채운다 (I-12).
+
+```yaml
+ai:
+  provider:
+    active: gemini
+  providers:
+    gemini:
+      api-key: ${GEMINI_API_KEY}
+      models:
+        turn: <턴 생성 모델 ID>
+        summary: <요약 모델 ID>
+        safety: <검수 모델 ID>
+        outline: <아웃라인 모델 ID>
+```
+
+설정을 바꾼 뒤 애플리케이션을 다시 실행한다. API 키는 `x-goog-api-key` 헤더로만 전송되며 소스와
+애플리케이션 로그에는 남기지 않는다 (S-3). 모델 ID는 Google의 현재 모델 목록에서 선택하며 저장소가
+특정 모델 이름을 기본값으로 고정하지 않는다.
+
 **`dev` 프로파일을 지정해야 뜬다.** 결정론 Provider(`FixedStoryProvider`)를 비롯한 dev 전용 빈과
 경로가 전부 `dev & !prod` 이고, Provider 가 하나도 등록되지 않으면 기동이 멈춘다.
 **표현식이 전부 같으므로 `dev` 하나만 켜면 전부 해결된다.**
