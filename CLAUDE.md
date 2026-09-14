@@ -197,7 +197,7 @@ inspect → minimal change → targeted test → fast test → (필요 시) inte
 **`backend` / `dev` / `main`에 직접 푸시하지 않는다.** 커밋은 Conventional Commits + `Refs:` + 이슈 번호.
 **PR 400줄 — `src/main/**` 프로덕션 소스 기준이다.** 테스트·문서·픽스처는 세지 않는다. 브랜치 수명 3일. 상세는 `docs/git-workflow.md`.
 
-## 프로젝트 위키 — **작업 PR 마다 갱신한다**
+## 프로젝트 위키 — **사용자가 별도로 지시할 때만 수정한다**
 
 이 레포 밖에 **너와다음 전용 위키**가 있다. 코드와 문서가 *무엇을* 하는지 말한다면, 위키는 **6개월 뒤에 그 결정을 재구성할 수 있게** 정리해 둔 곳이다 — 모듈 경계, 턴 파이프라인, 도메인 규칙, ADR 색인, 스토어별 스키마, 현재 진행 상태.
 
@@ -207,9 +207,6 @@ inspect → minimal change → targeted test → fast test → (필요 시) inte
 wiki search  neowadaeum "턴 파이프라인"     # 전문 검색
 wiki read    neowadaeum 20-Architecture/turn-pipeline.md
 wiki ls      neowadaeum 30-Decisions
-wiki new     neowadaeum 30-Decisions adr-0008-<슬러그> "<제목>"
-wiki build   neowadaeum                     # 링크·Mermaid 검증. 갱신했으면 반드시 돌린다
-wiki publish neowadaeum "<커밋 메시지>"      # commit + push → 약 40초 후 반영
 ```
 
 > **`llmwiki` 가 아니다.** 그 CLI 는 LLM 일반 지식 위키 전용이고 이 프로젝트 위키의 경로를 건드리지 못한다. 반대로 **LLM·AI 일반론(RAG·서빙·모델 선택)은 이 위키에 넣지 않는다** — 너와다음을 그만두면 쓸모없어지는 것만 여기 온다.
@@ -218,9 +215,19 @@ wiki publish neowadaeum "<커밋 메시지>"      # commit + push → 약 40초 
 
 **작업 정의를 읽기 전에 위키를 먼저 검색한다.** 이미 정리된 결론이 있으면 일반론을 새로 세우지 말고 그 결정을 따르고, 참조한 노트를 PR 본문에 밝힌다. `docs/adr/` 원본이 정본이고 위키는 색인이다 — **충돌하면 레포가 이긴다.**
 
-### 언제 쓰는가 — 작업(`B-xx` / `S-x`) PR 마다
+### 언제 쓰는가 — 사용자가 현재 작업에서 명시적으로 요청했을 때만
 
-**Draft → Ready 전환 조건이다.** 아래 표로 대조해 해당하는 페이지를 갱신하고, 갱신할 것이 없으면 **PR 본문에 "없음"이라고 적는다.** 판단 자체를 건너뛰지 않는다.
+프로젝트 위키는 저장소 밖의 별도 상태다. **작업 PR, 이슈 종료, 문서·코드 변경만으로 위키 수정 권한을 추론하지 않는다.** 사용자가 현재 요청에서 위키 생성·편집·게시를 명시한 경우에만 아래 표를 적용한다.
+
+별도 지시가 없으면 `wiki search` · `wiki read` · `wiki ls` 같은 **읽기 전용 조회까지만** 할 수 있다. 위키 파일 편집, `wiki new`, `wiki publish`는 하지 않으며 `wiki build`도 위키 수정 작업의 검증으로 임의 실행하지 않는다. **위키 미수정은 Draft → Ready 전환을 막지 않고, PR마다 갱신 여부를 판단하거나 본문에 사유를 적을 필요도 없다.**
+
+명시적 수정 지시가 있을 때 사용하는 명령은 다음과 같다.
+
+```bash
+wiki new     neowadaeum 30-Decisions adr-0008-<슬러그> "<제목>"
+wiki build   neowadaeum                     # 링크·Mermaid 검증. 갱신했으면 반드시 돌린다
+wiki publish neowadaeum "<커밋 메시지>"      # commit + push → 약 40초 후 반영
+```
 
 | 이 PR 이 바꾼 것 | 갱신할 위키 페이지 |
 |---|---|
@@ -244,7 +251,7 @@ wiki publish neowadaeum "<커밋 메시지>"      # commit + push → 약 40초 
 - **오래된 계획과 현재 구현을 섞지 않는다.** 확실하지 않으면 쓰지 않는다.
 - 새 노트를 만들면 **그 폴더 `index.md` 에 링크를 추가한다.** 파일명은 소문자+하이픈, 한글 파일명 금지.
 
-**CI 는 이것을 검증하지 못한다** — 위키가 레포 밖이기 때문이다. `wiki build neowadaeum` 이 링크와 Mermaid 를 잡는 유일한 게이트이고, 나머지는 PR 체크리스트가 강제한다.
+**CI 는 이것을 검증하지 못한다** — 위키가 레포 밖이기 때문이다. 사용자가 수정을 명시한 작업에서는 `wiki build neowadaeum` 이 링크와 Mermaid 를 잡는 유일한 게이트다.
 
 ## 문서 index — 필요할 때 해당 절만 읽는다
 
@@ -261,7 +268,7 @@ wiki publish neowadaeum "<커밋 메시지>"      # commit + push → 약 40초 
 | `docs/adr/` | 기술 결정 이력. 0001 테스트 실행 정책 / 0002 블록리스트 소유 / 0003 batch 경계 / 0004 수직 슬라이스 / 0005 오케스트레이터 의존 / **0006 턴 생성 포트 소유(0005 일부 대체)** / **0007 fallback 과 세션 provider 고정** / **0008 리프레시 토큰 전송 방식(B-12 의 CSRF 면제 전제를 좁힌다)** |
 | `docs/openapi.yaml` | API 계약 — 런타임 진실의 원천(B-06). 계약을 바꾸면 이 파일을 함께 고친다. `OpenApiContractTests` 가 구현과의 표류를 잡는다 |
 | `README.md` | 로컬 실행 · 스키마 4개 · 마이그레이션 명명 규칙 |
-| **프로젝트 위키** (레포 밖) | 모듈 경계 · 턴 파이프라인 · 도메인 규칙 · ADR 색인 · 스토어별 스키마 · 현재 상태. `wiki search neowadaeum "<주제>"`. **작업 PR 마다 갱신한다 — 위 절 참조** |
+| **프로젝트 위키** (레포 밖) | 모듈 경계 · 턴 파이프라인 · 도메인 규칙 · ADR 색인 · 스토어별 스키마 · 현재 상태. 필요하면 `wiki search neowadaeum "<주제>"` 로 읽는다. **수정은 사용자가 별도로 지시할 때만 한다 — 위 절 참조** |
 
 ## 코드 영역별 규칙 — `.claude/rules/`
 
