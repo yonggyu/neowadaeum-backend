@@ -63,9 +63,11 @@ cp src/main/resources/application.yml.template src/main/resources/application.ym
 > ./scripts/check-env-drift.sh
 > ```
 >
-> `scripts/preflight.sh` 가 이것을 함께 돌린다. **막지 않고 알리기만 한다** — 빠진 키가 전부
-> 부팅을 세우는 것은 아니고(예: `IMAGE_STORAGE_*` 다섯은 전부-또는-전무라 하나도 없으면 부팅은
-> 되고 이미지 업로드 경로만 죽는다), 그 판단은 값을 아는 사람의 몫이기 때문이다 (#434).
+> `scripts/preflight.sh` 가 이것을 함께 돌린다. **키는 필수와 선택으로 나뉘고, 그 표시는
+> `.env.example` 이 든다** — 구획 앞의 `# [required]` / `# [optional]` 한 줄이다 (#489).
+> 필수 키가 사본에 없으면 검사가 **실패한다**(그 키가 없으면 어차피 앱이 뜨지 않는다).
+> 선택 키는 알리기만 한다 — 그 기능을 켤 때 채우면 되고, 값을 아직 구하지 못했다고 해서
+> 시작을 막지는 않는다. **키를 더하는 사람이 그 자리에서 어느 쪽인지 표시한다.**
 
 > **새 worktree 마다 반복한다.** `application.yml` 은 `.gitignore` 의 `*.yml` 에 걸려 있는
 > untracked 파일이라, `git worktree add` 로 작업 폴더를 새로 만들면 **함께 오지 않는다** — 브랜치를
@@ -99,6 +101,36 @@ git config core.hooksPath .githooks
 ```bash
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
+
+### Gemini Provider 활성화
+
+실제 API 키는 프로젝트 루트의 `.env`에만 둔다.
+
+```dotenv
+GEMINI_API_KEY=<발급받은 키>
+```
+
+그 다음 로컬 `src/main/resources/application.yml`에서 Provider와 용도별 모델을 지정한다. 이 파일도
+커밋되지 않는다. `safety`가 없으면 L2 판정이 실패해 모든 턴이 차단되므로 실제 플레이에는 네 용도를
+모두 채운다 (I-12).
+
+```yaml
+ai:
+  provider:
+    active: gemini
+  providers:
+    gemini:
+      api-key: ${GEMINI_API_KEY}
+      models:
+        turn: <턴 생성 모델 ID>
+        summary: <요약 모델 ID>
+        safety: <검수 모델 ID>
+        outline: <아웃라인 모델 ID>
+```
+
+설정을 바꾼 뒤 애플리케이션을 다시 실행한다. API 키는 `x-goog-api-key` 헤더로만 전송되며 소스와
+애플리케이션 로그에는 남기지 않는다 (S-3). 모델 ID는 Google의 현재 모델 목록에서 선택하며 저장소가
+특정 모델 이름을 기본값으로 고정하지 않는다.
 
 **`dev` 프로파일을 지정해야 뜬다.** 결정론 Provider(`FixedStoryProvider`)를 비롯한 dev 전용 빈과
 경로가 전부 `dev & !prod` 이고, Provider 가 하나도 등록되지 않으면 기동이 멈춘다.

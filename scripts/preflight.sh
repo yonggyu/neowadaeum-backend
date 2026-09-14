@@ -45,14 +45,18 @@ if [ "$(git config --get core.hooksPath || true)" != ".githooks" ]; then
   printf '\033[33m  ! pre-commit 훅이 설치되어 있지 않다. 설치: git config core.hooksPath .githooks\033[0m\n'
 fi
 
-step "로컬 .env 표류 확인 (#434)"
-# 위 단계와 같은 성질이다 — **막지 않고 알리기만 한다.** .env 는 추적되지 않으므로(§7.2)
-# .env.example 에 키가 늘어도 각자의 사본이 따라왔는지 아무도 대조하지 않는데, 빠진 키가 전부
-# 부팅을 세우는 것도 아니라서 여기서 푸시를 막는 것은 과하다. 근거 전문은 스크립트가 갖는다.
+step "로컬 .env 표류 확인 (#434, #489)"
+# 위 단계와 **성질이 다르다** — 여기는 막는다(#489). .env 는 추적되지 않으므로(§7.2)
+# .env.example 에 키가 늘어도 각자의 사본이 따라왔는지 아무도 대조하지 않는데, 처음에는 그
+# 어긋남을 알리기만 했고 그래서 아무것도 막지 않았다.
 #
-# 이 단계가 CI 에 없는 이유도 같다: CI 에는 .env 가 없어 대조할 사본이 없다. 그쪽 몫은
-# ApplicationTemplateBindingTests 가 맡는다 (#428).
-./scripts/check-env-drift.sh
+# 나누는 자리는 .env.example 이다: `# [required]` 로 표시된 키가 사본에 없으면 **실패**하고
+# (그 키가 없으면 어차피 앱이 뜨지 않는다 — §7.1-3 과 같은 줄에 선다), `# [optional]` 은
+# 알리기만 한다(값을 아직 구하지 못한 사람의 시작을 막지 않는다). 근거 전문은 스크립트가 갖는다.
+#
+# 이 단계가 CI 에 없는 이유는 그대로다: CI 에는 .env 가 없어 대조할 사본이 없고, 스크립트는
+# 그 환경을 실패로 보지 않는다. 그쪽 몫은 ApplicationTemplateBindingTests 가 맡는다 (#428).
+./scripts/check-env-drift.sh || fail "로컬 .env 에 필수 키가 없다. 채우고 다시 돌린다."
 
 printf '\n\033[32m✓ 통과. 푸시해도 된다.\033[0m\n'
 printf '  남은 것: PR 본문 작성 · diff 전수 확인(§8.9) · CI 3잡\n'

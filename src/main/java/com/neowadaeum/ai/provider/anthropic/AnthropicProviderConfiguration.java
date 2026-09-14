@@ -45,11 +45,6 @@ public class AnthropicProviderConfiguration {
 				.build();
 	}
 
-	@Bean
-	public TurnOutputParser turnOutputParser() {
-		return new TurnOutputParser();
-	}
-
 	/**
 	 * 설정이 없으면 {@code null} 을 돌려 <b>빈을 만들지 않는다.</b>
 	 *
