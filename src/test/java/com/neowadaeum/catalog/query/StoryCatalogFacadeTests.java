@@ -442,25 +442,27 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	}
 
 	/**
-	 * <b>#396 · §13-85 — 이름을 고치는 동안에도 옛 컬럼의 값이 화면에 남는다.</b>
+	 * <b>#486 · §13-85 — 읽기는 옛 컬럼을 더 이상 보지 않는다.</b>
 	 *
-	 * <p>무중단 배포에서는 구 버전과 신 버전이 겹쳐 돈다 (docs/deployment.md §2). 그 창 동안
-	 * 구 버전이 만든 행은 <b>새 컬럼이 비어 있고</b>, 읽는 쪽이 새 컬럼만 보면 그 작품의 커버가
-	 * 조용히 사라진다 — 다시 발행되기 전까지 돌아오지 않는다.
+	 * <p>개명의 <b>2 단계</b>다. 1 단계(#396)는 읽는 자리마다
+	 * {@code COALESCE(<새 이름>, <옛 이름>)} 을 두어 겹쳐 도는 동안 구 버전이 만든 행을 함께
+	 * 봤다. 그것을 걷어야 <b>다음 배포가 옛 컬럼을 지울 수 있다</b> (docs/deployment.md §2) —
+	 * 읽는 코드가 하나라도 남아 있으면 DROP 이 조회를 42703 으로 깨뜨린다.
 	 *
-	 * <p>이 단언이 성립하지 않게 되는 날은 <b>옛 컬럼을 지우는 배포</b>이며, 그때 이 테스트와
-	 * {@code COALESCE} 가 함께 사라진다.
+	 * <p>그래서 여기서 확인하는 것은 <b>없는 것</b>이다. 옛 컬럼에만 값이 있는 행은 커버가
+	 * 비어 나온다 — 그리고 실제 데이터가 그 모양으로 남지 않도록 옮겨 적는 것이
+	 * {@code catalog/V21} 이다. 좁히기와 백필은 한 쌍이며, 이 단언은 <b>좁히기가 실제로 됐다</b>는
+	 * 쪽을 든다.
 	 */
 	@Test
-	void S13_85_a_cover_written_before_the_rename_still_reaches_the_screen() {
+	void S13_85_a_cover_left_only_in_the_old_column_is_no_longer_read() {
 		UUID storyId = insertStory("user", "public", "approved");
 		setCoverBeforeRename(storyId, COVER_KEY);
 
 		StoryCardView card = this.facade.cards(section("community"), null, null).stories().stream()
 				.filter(story -> story.storyId().equals(storyId)).findFirst().orElseThrow();
 
-		assertThat(card.coverImage()).isNotEqualTo(COVER_KEY).startsWith("http")
-				.contains("X-Amz-Signature");
+		assertThat(card.coverImage()).isNull();
 	}
 
 	/**
@@ -631,8 +633,9 @@ class StoryCatalogFacadeTests extends ContainerTestBase {
 	}
 
 	/**
-	 * <b>옛 이름 쪽만 채운다</b> (#396, §13-85). 배포가 겹치는 동안 구 버전이 만든 행이 그
-	 * 모양이며, 그 행이 화면에서 사라지지 않는지는 그것을 만들 수 있어야 확인된다.
+	 * <b>옛 이름 쪽만 채운다</b> (#396 · #486, §13-85). 배포가 겹치는 동안 구 버전이 만든 행이
+	 * 그 모양이며, 읽기가 그 컬럼을 더 이상 보지 않는지는 그것을 만들 수 있어야 확인된다.
+	 * 실제 데이터를 그 모양으로 두지 않는 것은 {@code catalog/V21} 의 몫이다.
 	 */
 	private void setCoverBeforeRename(UUID storyId, String coverUrl) {
 		update("UPDATE story SET cover_image_key = NULL, cover_url = ? WHERE id = ?", coverUrl,
