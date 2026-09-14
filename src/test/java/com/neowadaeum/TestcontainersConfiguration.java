@@ -104,6 +104,18 @@ public class TestcontainersConfiguration {
 	}
 
 	/**
+	 * 통합 테스트는 로컬 {@code application.yml} 의 Provider 선택을 상속하지 않는다 (B-22-2, S-3).
+	 *
+	 * <p>개발자가 실 Provider를 활성화한 상태에서도 E2E는 결정론 {@code fixed}를 써야 한다.
+	 * 이 재정의가 없으면 로컬 API 키가 있는 기계에서 테스트가 실제 AI를 호출하고, 비용·호출 한도·
+	 * 비결정 응답이 테스트 결과를 바꾼다.
+	 */
+	@Bean
+	DynamicPropertyRegistrar deterministicAiProviderRegistrar() {
+		return registry -> registry.add("ai.provider.active", () -> "fixed");
+	}
+
+	/**
 	 * {@code app.cors.allowed-origins} 도 런타임 전용이다 (#248). {@code ${CORS_ALLOWED_ORIGINS}}
 	 * 는 테스트에 {@code .env} 가 없어 플레이스홀더 문자열 그대로 남고, {@code CorsProperties} 의
 	 * 형식 검사가 <b>부팅을 세운다</b> — {@code JWT_SECRET} 과 같은 이유이며 §7.3 이 의도한 동작이다.
