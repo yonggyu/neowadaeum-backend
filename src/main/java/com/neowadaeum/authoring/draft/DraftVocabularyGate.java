@@ -2,6 +2,7 @@ package com.neowadaeum.authoring.draft;
 
 import com.neowadaeum.common.error.ApiException;
 import com.neowadaeum.common.error.ErrorCode;
+import com.neowadaeum.common.error.ValidationReason;
 import com.neowadaeum.common.spi.StateVocabularyBudget;
 import java.util.List;
 import java.util.Map;
@@ -29,15 +30,6 @@ public class DraftVocabularyGate {
 	/** {@code state_schema} 의 수치 그룹. {@link DraftStateSchema} 가 이 이름으로 발행한다. */
 	private static final String AFFINITY = "affinity.";
 
-	/**
-	 * 무엇이 어긋났는가 — <b>칸이 아니라 원고 전체의 전제</b>다 (§13-96, #478).
-	 *
-	 * <p>인물과 플래그를 <b>함께</b> 재므로 가리킬 칸이 하나로 정해지지 않는다. 없는 칸 이름을
-	 * 지어내 {@code fields} 에 밀어 넣으면 화면은 그 칸 옆에 문구를 붙이고, <b>거기서 이름 하나를
-	 * 지워도 통과하지 않는다.</b>
-	 */
-	private static final String BUDGET_EXCEEDED = "vocabulary_budget_exceeded";
-
 	private final StateVocabularyBudget budget;
 
 	public DraftVocabularyGate(StateVocabularyBudget budget) {
@@ -57,8 +49,14 @@ public class DraftVocabularyGate {
 
 		StateVocabularyBudget.Usage usage = this.budget.assess(numericPaths, declared.flags(), List.of());
 		if (!usage.fits()) {
+			// §13-96 — 칸이 아니라 원고 전체의 전제다. 인물과 플래그를 **함께** 재므로 가리킬 칸이
+			// 하나로 정해지지 않는다: 없는 칸 이름을 지어내 fields 에 밀어 넣으면 화면은 그 칸 옆에
+			// 문구를 붙이고 거기서 이름 하나를 지워도 통과하지 않는다.
+			// §13-97 — 사유의 정본은 ValidationReason 이다. 리터럴을 여기 적으면 계약에 없는 값이
+			// 나가도 아무것도 걸리지 않는다 (#483).
 			throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.<String, Object>of(
-					"reason", BUDGET_EXCEEDED, "vocabularyUsagePercent", usage.percentOfBudget()));
+					"reason", ValidationReason.VOCABULARY_BUDGET_EXCEEDED.code(),
+					"vocabularyUsagePercent", usage.percentOfBudget()));
 		}
 	}
 }

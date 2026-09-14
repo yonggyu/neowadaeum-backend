@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.jayway.jsonpath.JsonPath;
 import com.neowadaeum.common.error.ErrorCode;
 import com.neowadaeum.common.error.GlobalExceptionHandler;
+import com.neowadaeum.common.error.ValidationReason;
 import com.neowadaeum.play.api.TurnRequestBody;
 import com.neowadaeum.play.api.HistoryView;
 import com.neowadaeum.play.api.LandingView;
@@ -224,6 +225,85 @@ class OpenApiContractTests {
 		Set<String> implemented = Arrays.stream(ErrorCode.values()).map(Enum::name).collect(Collectors.toSet());
 
 		assertThat(declared).containsExactlyInAnyOrderElementsOf(implemented);
+	}
+
+	/**
+	 * §13-97 — 스펙의 {@code ValidationReason} 열거와 {@link ValidationReason} 이 <b>정확히 같다</b> (#483).
+	 *
+	 * <p><b>왜 값까지 대조하는가.</b> §13-96 이 최상위 {@code details.reason} 을 <i>화면이 분기해도
+	 * 되는 고정 코드</i>로 승격시켰다. 분기해도 되는 값이면 화면은 <b>그 목록을 알아야</b> 하는데,
+	 * 값이 자리마다 흩어진 문자열 리터럴이던 동안 <b>넷 중 둘이 계약에 없었다.</b>
+	 *
+	 * <p><b>{@code ErrorDetailsExampleContractTests} 가 이것을 보지 못하는 것은 결함이 아니다</b>
+	 * (#471). 그 검사는 {@code details} 의 <b>키 경로와 타입</b>만 대조하며, 값을 비교에서 뺀 것은
+	 * <i>실패 메시지에 응답 내용이 실리지 않아야 한다</i>는 옳은 이유였다 (S-11). 그래서
+	 * {@code {reason: string}} 모양이 맞으면 <b>어떤 값이든</b> 통과한다 — 값의 목록은 답하지
+	 * 않기로 한 물음이었고, 여기가 그 자리다.
+	 *
+	 * <p><b>여기서는 값을 실패 메시지에 실어도 된다.</b> 이 값들은 공개 계약이 열거로 드는 고정
+	 * 서버 코드이며 카테고리 수준이다 — {@code details} 의 다른 값에 대한 #471 의 정책은 그대로다.
+	 *
+	 * <p>{@code ErrorCode} 와 같은 방향으로 <b>양쪽</b>을 본다: 서버가 내보내는 값이 계약에 없으면
+	 * 프론트는 분기를 만들 수 없고, 계약에만 있으면 아무도 내보내지 않는 약속이 남는다.
+	 */
+	@Test
+	void S13_97_top_level_validation_reasons_match_the_enum_exactly() {
+		Set<String> implemented = Arrays.stream(ValidationReason.values()).map(ValidationReason::code)
+				.collect(Collectors.toSet());
+
+		assertThat(enumOf("ValidationReason"))
+				.as("최상위 details.reason 의 값이 계약과 코드에서 갈렸다 (§13-97, #483)")
+				.containsExactlyInAnyOrderElementsOf(implemented);
+	}
+
+	/**
+	 * §13-97 — <b>{@code ValidationError} 응답이 그 열거를 자기 자리에 붙인다</b> (#483).
+	 *
+	 * <p>열거가 {@code components} 에만 있으면 <b>어느 필드가 그 값을 갖는지</b>는 계약이 말하지
+	 * 않는다. 생성기가 만드는 타입이 {@code details.reason} 에 닿지 않으므로 프론트는 다시 손으로
+	 * 적게 되고, 그것이 이 이슈가 막으려던 것이다.
+	 */
+	@Test
+	void S13_97_the_validation_error_response_declares_the_reason_enum() {
+		assertThat(refsOf(validationErrorSchema()))
+				.as("ValidationError 응답이 details.reason 에 ValidationReason 을 붙이지 않았다 (§13-97)")
+				.contains("#/components/schemas/ValidationReason");
+	}
+
+	/** {@code ValidationError} 응답의 본문 스키마. */
+	@SuppressWarnings("unchecked")
+	private static Map<String, Object> validationErrorSchema() {
+		Map<String, Object> components = (Map<String, Object>) SPEC.get("components");
+		Map<String, Object> response =
+				(Map<String, Object>) ((Map<String, Object>) components.get("responses")).get("ValidationError");
+		Map<String, Object> json =
+				(Map<String, Object>) ((Map<String, Object>) response.get("content")).get("application/json");
+		Map<String, Object> schema = (Map<String, Object>) json.get("schema");
+		assertThat(schema).as("ValidationError 응답에 스키마가 없다").isNotNull();
+		return schema;
+	}
+
+	/** 스키마 안의 {@code $ref} 전부. {@code allOf} 같은 합성 안에 들어 있어도 찾는다. */
+	private static Set<String> refsOf(Object node) {
+		Set<String> refs = new LinkedHashSet<>();
+		collectRefs(node, refs);
+		return refs;
+	}
+
+	private static void collectRefs(Object node, Set<String> refs) {
+		if (node instanceof Map<?, ?> map) {
+			map.forEach((key, value) -> {
+				if ("$ref".equals(String.valueOf(key)) && value instanceof String ref) {
+					refs.add(ref);
+					return;
+				}
+				collectRefs(value, refs);
+			});
+			return;
+		}
+		if (node instanceof List<?> list) {
+			list.forEach(element -> collectRefs(element, refs));
+		}
 	}
 
 	/** §9.1 — 모든 에러가 한 형태로 수렴한다. {@code details} 는 필수이며 {@code null} 이 되지 않는다. */

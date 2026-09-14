@@ -34,11 +34,11 @@ import org.springframework.stereotype.Component;
  * <p><b>작품 수만큼 조회하지 않는다</b> (§15 — p95 300ms). 한 쪽을 읽고, 그 쪽의 작품 id 로
  * 장르를 <b>한 번에</b> 읽는다. 카드마다 장르를 물으면 20장이 21번의 조회가 된다.
  *
- * <p><b>커버·초상을 읽는 자리마다 {@code COALESCE(<새 이름>, <옛 이름>)} 이 붙어 있다</b>
- * (#396, §13-85). 컬럼 이름을 고치는 중이며, 무중단 배포에서는 구 버전과 신 버전이 겹쳐 돈다
- * (docs/deployment.md §2) — 그 창 동안 구 버전이 만든 행은 새 컬럼이 비어 있고,
- * {@code COALESCE} 가 없으면 그 작품의 커버가 <b>다시 발행될 때까지 조용히 사라진다.</b>
- * <b>옛 컬럼을 지우는 배포에서 이 표기가 함께 사라진다.</b>
+ * <p><b>커버·초상은 새 이름 한 곳에서만 읽는다</b> (#486, §13-85). 개명의 2 단계이며, 여기
+ * 있던 {@code COALESCE(<새 이름>, <옛 이름>)} 이 걷힌 자리다 — 읽기가 옛 컬럼을 더 이상 보지
+ * 않아야 <b>다음 배포가 그것을 지울 수 있다</b> (docs/deployment.md §2). 겹쳐 도는 동안 구
+ * 버전이 만들어 둔 행은 {@code catalog/V21} 이 새 컬럼으로 옮겨 적었다 — 그 백필이 이 좁히기의
+ * 전제이고, 없으면 그 작품의 커버가 <b>다시 발행될 때까지 조용히 사라진다.</b>
  */
 @Component
 public class StoryCatalogFacade {
@@ -172,7 +172,7 @@ public class StoryCatalogFacade {
 		});
 
 		String sql = """
-				SELECT s.id, s.title, COALESCE(s.cover_image_key, s.cover_url) AS cover_image_key,
+				SELECT s.id, s.title, s.cover_image_key,
 				       s.short_desc, s.author_type, s.created_at AS ordered_at,
 				       s.visibility, s.review_status, s.published_at
 				FROM story s
@@ -341,9 +341,7 @@ public class StoryCatalogFacade {
 	private List<CharacterCardView> charactersOf(UUID storyVersionId, String authorType,
 			String reviewStatus) {
 		return this.jdbc.sql("""
-						SELECT id, name, role,
-								COALESCE(portrait_image_key, portrait_url) AS portrait_image_key,
-								one_line
+						SELECT id, name, role, portrait_image_key, one_line
 						FROM character
 						WHERE story_version_id = :id AND is_visible_in_detail = TRUE
 						ORDER BY display_order
@@ -442,8 +440,7 @@ public class StoryCatalogFacade {
 
 		Map<UUID, StoryBriefView> byVersion = new HashMap<>();
 		this.jdbc.sql("""
-						SELECT v.id AS version_id, s.id AS story_id, s.title,
-						       COALESCE(s.cover_image_key, s.cover_url) AS cover_image_key,
+						SELECT v.id AS version_id, s.id AS story_id, s.title, s.cover_image_key,
 						       s.author_type, s.review_status
 						FROM story_version v JOIN story s ON s.id = v.story_id
 						WHERE v.id IN (:ids) AND s.review_status <> 'deleted'
@@ -550,7 +547,7 @@ public class StoryCatalogFacade {
 		// 조인 조건에 author_type 이 들어 있는 것이 의도다. 공식 작품의 author_ref 가 어떤
 		// 경위로든 채워져 있어도 닉네임이 실리지 않는다 — DB 는 그 조합을 막지 않는다.
 		String base = """
-				SELECT s.id, s.title, COALESCE(s.cover_image_key, s.cover_url) AS cover_image_key,
+				SELECT s.id, s.title, s.cover_image_key,
 				       s.short_desc, s.author_type, s.review_status,
 				       s.published_at, ap.display_name AS author_display_name
 				FROM story s
